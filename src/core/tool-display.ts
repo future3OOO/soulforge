@@ -1,3 +1,94 @@
+// ─── Tool Categories ───
+// Displayed as a dim tag before the tool label, e.g. [lsp] Definition
+
+export type ToolCategory =
+  | "file"
+  | "shell"
+  | "git"
+  | "lsp"
+  | "tree-sitter"
+  | "web"
+  | "memory"
+  | "agent"
+  | "ui"
+  | "editor"
+  | "execution";
+
+export const TOOL_CATEGORIES: Record<string, ToolCategory> = {
+  // File tools
+  read_file: "file",
+  edit_file: "file",
+  grep: "file",
+  glob: "file",
+
+  // Shell
+  shell: "shell",
+
+  // Git tools
+  git_status: "git",
+  git_diff: "git",
+  git_log: "git",
+  git_commit: "git",
+  git_push: "git",
+  git_pull: "git",
+  git_stash: "git",
+
+  // Static analysis — tree-sitter / ts-morph
+  navigate: "tree-sitter",
+  read_code: "tree-sitter",
+  analyze: "tree-sitter",
+  refactor: "tree-sitter",
+
+  // Editor core (neovim buffer ops)
+  editor_read: "editor",
+  editor_edit: "editor",
+  editor_navigate: "editor",
+  editor_panel: "editor",
+
+  // LSP (neovim language server)
+  editor_diagnostics: "lsp",
+  editor_symbols: "lsp",
+  editor_hover: "lsp",
+  editor_references: "lsp",
+  editor_definition: "lsp",
+  editor_actions: "lsp",
+  editor_rename: "lsp",
+  editor_lsp_status: "lsp",
+  editor_format: "lsp",
+
+  // Web
+  web_search: "web",
+
+  // Memory
+  memory_write: "memory",
+
+  // Agent / subagent
+  dispatch: "agent",
+
+  // Interactive UI
+  plan: "ui",
+  update_plan_step: "ui",
+  ask_user: "ui",
+  write_plan: "ui",
+
+  // Code execution (sandboxed)
+  code_execution: "execution",
+};
+
+export const CATEGORY_COLORS: Record<ToolCategory, string> = {
+  file: "#5C9FD6",
+  shell: "#FF0040",
+  git: "#2d5",
+  lsp: "#c678dd",
+  "tree-sitter": "#e5c07b",
+  web: "#5CBBF6",
+  memory: "#FF8C00",
+  agent: "#FF00FF",
+  ui: "#00BFFF",
+  editor: "#5C9FD6",
+  execution: "#FF0040",
+};
+
 // ─── Tool Icons (nerdfonts) ───
 
 export const TOOL_ICONS: Record<string, string> = {
@@ -6,8 +97,7 @@ export const TOOL_ICONS: Record<string, string> = {
   shell: "\uF120", //
   grep: "\uF002", //
   glob: "\uF07C", //
-  explore: "\uDB80\uDE29", // 󰚩 nf-md-robot
-  code: "\uDB80\uDD69", // 󰅩 nf-md-code-braces
+  dispatch: "\uDB80\uDE29", // 󰚩 nf-md-robot
   web_search: "\uF0AC", // globe
   memory_write: "\uF02E", // bookmark
   editor_read: "\uDB80\uDCCB", // 󰂋
@@ -38,6 +128,7 @@ export const TOOL_ICONS: Record<string, string> = {
   update_plan_step: "\uF058", // nf-fa-check_circle
   ask_user: "\uF059", // nf-fa-question_circle
   write_plan: "\uF0CB", // nf-fa-list_ol
+  code_execution: "\uDB80\uDD69", // 󰅩 nf-md-code-braces
 };
 
 // ─── Tool Labels ───
@@ -48,8 +139,7 @@ export const TOOL_LABELS: Record<string, string> = {
   shell: "Running",
   grep: "Searching",
   glob: "Globbing",
-  explore: "Exploring",
-  code: "Coding",
+  dispatch: "Dispatching",
   web_search: "Searching web",
   memory_write: "Recording",
   editor_read: "Reading buffer",
@@ -80,6 +170,7 @@ export const TOOL_LABELS: Record<string, string> = {
   update_plan_step: "Updating plan",
   ask_user: "Asking",
   write_plan: "Writing plan",
+  code_execution: "Executing",
 };
 
 // ─── Tool Icon Colors ───
@@ -90,8 +181,7 @@ export const TOOL_ICON_COLORS: Record<string, string> = {
   shell: "#FF0040",
   grep: "#FFDD57",
   glob: "#5C9FD6",
-  explore: "#9B30FF",
-  code: "#9B30FF",
+  dispatch: "#9B30FF",
   web_search: "#5CBBF6",
   memory_write: "#FF8C00",
   editor_read: "#5C9FD6",
@@ -122,4 +212,5 @@ export const TOOL_ICON_COLORS: Record<string, string> = {
   ask_user: "#FF8C00",
   write_plan: "#00BFFF",
   editor_panel: "#5C9FD6",
+  code_execution: "#FF0040",
 };

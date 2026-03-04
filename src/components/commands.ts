@@ -1,4 +1,3 @@
-import type { ModelMessage } from "ai";
 import type { ContextManager } from "../core/context/manager.js";
 import {
   getGitDiff,
@@ -10,17 +9,13 @@ import {
   gitStash,
   gitStashPop,
 } from "../core/git/status.js";
-import type {
-  AppConfig,
-  ChatMessage,
-  ChatStyle,
-  ForgeMode,
-  NvimConfigMode,
-} from "../types/index.js";
+import type { ChatInstance } from "../hooks/useChat.js";
+import type { UseTabsReturn } from "../hooks/useTabs.js";
+import type { AppConfig, ChatStyle, ForgeMode, NvimConfigMode } from "../types/index.js";
 
 export interface CommandContext {
-  setMessages: React.Dispatch<React.SetStateAction<ChatMessage[]>>;
-  setCoreMessages: React.Dispatch<React.SetStateAction<ModelMessage[]>>;
+  chat: ChatInstance;
+  tabMgr: UseTabsReturn;
   toggleFocus: () => void;
   nvimOpen: (path: string) => Promise<void>;
   exit: () => void;
@@ -35,9 +30,6 @@ export interface CommandContext {
   currentMode: ForgeMode;
   currentModeLabel: string;
   contextManager: ContextManager;
-  summarizeConversation: () => Promise<void>;
-  coAuthorCommits: boolean;
-  setCoAuthorCommits: React.Dispatch<React.SetStateAction<boolean>>;
   chatStyle: ChatStyle;
   setChatStyle: React.Dispatch<React.SetStateAction<ChatStyle>>;
   handleSuspend: (opts: { command: string; args?: string[]; noAltScreen?: boolean }) => void;
@@ -48,7 +40,6 @@ export interface CommandContext {
   openSetup: () => void;
   openEditorSettings: () => void;
   openRouterSettings: () => void;
-  togglePlanPanel: () => void;
 }
 
 export function handleCommand(input: string, ctx: CommandContext): void {
@@ -80,7 +71,7 @@ export function handleCommand(input: string, ctx: CommandContext): void {
           f.family.toLowerCase() === fontName,
       );
       if (!match) {
-        ctx.setMessages((prev) => [
+        ctx.chat.setMessages((prev) => [
           ...prev,
           {
             id: crypto.randomUUID(),
@@ -90,7 +81,7 @@ export function handleCommand(input: string, ctx: CommandContext): void {
           },
         ]);
       } else if (!term.canAutoSet) {
-        ctx.setMessages((prev) => [
+        ctx.chat.setMessages((prev) => [
           ...prev,
           {
             id: crypto.randomUUID(),
@@ -101,7 +92,7 @@ export function handleCommand(input: string, ctx: CommandContext): void {
         ]);
       } else {
         const result = setTerminalFont(match.family);
-        ctx.setMessages((prev) => [
+        ctx.chat.setMessages((prev) => [
           ...prev,
           {
             id: crypto.randomUUID(),
@@ -143,7 +134,7 @@ export function handleCommand(input: string, ctx: CommandContext): void {
     } else {
       fontLines.push(`Manual: ${term.instructions}`);
     }
-    ctx.setMessages((prev) => [
+    ctx.chat.setMessages((prev) => [
       ...prev,
       {
         id: crypto.randomUUID(),
@@ -159,7 +150,7 @@ export function handleCommand(input: string, ctx: CommandContext): void {
     const arg = trimmed.slice(12).trim().toLowerCase();
     if (arg === "accent" || arg === "bubble") {
       ctx.setChatStyle(arg);
-      ctx.setMessages((prev) => [
+      ctx.chat.setMessages((prev) => [
         ...prev,
         {
           id: crypto.randomUUID(),
@@ -171,7 +162,7 @@ export function handleCommand(input: string, ctx: CommandContext): void {
     } else {
       const next = ctx.chatStyle === "accent" ? "bubble" : "accent";
       ctx.setChatStyle(next);
-      ctx.setMessages((prev) => [
+      ctx.chat.setMessages((prev) => [
         ...prev,
         {
           id: crypto.randomUUID(),
@@ -187,7 +178,7 @@ export function handleCommand(input: string, ctx: CommandContext): void {
   if (cmd.startsWith("/open ")) {
     const filePath = trimmed.slice(6).trim();
     if (!filePath) {
-      ctx.setMessages((prev) => [
+      ctx.chat.setMessages((prev) => [
         ...prev,
         {
           id: crypto.randomUUID(),
@@ -199,7 +190,7 @@ export function handleCommand(input: string, ctx: CommandContext): void {
       return;
     }
     ctx.nvimOpen(filePath).catch(() => {});
-    ctx.setMessages((prev) => [
+    ctx.chat.setMessages((prev) => [
       ...prev,
       {
         id: crypto.randomUUID(),
@@ -217,7 +208,7 @@ export function handleCommand(input: string, ctx: CommandContext): void {
     const matched = validModes.find((m) => m === modeName);
     if (matched) {
       ctx.setForgeMode(matched);
-      ctx.setMessages((prev) => [
+      ctx.chat.setMessages((prev) => [
         ...prev,
         {
           id: crypto.randomUUID(),
@@ -227,7 +218,7 @@ export function handleCommand(input: string, ctx: CommandContext): void {
         },
       ]);
     } else {
-      ctx.setMessages((prev) => [
+      ctx.chat.setMessages((prev) => [
         ...prev,
         {
           id: crypto.randomUUID(),
@@ -249,7 +240,7 @@ export function handleCommand(input: string, ctx: CommandContext): void {
           ? "memory"
           : "all";
     const cleared = ctx.contextManager.clearContext(what as "git" | "memory" | "skills" | "all");
-    ctx.setMessages((prev) => [
+    ctx.chat.setMessages((prev) => [
       ...prev,
       {
         id: crypto.randomUUID(),
@@ -264,7 +255,7 @@ export function handleCommand(input: string, ctx: CommandContext): void {
   if (cmd === "/git init" || cmd === "/init") {
     gitInit(ctx.cwd).then((ok) => {
       ctx.refreshGit();
-      ctx.setMessages((prev) => [
+      ctx.chat.setMessages((prev) => [
         ...prev,
         {
           id: crypto.randomUUID(),
@@ -287,7 +278,7 @@ export function handleCommand(input: string, ctx: CommandContext): void {
       proc.stderr.on("data", (d: Buffer) => chunks.push(d.toString()));
       proc.on("close", (code) => {
         ctx.refreshGit();
-        ctx.setMessages((prev) => [
+        ctx.chat.setMessages((prev) => [
           ...prev,
           {
             id: crypto.randomUUID(),
@@ -304,8 +295,8 @@ export function handleCommand(input: string, ctx: CommandContext): void {
   if (cmd === "/co-author-commits" || cmd.startsWith("/co-author-commits ")) {
     const arg = trimmed.slice(19).trim().toLowerCase();
     if (arg === "enable" || arg === "on") {
-      ctx.setCoAuthorCommits(true);
-      ctx.setMessages((prev) => [
+      ctx.chat.setCoAuthorCommits(true);
+      ctx.chat.setMessages((prev) => [
         ...prev,
         {
           id: crypto.randomUUID(),
@@ -315,8 +306,8 @@ export function handleCommand(input: string, ctx: CommandContext): void {
         },
       ]);
     } else if (arg === "disable" || arg === "off") {
-      ctx.setCoAuthorCommits(false);
-      ctx.setMessages((prev) => [
+      ctx.chat.setCoAuthorCommits(false);
+      ctx.chat.setMessages((prev) => [
         ...prev,
         {
           id: crypto.randomUUID(),
@@ -326,12 +317,12 @@ export function handleCommand(input: string, ctx: CommandContext): void {
         },
       ]);
     } else {
-      ctx.setMessages((prev) => [
+      ctx.chat.setMessages((prev) => [
         ...prev,
         {
           id: crypto.randomUUID(),
           role: "system",
-          content: `Co-author commits: ${ctx.coAuthorCommits ? "enabled" : "disabled"}\nUsage: /co-author-commits enable | disable`,
+          content: `Co-author commits: ${ctx.chat.coAuthorCommits ? "enabled" : "disabled"}\nUsage: /co-author-commits enable | disable`,
           timestamp: Date.now(),
         },
       ]);
@@ -345,8 +336,9 @@ export function handleCommand(input: string, ctx: CommandContext): void {
       ctx.exit();
       break;
     case "/clear":
-      ctx.setMessages([]);
-      ctx.setCoreMessages([]);
+      ctx.chat.setMessages([]);
+      ctx.chat.setCoreMessages([]);
+      ctx.chat.setTokenUsage({ prompt: 0, completion: 0, total: 0 });
       break;
     case "/editor":
     case "/edit":
@@ -362,7 +354,7 @@ export function handleCommand(input: string, ctx: CommandContext): void {
       ctx.openRouterSettings();
       break;
     case "/plan-panel":
-      ctx.togglePlanPanel();
+      ctx.chat.setShowPlanPanel((prev: boolean) => !prev);
       break;
     case "/errors":
       ctx.openErrorLog();
@@ -375,7 +367,7 @@ export function handleCommand(input: string, ctx: CommandContext): void {
       ctx.openSessions();
       break;
     case "/summarize":
-      ctx.setMessages((prev) => [
+      ctx.chat.setMessages((prev) => [
         ...prev,
         {
           id: crypto.randomUUID(),
@@ -384,7 +376,7 @@ export function handleCommand(input: string, ctx: CommandContext): void {
           timestamp: Date.now(),
         },
       ]);
-      ctx.summarizeConversation();
+      ctx.chat.summarizeConversation();
       break;
     case "/commit":
       ctx.openGitCommit();
@@ -392,7 +384,7 @@ export function handleCommand(input: string, ctx: CommandContext): void {
     case "/diff":
       getGitDiff(ctx.cwd).then(async (diff) => {
         if (!diff) {
-          ctx.setMessages((prev) => [
+          ctx.chat.setMessages((prev) => [
             ...prev,
             {
               id: crypto.randomUUID(),
@@ -407,7 +399,7 @@ export function handleCommand(input: string, ctx: CommandContext): void {
         const { writeFileSync } = await import("node:fs");
         writeFileSync(tmpPath, diff);
         ctx.openEditorWithFile(tmpPath);
-        ctx.setMessages((prev) => [
+        ctx.chat.setMessages((prev) => [
           ...prev,
           {
             id: crypto.randomUUID(),
@@ -421,7 +413,7 @@ export function handleCommand(input: string, ctx: CommandContext): void {
     case "/status":
       getGitStatus(ctx.cwd).then((status) => {
         if (!status.isRepo) {
-          ctx.setMessages((prev) => [
+          ctx.chat.setMessages((prev) => [
             ...prev,
             {
               id: crypto.randomUUID(),
@@ -440,7 +432,7 @@ export function handleCommand(input: string, ctx: CommandContext): void {
         ];
         if (status.ahead > 0) lines.push(`Ahead: ${String(status.ahead)}`);
         if (status.behind > 0) lines.push(`Behind: ${String(status.behind)}`);
-        ctx.setMessages((prev) => [
+        ctx.chat.setMessages((prev) => [
           ...prev,
           {
             id: crypto.randomUUID(),
@@ -453,7 +445,7 @@ export function handleCommand(input: string, ctx: CommandContext): void {
       break;
     case "/branch":
       getGitStatus(ctx.cwd).then((status) => {
-        ctx.setMessages((prev) => [
+        ctx.chat.setMessages((prev) => [
           ...prev,
           {
             id: crypto.randomUUID(),
@@ -477,7 +469,7 @@ export function handleCommand(input: string, ctx: CommandContext): void {
           return `  ${String(pct).padStart(3)}%  ${kb.padStart(5)}k  ${s.section}`;
         });
       const totalKb = (total / 1024).toFixed(1);
-      ctx.setMessages((prev) => [
+      ctx.chat.setMessages((prev) => [
         ...prev,
         {
           id: crypto.randomUUID(),
@@ -495,7 +487,7 @@ export function handleCommand(input: string, ctx: CommandContext): void {
       break;
     }
     case "/mode":
-      ctx.setMessages((prev) => [
+      ctx.chat.setMessages((prev) => [
         ...prev,
         {
           id: crypto.randomUUID(),
@@ -527,7 +519,7 @@ export function handleCommand(input: string, ctx: CommandContext): void {
           "  /proxy login   — authenticate with Claude (browser OAuth)",
           "  /proxy install — manually install CLIProxyAPI",
         ];
-        ctx.setMessages((prev) => [
+        ctx.chat.setMessages((prev) => [
           ...prev,
           {
             id: crypto.randomUUID(),
@@ -549,7 +541,7 @@ export function handleCommand(input: string, ctx: CommandContext): void {
     case "/proxy install": {
       const { installProxy } =
         require("../core/setup/install.js") as typeof import("../core/setup/install.js");
-      ctx.setMessages((prev) => [
+      ctx.chat.setMessages((prev) => [
         ...prev,
         {
           id: crypto.randomUUID(),
@@ -560,7 +552,7 @@ export function handleCommand(input: string, ctx: CommandContext): void {
       ]);
       installProxy()
         .then((path: string) => {
-          ctx.setMessages((prev) => [
+          ctx.chat.setMessages((prev) => [
             ...prev,
             {
               id: crypto.randomUUID(),
@@ -572,7 +564,7 @@ export function handleCommand(input: string, ctx: CommandContext): void {
         })
         .catch((err: unknown) => {
           const msg = err instanceof Error ? err.message : String(err);
-          ctx.setMessages((prev) => [
+          ctx.chat.setMessages((prev) => [
             ...prev,
             {
               id: crypto.randomUUID(),
@@ -585,12 +577,12 @@ export function handleCommand(input: string, ctx: CommandContext): void {
       break;
     }
     case "/push":
-      ctx.setMessages((prev) => [
+      ctx.chat.setMessages((prev) => [
         ...prev,
         { id: crypto.randomUUID(), role: "system", content: "Pushing...", timestamp: Date.now() },
       ]);
       gitPush(ctx.cwd).then((result) => {
-        ctx.setMessages((prev) => [
+        ctx.chat.setMessages((prev) => [
           ...prev,
           {
             id: crypto.randomUUID(),
@@ -603,12 +595,12 @@ export function handleCommand(input: string, ctx: CommandContext): void {
       });
       break;
     case "/pull":
-      ctx.setMessages((prev) => [
+      ctx.chat.setMessages((prev) => [
         ...prev,
         { id: crypto.randomUUID(), role: "system", content: "Pulling...", timestamp: Date.now() },
       ]);
       gitPull(ctx.cwd).then((result) => {
-        ctx.setMessages((prev) => [
+        ctx.chat.setMessages((prev) => [
           ...prev,
           {
             id: crypto.randomUUID(),
@@ -622,7 +614,7 @@ export function handleCommand(input: string, ctx: CommandContext): void {
       break;
     case "/stash":
       gitStash(ctx.cwd).then((result) => {
-        ctx.setMessages((prev) => [
+        ctx.chat.setMessages((prev) => [
           ...prev,
           {
             id: crypto.randomUUID(),
@@ -636,7 +628,7 @@ export function handleCommand(input: string, ctx: CommandContext): void {
       break;
     case "/stash pop":
       gitStashPop(ctx.cwd).then((result) => {
-        ctx.setMessages((prev) => [
+        ctx.chat.setMessages((prev) => [
           ...prev,
           {
             id: crypto.randomUUID(),
@@ -651,7 +643,7 @@ export function handleCommand(input: string, ctx: CommandContext): void {
     case "/log":
       getGitLog(ctx.cwd, 20).then((entries) => {
         if (entries.length === 0) {
-          ctx.setMessages((prev) => [
+          ctx.chat.setMessages((prev) => [
             ...prev,
             {
               id: crypto.randomUUID(),
@@ -662,7 +654,7 @@ export function handleCommand(input: string, ctx: CommandContext): void {
           ]);
         } else {
           const logText = entries.map((e) => `${e.hash} ${e.subject} (${e.date})`).join("\n");
-          ctx.setMessages((prev) => [
+          ctx.chat.setMessages((prev) => [
             ...prev,
             { id: crypto.randomUUID(), role: "system", content: logText, timestamp: Date.now() },
           ]);
@@ -672,14 +664,87 @@ export function handleCommand(input: string, ctx: CommandContext): void {
     case "/setup":
       ctx.openSetup();
       break;
+    case "/tabs": {
+      const lines: string[] = ["── Tabs ──", ""];
+      for (let i = 0; i < ctx.tabMgr.tabs.length; i++) {
+        const tab = ctx.tabMgr.tabs[i];
+        if (!tab) continue;
+        const isActive = tab.id === ctx.tabMgr.activeTabId;
+        const marker = isActive ? "▸" : " ";
+        lines.push(`  ${marker} ${String(i + 1)}. ${tab.label}${isActive ? " (active)" : ""}`);
+      }
+      lines.push(
+        "",
+        "Shortcuts:",
+        "  Alt+T        — new tab",
+        "  Alt+W        — close tab",
+        "  Alt+1-9      — switch to tab",
+        "  Alt+[ / ]    — prev / next tab",
+        "  /rename <n>  — rename current tab",
+      );
+      ctx.chat.setMessages((prev) => [
+        ...prev,
+        {
+          id: crypto.randomUUID(),
+          role: "system",
+          content: lines.join("\n"),
+          timestamp: Date.now(),
+        },
+      ]);
+      break;
+    }
+    case "/new-tab":
+      ctx.tabMgr.createTab();
+      break;
+    case "/close-tab":
+      if (ctx.tabMgr.tabCount <= 1) {
+        ctx.chat.setMessages((prev) => [
+          ...prev,
+          {
+            id: crypto.randomUUID(),
+            role: "system",
+            content: "Can't close the last tab.",
+            timestamp: Date.now(),
+          },
+        ]);
+      } else {
+        ctx.tabMgr.closeTab(ctx.tabMgr.activeTabId);
+      }
+      break;
     default:
+      if (cmd.startsWith("/rename ")) {
+        const newName = trimmed.slice(8).trim();
+        if (newName) {
+          ctx.tabMgr.renameTab(ctx.tabMgr.activeTabId, newName);
+          ctx.chat.setMessages((prev) => [
+            ...prev,
+            {
+              id: crypto.randomUUID(),
+              role: "system",
+              content: `Tab renamed to: ${newName}`,
+              timestamp: Date.now(),
+            },
+          ]);
+        } else {
+          ctx.chat.setMessages((prev) => [
+            ...prev,
+            {
+              id: crypto.randomUUID(),
+              role: "system",
+              content: "Usage: /rename <name>",
+              timestamp: Date.now(),
+            },
+          ]);
+        }
+        break;
+      }
       if (cmd === "/nvim-config" || cmd.startsWith("/nvim-config ")) {
         const arg = trimmed.slice(13).trim().toLowerCase();
         const validModes = ["auto", "default", "user", "none"] as const;
         const matched = validModes.find((m) => m === arg);
         if (matched) {
           ctx.setSessionConfig((prev) => ({ ...prev, nvimConfig: matched }));
-          ctx.setMessages((prev) => [
+          ctx.chat.setMessages((prev) => [
             ...prev,
             {
               id: crypto.randomUUID(),
@@ -689,7 +754,7 @@ export function handleCommand(input: string, ctx: CommandContext): void {
             },
           ]);
         } else {
-          ctx.setMessages((prev) => [
+          ctx.chat.setMessages((prev) => [
             ...prev,
             {
               id: crypto.randomUUID(),
@@ -717,7 +782,7 @@ export function handleCommand(input: string, ctx: CommandContext): void {
         if (arg.startsWith("add ")) {
           const pattern = arg.slice(4).trim();
           if (!pattern) {
-            ctx.setMessages((prev) => [
+            ctx.chat.setMessages((prev) => [
               ...prev,
               {
                 id: crypto.randomUUID(),
@@ -728,7 +793,7 @@ export function handleCommand(input: string, ctx: CommandContext): void {
             ]);
           } else {
             addProjectPattern(ctx.cwd, pattern);
-            ctx.setMessages((prev) => [
+            ctx.chat.setMessages((prev) => [
               ...prev,
               {
                 id: crypto.randomUUID(),
@@ -741,7 +806,7 @@ export function handleCommand(input: string, ctx: CommandContext): void {
         } else if (arg.startsWith("remove ")) {
           const pattern = arg.slice(7).trim();
           removeProjectPattern(ctx.cwd, pattern);
-          ctx.setMessages((prev) => [
+          ctx.chat.setMessages((prev) => [
             ...prev,
             {
               id: crypto.randomUUID(),
@@ -754,7 +819,7 @@ export function handleCommand(input: string, ctx: CommandContext): void {
           const pattern = arg.slice(8).trim();
           if (pattern) {
             addSessionPattern(pattern);
-            ctx.setMessages((prev) => [
+            ctx.chat.setMessages((prev) => [
               ...prev,
               {
                 id: crypto.randomUUID(),
@@ -795,7 +860,7 @@ export function handleCommand(input: string, ctx: CommandContext): void {
             "  /privacy remove <pattern>  — remove from project config",
             "  /privacy session <pattern> — add for this session only",
           );
-          ctx.setMessages((prev) => [
+          ctx.chat.setMessages((prev) => [
             ...prev,
             {
               id: crypto.randomUUID(),
@@ -807,7 +872,7 @@ export function handleCommand(input: string, ctx: CommandContext): void {
         }
         break;
       }
-      ctx.setMessages((prev) => [
+      ctx.chat.setMessages((prev) => [
         ...prev,
         {
           id: crypto.randomUUID(),

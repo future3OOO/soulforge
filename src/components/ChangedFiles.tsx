@@ -2,7 +2,7 @@ import { relative } from "node:path";
 import { Box, Text } from "ink";
 import { useMemo } from "react";
 import type { ChatMessage } from "../types/index.js";
-import { POPUP_BG } from "./shared.js";
+import { POPUP_BG, PopupRow } from "./shared.js";
 
 interface FileEntry {
   path: string;
@@ -132,47 +132,33 @@ export function ChangedFiles({ messages, cwd }: Props) {
   const tree = buildTree(files, cwd);
 
   return (
-    <Box flexDirection="column" flexShrink={0} width={34} paddingTop={1}>
-      <Box flexDirection="column" borderStyle="round" borderColor="#8B5CF6" width={32}>
-        {/* Title */}
-        <Box width={30} height={1}>
-          <Box position="absolute">
-            <Text backgroundColor={POPUP_BG}>{" ".repeat(30)}</Text>
-          </Box>
-          <Box position="absolute">
-            <Text backgroundColor={POPUP_BG}>{"  "}</Text>
-            <Text color="#9B30FF" bold backgroundColor={POPUP_BG}>
-              {"\uF07C"} Changes
-            </Text>
-            <Text color="#555" backgroundColor={POPUP_BG}>
-              {"  "}
-              {String(files.length)} file{files.length === 1 ? "" : "s"}
-            </Text>
-          </Box>
-        </Box>
-        {/* Separator */}
-        <Box width={30} height={1}>
-          <Box position="absolute">
-            <Text backgroundColor={POPUP_BG}>{" ".repeat(30)}</Text>
-          </Box>
-          <Box position="absolute">
-            <Text backgroundColor={POPUP_BG}>{"  "}</Text>
-            <Text color="#333" backgroundColor={POPUP_BG}>
-              {"─".repeat(26)}
-            </Text>
-          </Box>
-        </Box>
-        {/* Tree */}
-        <Box flexDirection="column" paddingLeft={1}>
-          {tree.children.map((child, i) => (
-            <TreeRow
-              key={child.fullPath}
-              node={child}
-              prefix=""
-              isLast={i === tree.children.length - 1}
-            />
-          ))}
-        </Box>
+    <Box flexDirection="column">
+      {/* Title */}
+      <PopupRow w={30}>
+        <Text color="#9B30FF" bold backgroundColor={POPUP_BG}>
+          {"\uF07C"} Changes
+        </Text>
+        <Text color="#555" backgroundColor={POPUP_BG}>
+          {"  "}
+          {String(files.length)} file{files.length === 1 ? "" : "s"}
+        </Text>
+      </PopupRow>
+      {/* Separator */}
+      <PopupRow w={30}>
+        <Text color="#333" backgroundColor={POPUP_BG}>
+          {"─".repeat(26)}
+        </Text>
+      </PopupRow>
+      {/* Tree */}
+      <Box flexDirection="column" paddingLeft={1}>
+        {tree.children.map((child, i) => (
+          <TreeRow
+            key={child.fullPath}
+            node={child}
+            prefix=""
+            isLast={i === tree.children.length - 1}
+          />
+        ))}
       </Box>
     </Box>
   );

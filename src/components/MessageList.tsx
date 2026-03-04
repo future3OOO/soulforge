@@ -1,6 +1,11 @@
 import { Box, Text } from "ink";
 import { useEffect, useMemo, useState } from "react";
-import { TOOL_ICON_COLORS, TOOL_ICONS, TOOL_LABELS } from "../core/tool-display.js";
+import {
+  TOOL_CATEGORIES,
+  TOOL_ICON_COLORS,
+  TOOL_ICONS,
+  TOOL_LABELS,
+} from "../core/tool-display.js";
 import type {
   ChatMessage,
   ChatStyle,
@@ -122,6 +127,7 @@ function ToolCallRow({ tc }: { tc: ToolCall }) {
   const icon = TOOL_ICONS[tc.name] ?? "\uF0AD";
   const iconColor = TOOL_ICON_COLORS[tc.name] ?? "#888";
   const label = TOOL_LABELS[tc.name] ?? tc.name;
+  const category = TOOL_CATEGORIES[tc.name];
   const argStr = formatToolSummary(tc);
   const statusIcon = tc.result ? (tc.result.success ? "✓" : "✗") : "●";
   const statusColor = tc.result ? (tc.result.success ? "#2d5" : "#f44") : "#666";
@@ -136,6 +142,7 @@ function ToolCallRow({ tc }: { tc: ToolCall }) {
       <Text wrap="truncate">
         <Text color={statusColor}>{statusIcon} </Text>
         <Text color={iconColor}>{icon} </Text>
+        {category ? <Text color="#444">[{category}] </Text> : null}
         <Text color="#999">{label}</Text>
         {argStr ? <Text color="#777"> {argStr}</Text> : null}
         <Text color="#555"> → </Text>

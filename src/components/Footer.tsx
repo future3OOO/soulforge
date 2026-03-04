@@ -28,6 +28,7 @@ export function Footer() {
       <Shortcut k="^S" icon={ICONS.skill} l="Skills" />
       <Shortcut k="^Y" icon={ICONS.edit} l="Select" />
       <Shortcut k="^R" icon={ICONS.error} l="Errors" />
+      <Shortcut k="⌥T" icon={ICONS.edit} l="Tab" />
       <Shortcut k="^K" icon={ICONS.trash} l="Clear" />
       <Shortcut k="^H" icon={ICONS.help} l="Help" />
       <Shortcut k="^C" icon={ICONS.quit} l="Quit" />

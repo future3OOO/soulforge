@@ -1,6 +1,7 @@
 import { Box, Text } from "ink";
+import { useEffect, useState } from "react";
 import { providerIcon } from "../core/icons.js";
-import { checkProviders } from "../core/llm/provider.js";
+import { checkProviders, type ProviderStatus } from "../core/llm/provider.js";
 import { checkPrerequisites } from "../core/setup/prerequisites.js";
 
 function Status({ ok, label, dim }: { ok: boolean; label: string; dim?: boolean }) {
@@ -12,8 +13,12 @@ function Status({ ok, label, dim }: { ok: boolean; label: string; dim?: boolean 
 }
 
 export function HealthCheck() {
-  const provs = checkProviders();
+  const [provs, setProvs] = useState<ProviderStatus[]>([]);
   const prereqs = checkPrerequisites();
+
+  useEffect(() => {
+    checkProviders().then(setProvs);
+  }, []);
   const anyMissing =
     prereqs.some((p) => !p.installed && p.prerequisite.required) ||
     provs.every((p) => !p.available);

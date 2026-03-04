@@ -48,7 +48,7 @@ export interface ForbiddenConfig {
 // ─── Module-level state ───
 let globalPatterns: string[] = [];
 let projectPatterns: string[] = [];
-let sessionPatterns: string[] = [];
+const sessionPatternsMap = new Map<string, string[]>();
 let aiIgnorePatterns: string[] = [];
 let initialized = false;
 
@@ -97,7 +97,7 @@ export function initForbidden(cwd: string): void {
 
   globalPatterns = loadPatternsFromFile(globalFile);
   projectPatterns = loadPatternsFromFile(projectFile);
-  sessionPatterns = [];
+  sessionPatternsMap.clear();
 
   // Respect .aiignore (AI-specific exclusions)
   aiIgnorePatterns = parseIgnoreFile(join(cwd, ".aiignore"));
@@ -105,16 +105,31 @@ export function initForbidden(cwd: string): void {
   initialized = true;
 }
 
-/** Add a session-scoped pattern (lost on restart) */
-export function addSessionPattern(pattern: string): void {
-  if (!sessionPatterns.includes(pattern)) {
-    sessionPatterns.push(pattern);
+/** Add a session-scoped pattern (lost on restart). Optional tabId for per-tab patterns. */
+export function addSessionPattern(pattern: string, tabId?: string): void {
+  const key = tabId ?? "default";
+  const patterns = sessionPatternsMap.get(key) ?? [];
+  if (!patterns.includes(pattern)) {
+    patterns.push(pattern);
+    sessionPatternsMap.set(key, patterns);
   }
 }
 
 /** Remove a session-scoped pattern */
-export function removeSessionPattern(pattern: string): void {
-  sessionPatterns = sessionPatterns.filter((p) => p !== pattern);
+export function removeSessionPattern(pattern: string, tabId?: string): void {
+  const key = tabId ?? "default";
+  const patterns = sessionPatternsMap.get(key) ?? [];
+  const filtered = patterns.filter((p) => p !== pattern);
+  if (filtered.length > 0) {
+    sessionPatternsMap.set(key, filtered);
+  } else {
+    sessionPatternsMap.delete(key);
+  }
+}
+
+/** Clear all session patterns for a specific tab */
+export function clearTabSessionPatterns(tabId: string): void {
+  sessionPatternsMap.delete(tabId);
 }
 
 /** Add a pattern to the project config (.soulforge/forbidden.json) */
@@ -154,8 +169,24 @@ export function addGlobalPattern(pattern: string): void {
   }
 }
 
+/** Get all session patterns merged across all tabs */
+function getAllSessionPatterns(tabId?: string): string[] {
+  if (tabId) {
+    // Return only the specific tab's patterns + default
+    const tabPatterns = sessionPatternsMap.get(tabId) ?? [];
+    const defaultPatterns = tabId !== "default" ? (sessionPatternsMap.get("default") ?? []) : [];
+    return [...new Set([...defaultPatterns, ...tabPatterns])];
+  }
+  // Return all patterns across all tabs
+  const all: string[] = [];
+  for (const patterns of sessionPatternsMap.values()) {
+    all.push(...patterns);
+  }
+  return [...new Set(all)];
+}
+
 /** Get all active patterns grouped by source */
-export function getAllPatterns(): {
+export function getAllPatterns(tabId?: string): {
   builtin: string[];
   global: string[];
   project: string[];
@@ -166,13 +197,13 @@ export function getAllPatterns(): {
     builtin: [...BUILTIN_PATTERNS],
     global: [...globalPatterns],
     project: [...projectPatterns],
-    session: [...sessionPatterns],
+    session: getAllSessionPatterns(tabId),
     aiignore: [...aiIgnorePatterns],
   };
 }
 
 /** Check if a file path is forbidden. Returns the matching pattern or null. */
-export function isForbidden(filePath: string): string | null {
+export function isForbidden(filePath: string, tabId?: string): string | null {
   if (!initialized) return null;
 
   const resolved = resolve(filePath);
@@ -182,7 +213,7 @@ export function isForbidden(filePath: string): string | null {
     ...BUILTIN_PATTERNS,
     ...globalPatterns,
     ...projectPatterns,
-    ...sessionPatterns,
+    ...getAllSessionPatterns(tabId),
     ...aiIgnorePatterns,
   ];
 
@@ -198,12 +229,12 @@ export function isForbidden(filePath: string): string | null {
 }
 
 /** Build a summary for the system prompt */
-export function buildForbiddenContext(): string {
+export function buildForbiddenContext(tabId?: string): string {
   const all = [
     ...BUILTIN_PATTERNS,
     ...globalPatterns,
     ...projectPatterns,
-    ...sessionPatterns,
+    ...getAllSessionPatterns(tabId),
     ...aiIgnorePatterns,
   ];
   const unique = [...new Set(all)];

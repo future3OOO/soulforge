@@ -1,4 +1,6 @@
 export { useAnimatedNumber } from "./useAnimatedNumber.js";
+export type { ChatInstance, TabState, UseChatOptions } from "./useChat.js";
+export { useChat } from "./useChat.js";
 export { useEditorFocus } from "./useEditorFocus.js";
 export { useEditorInput } from "./useEditorInput.js";
 export { useForgeMode } from "./useForgeMode.js";
@@ -8,3 +10,5 @@ export { useMouse } from "./useMouse.js";
 export type { UseNeovimReturn } from "./useNeovim.js";
 export { useNeovim } from "./useNeovim.js";
 export { useProviderModels } from "./useProviderModels.js";
+export type { Tab, UseTabsReturn } from "./useTabs.js";
+export { useTabs } from "./useTabs.js";

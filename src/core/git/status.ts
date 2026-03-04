@@ -133,11 +133,20 @@ export async function gitInit(cwd: string): Promise<boolean> {
   return ok;
 }
 
+// ─── Co-Author ───
+const CO_AUTHOR_LINE = "Co-Authored-By: SoulForge <soulforge@proxysoul.com>";
+let _coAuthorEnabled = true;
+
+export function setCoAuthorEnabled(enabled: boolean) {
+  _coAuthorEnabled = enabled;
+}
+
 export async function gitCommit(
   cwd: string,
   message: string,
 ): Promise<{ ok: boolean; output: string }> {
-  const { ok, stdout } = await run(["commit", "-m", message], cwd);
+  const fullMessage = _coAuthorEnabled ? `${message}\n\n${CO_AUTHOR_LINE}` : message;
+  const { ok, stdout } = await run(["commit", "-m", fullMessage], cwd);
   return { ok, output: stdout };
 }
 

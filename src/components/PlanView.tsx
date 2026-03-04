@@ -48,7 +48,7 @@ function OverlayPlan({
   const maxLabel = 22; // truncate labels to fit
 
   return (
-    <Box flexDirection="column" borderStyle="round" borderColor="#8B5CF6" width={POPUP_WIDTH}>
+    <Box flexDirection="column">
       {/* Title */}
       <PopupRow w={innerW}>
         <Text color="#9B30FF" bold backgroundColor={POPUP_BG}>

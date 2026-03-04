@@ -1,43 +1,24 @@
-import { readFileSync } from "node:fs";
+import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
-import type { ModelMessage } from "ai";
-import { generateText, stepCountIs, ToolLoopAgent } from "ai";
 import { Box, Text, useApp, useInput, useStdout } from "ink";
 import { ScrollView, type ScrollViewRef } from "ink-scroll-view";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { mergeConfigs, saveConfig } from "../config/index.js";
-import { createForgeAgent } from "../core/agents/index.js";
-import { buildSubagentTools } from "../core/agents/subagent-tools.js";
 import { ContextManager } from "../core/context/manager.js";
 import { providerIcon, UI_ICONS } from "../core/icons.js";
-import { getModelContextWindow } from "../core/llm/models.js";
-import { resolveModel } from "../core/llm/provider.js";
-import { detectTaskType, resolveTaskModel } from "../core/llm/task-router.js";
 import { initForbidden } from "../core/security/forbidden.js";
 import { SessionManager } from "../core/sessions/manager.js";
 import { getMissingRequired } from "../core/setup/prerequisites.js";
 import { suspendAndRun } from "../core/terminal/suspend.js";
-import { createThinkingParser } from "../core/thinking-parser.js";
-import { buildInteractiveTools, buildPlanModeTools } from "../core/tools/index.js";
+import { useChat } from "../hooks/useChat.js";
 import { useEditorFocus } from "../hooks/useEditorFocus.js";
 import { useEditorInput } from "../hooks/useEditorInput.js";
 import { useForgeMode } from "../hooks/useForgeMode.js";
 import { useGitStatus } from "../hooks/useGitStatus.js";
 import { useMouse } from "../hooks/useMouse.js";
 import { useNeovim } from "../hooks/useNeovim.js";
-import type {
-  AppConfig,
-  ChatMessage,
-  ChatStyle,
-  EditorIntegration,
-  InteractiveCallbacks,
-  MessageSegment,
-  PendingQuestion,
-  Plan,
-  PlanStepStatus,
-  QueuedMessage,
-  TaskRouter,
-} from "../types/index.js";
+import { useTabs } from "../hooks/useTabs.js";
+import type { AppConfig, ChatStyle, EditorIntegration, TaskRouter } from "../types/index.js";
 import { ContextBar } from "./ContextBar.js";
 import { handleCommand } from "./commands.js";
 import { EditorPanel } from "./EditorPanel.js";
@@ -60,10 +41,10 @@ import { RouterSettings } from "./RouterSettings.js";
 import { SessionPicker } from "./SessionPicker.js";
 import { SetupGuide } from "./SetupGuide.js";
 import { SkillSearch } from "./SkillSearch.js";
-import { type StreamSegment, StreamSegmentList } from "./StreamSegmentList.js";
+import { StreamSegmentList } from "./StreamSegmentList.js";
 import { SystemBanner } from "./SystemBanner.js";
+import { TabBar } from "./TabBar.js";
 import { TokenDisplay } from "./TokenDisplay.js";
-import type { LiveToolCall } from "./ToolCallDisplay.js";
 
 function truncate(str: string, max: number): string {
   return str.length > max ? `${str.slice(0, max - 1)}…` : str;
@@ -77,19 +58,6 @@ interface Props {
 export function App({ config, projectConfig }: Props) {
   const { exit } = useApp();
   const { stdout } = useStdout();
-  const [messages, setMessages] = useState<ChatMessage[]>([]);
-  const [coreMessages, setCoreMessages] = useState<ModelMessage[]>([]);
-  const [isLoading, setIsLoading] = useState(false);
-  const [streamSegments, setStreamSegments] = useState<StreamSegment[]>([]);
-  const [liveToolCalls, setLiveToolCalls] = useState<LiveToolCall[]>([]);
-
-  // Interactive state
-  const abortRef = useRef<AbortController | null>(null);
-  const [activePlan, setActivePlan] = useState<Plan | null>(null);
-  const [sidebarPlan, setSidebarPlan] = useState<Plan | null>(null);
-  const [showPlanPanel, setShowPlanPanel] = useState(true);
-  const [pendingQuestion, setPendingQuestion] = useState<PendingQuestion | null>(null);
-  const [messageQueue, setMessageQueue] = useState<QueuedMessage[]>([]);
 
   // Tiered config: session > project > global
   const [sessionConfig, setSessionConfig] = useState<Partial<AppConfig> | null>(null);
@@ -150,8 +118,7 @@ export function App({ config, projectConfig }: Props) {
 
   useEditorInput(sendKeys, focusMode === "editor" && nvimReady);
 
-  // LLM state
-  const [activeModel, setActiveModel] = useState(effectiveConfig.defaultModel);
+  // UI modal state
   const [showLlmSelector, setShowLlmSelector] = useState(false);
   const [showSkillSearch, setShowSkillSearch] = useState(false);
   const [showGitCommit, setShowGitCommit] = useState(false);
@@ -164,21 +131,14 @@ export function App({ config, projectConfig }: Props) {
   const [routerSlotPicking, setRouterSlotPicking] = useState<keyof TaskRouter | null>(null);
   const [showSetup, setShowSetup] = useState(() => getMissingRequired().length > 0);
   const [suspended, setSuspended] = useState(false);
-  const [coAuthorCommits, setCoAuthorCommits] = useState(true);
   const [codeExpanded, setCodeExpanded] = useState(false);
   const [chatStyle, setChatStyle] = useState<ChatStyle>("accent");
   const scrollRef = useRef<ScrollViewRef>(null);
   const shouldAutoScroll = useRef(true);
   const [isScrolledUp, setIsScrolledUp] = useState(false);
   const [chatViewportHeight, setChatViewportHeight] = useState(0);
-  // Reasoning is always shown during streaming, auto-collapsed after
-  const [tokenUsage, setTokenUsage] = useState({ prompt: 0, completion: 0, total: 0 });
-  const sessionIdRef = useRef<string>(crypto.randomUUID());
 
   const cwd = process.cwd();
-  const [showPlanReview, setShowPlanReview] = useState(false);
-  const planModeRef = useRef(false);
-  const planRequestRef = useRef<string | null>(null);
 
   // Initialize security guard once
   // biome-ignore lint/correctness/useExhaustiveDependencies: one-time init
@@ -226,102 +186,18 @@ export function App({ config, projectConfig }: Props) {
   useEffect(() => {
     contextManager.refreshGitContext();
   }, []);
+
   const termHeight = stdout?.rows ?? 40;
 
-  const chatChars = useMemo(
-    () =>
-      coreMessages.reduce((sum, m) => {
-        if (typeof m.content === "string") return sum + m.content.length;
-        if (Array.isArray(m.content)) {
-          return (
-            sum +
-            m.content.reduce(
-              (s: number, part: unknown) =>
-                s +
-                (typeof part === "object" && part !== null && "text" in part
-                  ? String((part as { text: string }).text).length
-                  : JSON.stringify(part).length),
-              0,
-            )
-          );
-        }
-        return sum;
-      }, 0),
-    [coreMessages],
-  );
-
-  const summarizeConversation = useCallback(async () => {
-    if (coreMessages.length < 4) return;
-    try {
-      const model = resolveModel(activeModel);
-      const convoText = coreMessages
-        .map((m) => `${m.role}: ${typeof m.content === "string" ? m.content.slice(0, 500) : ""}`)
-        .join("\n");
-      const { text: summary } = await generateText({
-        model,
-        prompt: `Summarize this conversation in 2-3 concise sentences, preserving key decisions and context:\n\n${convoText}`,
-      });
-      const summaryMsg: ModelMessage = {
-        role: "user" as const,
-        content: `[Previous conversation summary: ${summary}]`,
-      };
-      setCoreMessages([summaryMsg]);
-      setMessages((prev) => [
-        ...prev,
-        {
-          id: crypto.randomUUID(),
-          role: "system",
-          content: `Context compressed. Summary: ${summary}`,
-          timestamp: Date.now(),
-        },
-      ]);
-    } catch {
-      setMessages((prev) => [
-        ...prev,
-        {
-          id: crypto.randomUUID(),
-          role: "system",
-          content: "Failed to summarize conversation.",
-          timestamp: Date.now(),
-        },
-      ]);
-    }
-  }, [coreMessages, activeModel]);
-
-  // Auto-summarize when context is getting large (>80% of budget)
-  const autoSummarizedRef = useRef(false);
-  useEffect(() => {
-    const systemChars = contextManager.getContextBreakdown().reduce((sum, s) => sum + s.chars, 0);
-    const totalChars = systemChars + chatChars;
-    const contextBudgetChars = getModelContextWindow(activeModel) * 4; // ~4 chars/token
-    const pct = totalChars / contextBudgetChars;
-    if (pct > 0.8 && !autoSummarizedRef.current && coreMessages.length >= 6) {
-      autoSummarizedRef.current = true;
-      setMessages((prev) => [
-        ...prev,
-        {
-          id: crypto.randomUUID(),
-          role: "system",
-          content: "Context at >80% capacity. Auto-summarizing conversation...",
-          timestamp: Date.now(),
-        },
-      ]);
-      summarizeConversation();
-    }
-    if (pct < 0.5) {
-      autoSummarizedRef.current = false;
-    }
-  }, [chatChars, contextManager, coreMessages.length, summarizeConversation, activeModel]);
-
+  // biome-ignore lint/correctness/useExhaustiveDependencies: chat.setMessages is a stable useState setter
   const handleSuspend = useCallback(
     async (opts: { command: string; args?: string[]; noAltScreen?: boolean }) => {
       setSuspended(true);
-      // Small delay to let Ink flush before we steal the terminal
       await new Promise((r) => setTimeout(r, 50));
       const result = await suspendAndRun({ ...opts, cwd });
       setSuspended(false);
       if (result.exitCode === null) {
-        setMessages((prev) => [
+        chat.setMessages((prev) => [
           ...prev,
           {
             id: crypto.randomUUID(),
@@ -337,12 +213,53 @@ export function App({ config, projectConfig }: Props) {
     [cwd, git, contextManager],
   );
 
+  // ─── Chat hook (all chat state + LLM logic) ───
+  const chat = useChat({
+    effectiveConfig,
+    contextManager,
+    sessionManager,
+    cwd,
+    openEditorWithFile,
+    openEditor,
+    onSuspend: handleSuspend,
+  });
+
+  // ─── Tab management ───
+  const tabMgr = useTabs({ chat, defaultModel: effectiveConfig.defaultModel });
+
+  // Auto-label tab from first user message
+  // biome-ignore lint/correctness/useExhaustiveDependencies: only react to message count changes
+  useEffect(() => {
+    const firstUser = chat.messages.find((m) => m.role === "user");
+    if (firstUser) {
+      tabMgr.autoLabel(tabMgr.activeTabId, firstUser.content);
+    }
+  }, [chat.messages.length]);
+
+  // Auto-save tab layout to .soulforge/tabs.json
+  // biome-ignore lint/correctness/useExhaustiveDependencies: save on tab count/active changes
+  useEffect(() => {
+    if (tabMgr.tabCount <= 1) return;
+    try {
+      const dir = join(cwd, ".soulforge");
+      if (!existsSync(dir)) mkdirSync(dir, { recursive: true });
+      const layout = tabMgr.tabs.map((t) => ({
+        id: t.id,
+        label: t.label,
+        activeModel: t.id === tabMgr.activeTabId ? chat.activeModel : undefined,
+      }));
+      writeFileSync(join(dir, "tabs.json"), JSON.stringify(layout, null, 2));
+    } catch {
+      // Ignore write failures
+    }
+  }, [tabMgr.tabCount, tabMgr.activeTabId]);
+
   const { displayProvider, displayModel, isGateway, isProxy } = useMemo(() => {
-    const isGw = activeModel.startsWith("gateway/");
-    const isPrx = activeModel.startsWith("proxy/");
+    const isGw = chat.activeModel.startsWith("gateway/");
+    const isPrx = chat.activeModel.startsWith("proxy/");
     if (isGw || isPrx) {
       const prefix = isGw ? "gateway/" : "proxy/";
-      const rest = activeModel.slice(prefix.length);
+      const rest = chat.activeModel.slice(prefix.length);
       const idx = rest.indexOf("/");
       return {
         displayProvider: idx >= 0 ? rest.slice(0, idx) : rest,
@@ -351,37 +268,21 @@ export function App({ config, projectConfig }: Props) {
         isProxy: isPrx,
       };
     }
-    const idx = activeModel.indexOf("/");
+    const idx = chat.activeModel.indexOf("/");
     return {
-      displayProvider: idx >= 0 ? activeModel.slice(0, idx) : "unknown",
-      displayModel: idx >= 0 ? activeModel.slice(idx + 1) : activeModel,
+      displayProvider: idx >= 0 ? chat.activeModel.slice(0, idx) : "unknown",
+      displayModel: idx >= 0 ? chat.activeModel.slice(idx + 1) : chat.activeModel,
       isGateway: false,
       isProxy: false,
     };
-  }, [activeModel]);
-
-  // Restore a session from disk
-  const handleRestoreSession = useCallback(
-    (sessionId: string) => {
-      const session = sessionManager.loadSession(sessionId);
-      if (!session) return;
-      sessionIdRef.current = session.id;
-      setMessages(session.messages);
-      setCoreMessages(session.coreMessages);
-      setSessionConfig(session.configOverrides ?? null);
-      setStreamSegments([]);
-      setLiveToolCalls([]);
-      setTokenUsage({ prompt: 0, completion: 0, total: 0 });
-    },
-    [sessionManager],
-  );
+  }, [chat.activeModel]);
 
   // Auto-scroll to bottom when new messages arrive
   // biome-ignore lint/correctness/useExhaustiveDependencies: only reset on message count change
   useEffect(() => {
     shouldAutoScroll.current = true;
     scrollRef.current?.scrollToBottom();
-  }, [messages.length]);
+  }, [chat.messages.length]);
 
   // Keep viewport pinned to bottom during streaming
   const handleContentHeightChange = useCallback(() => {
@@ -416,9 +317,10 @@ export function App({ config, projectConfig }: Props) {
   }, [stdout]);
 
   // Show nvim errors in chat
+  // biome-ignore lint/correctness/useExhaustiveDependencies: chat.setMessages is a stable useState setter
   useEffect(() => {
     if (nvimError) {
-      setMessages((prev) => [
+      chat.setMessages((prev) => [
         ...prev,
         {
           id: crypto.randomUUID(),
@@ -429,6 +331,112 @@ export function App({ config, projectConfig }: Props) {
       ]);
     }
   }, [nvimError]);
+
+  // Wrapper for handleSubmit that intercepts slash commands and plan mode
+  const handleInputSubmit = useCallback(
+    async (input: string) => {
+      if (input.startsWith("/")) {
+        // Handle /continue
+        if (input.trim().toLowerCase() === "/continue") {
+          handleInputSubmit("Continue from where you left off. Complete any remaining work.");
+          return;
+        }
+        // Handle /plan — toggle plan mode
+        if (
+          input.trim().toLowerCase() === "/plan" ||
+          input.trim().toLowerCase().startsWith("/plan ")
+        ) {
+          const desc = input.trim().slice(5).trim();
+          if (chat.planMode) {
+            // Already in plan mode — toggle OFF
+            chat.setPlanMode(false);
+            chat.setPlanRequest(null);
+            setForgeMode("default");
+            chat.setShowPlanReview(false);
+            chat.setMessages((prev) => [
+              ...prev,
+              {
+                id: crypto.randomUUID(),
+                role: "system",
+                content: "Plan mode OFF",
+                timestamp: Date.now(),
+              },
+            ]);
+          } else {
+            // Enter plan mode
+            chat.setPlanMode(true);
+            chat.setPlanRequest(desc || null);
+            setForgeMode("plan");
+            contextManager.setForgeMode("plan");
+            chat.setMessages((prev) => [
+              ...prev,
+              {
+                id: crypto.randomUUID(),
+                role: "system",
+                content: "Plan mode ON — Forge will research and plan without making changes.",
+                timestamp: Date.now(),
+              },
+            ]);
+            if (desc) {
+              setTimeout(() => chat.handleSubmit(desc), 0);
+            }
+          }
+          return;
+        }
+        handleCommand(input, {
+          chat,
+          tabMgr,
+          toggleFocus,
+          nvimOpen,
+          exit,
+          openSkills: () => setShowSkillSearch(true),
+          openGitCommit: () => setShowGitCommit(true),
+          openSessions: () => setShowSessionPicker(true),
+          openHelp: () => setShowHelpPopup(true),
+          openErrorLog: () => setShowErrorLog(true),
+          cwd,
+          refreshGit: () => {
+            git.refresh();
+            contextManager.refreshGitContext();
+          },
+          setForgeMode,
+          currentMode: forgeMode,
+          currentModeLabel: modeLabel,
+          contextManager,
+          chatStyle,
+          setChatStyle,
+          handleSuspend,
+          openGitMenu: () => setShowGitMenu(true),
+          openEditorWithFile,
+          setSessionConfig,
+          effectiveNvimConfig: effectiveConfig.nvimConfig,
+          openSetup: () => setShowSetup(true),
+          openEditorSettings: () => setShowEditorSettings(true),
+          openRouterSettings: () => setShowRouterSettings(true),
+        });
+        return;
+      }
+
+      chat.handleSubmit(input);
+    },
+    [
+      chat,
+      tabMgr,
+      toggleFocus,
+      nvimOpen,
+      exit,
+      cwd,
+      git,
+      forgeMode,
+      modeLabel,
+      setForgeMode,
+      contextManager,
+      chatStyle,
+      handleSuspend,
+      openEditorWithFile,
+      effectiveConfig.nvimConfig,
+    ],
+  );
 
   // Global keybindings
   useInput(
@@ -444,15 +452,7 @@ export function App({ config, projectConfig }: Props) {
       if (focusMode === "editor") return;
 
       if (key.ctrl && input === "x") {
-        if (abortRef.current) {
-          // Resolve any pending question before aborting
-          if (pendingQuestion) {
-            pendingQuestion.resolve("__skipped__");
-            setPendingQuestion(null);
-          }
-          setActivePlan(null);
-          abortRef.current.abort();
-        }
+        chat.abort();
         return;
       }
       if (key.ctrl && input === "c") {
@@ -465,10 +465,9 @@ export function App({ config, projectConfig }: Props) {
         setShowSkillSearch((prev) => !prev);
       }
       if (key.ctrl && input === "k") {
-        setMessages([]);
-        setCoreMessages([]);
-        setStreamSegments([]);
-        setTokenUsage({ prompt: 0, completion: 0, total: 0 });
+        chat.setMessages([]);
+        chat.setCoreMessages([]);
+        chat.setTokenUsage({ prompt: 0, completion: 0, total: 0 });
       }
       if (key.ctrl && input === "d") {
         cycleMode();
@@ -486,8 +485,26 @@ export function App({ config, projectConfig }: Props) {
       if (key.ctrl && input === "r") {
         setShowErrorLog((prev) => !prev);
       }
-      if (key.ctrl && input === "t") {
-        setShowPlanPanel((prev) => !prev);
+      // Alt+T: new tab (Ctrl+T is intercepted by many terminals)
+      if (key.meta && input === "t") {
+        tabMgr.createTab();
+      }
+      // Alt+W: close tab
+      if (key.meta && input === "w") {
+        if (tabMgr.tabCount > 1) {
+          tabMgr.closeTab(tabMgr.activeTabId);
+        }
+      }
+      // Alt+1–9: switch to tab by index
+      if (key.meta && input >= "1" && input <= "9") {
+        tabMgr.switchToIndex(Number(input) - 1);
+      }
+      // Alt+[ / Alt+]: prev/next tab
+      if (key.meta && input === "[") {
+        tabMgr.prevTab();
+      }
+      if (key.meta && input === "]") {
+        tabMgr.nextTab();
       }
       // PageUp / PageDown for chat scroll (line-based)
       if (key.pageUp) {
@@ -549,544 +566,17 @@ export function App({ config, projectConfig }: Props) {
       !showRouterSettings,
   });
 
-  // Interactive callbacks for plan/question tools
-  const interactiveCallbacks = useMemo<InteractiveCallbacks>(
-    () => ({
-      onPlanCreate: (plan: Plan) => {
-        setActivePlan(plan);
-        setSidebarPlan(plan);
-        setShowPlanPanel(true);
-      },
-      onPlanStepUpdate: (stepId: string, status: PlanStepStatus) => {
-        const updater = (prev: Plan | null) => {
-          if (!prev) return prev;
-          return {
-            ...prev,
-            steps: prev.steps.map((s) => (s.id === stepId ? { ...s, status } : s)),
-          };
-        };
-        setActivePlan(updater);
-        setSidebarPlan(updater);
-      },
-      onAskUser: (question, options, allowSkip) => {
-        return new Promise<string>((resolve) => {
-          setPendingQuestion({
-            id: crypto.randomUUID(),
-            question,
-            options,
-            allowSkip,
-            resolve,
-          });
-        });
-      },
-      onOpenEditor: async (file?: string) => {
-        if (file) {
-          openEditorWithFile(file);
-        } else {
-          openEditor();
-        }
-      },
-    }),
-    [openEditor, openEditorWithFile],
-  );
-
-  const handleSubmit = useCallback(
-    async (input: string) => {
-      if (input.startsWith("/")) {
-        // Handle /continue
-        if (input.trim().toLowerCase() === "/continue") {
-          handleSubmit("Continue from where you left off. Complete any remaining work.");
-          return;
-        }
-        // Handle /plan — toggle plan mode
-        if (
-          input.trim().toLowerCase() === "/plan" ||
-          input.trim().toLowerCase().startsWith("/plan ")
-        ) {
-          const desc = input.trim().slice(5).trim();
-          if (planModeRef.current) {
-            // Already in plan mode — toggle OFF
-            planModeRef.current = false;
-            planRequestRef.current = null;
-            setForgeMode("default");
-            setShowPlanReview(false);
-            setMessages((prev) => [
-              ...prev,
-              {
-                id: crypto.randomUUID(),
-                role: "system",
-                content: "Plan mode OFF",
-                timestamp: Date.now(),
-              },
-            ]);
-          } else {
-            // Enter plan mode
-            planModeRef.current = true;
-            planRequestRef.current = desc || null;
-            setForgeMode("plan");
-            contextManager.setForgeMode("plan");
-            setMessages((prev) => [
-              ...prev,
-              {
-                id: crypto.randomUUID(),
-                role: "system",
-                content: "Plan mode ON — Forge will research and plan without making changes.",
-                timestamp: Date.now(),
-              },
-            ]);
-            if (desc) {
-              setTimeout(() => handleSubmit(desc), 0);
-            }
-          }
-          return;
-        }
-        handleCommand(input, {
-          setMessages,
-          setCoreMessages,
-          toggleFocus,
-          nvimOpen,
-          exit,
-          openSkills: () => setShowSkillSearch(true),
-          openGitCommit: () => setShowGitCommit(true),
-          openSessions: () => setShowSessionPicker(true),
-          openHelp: () => setShowHelpPopup(true),
-          openErrorLog: () => setShowErrorLog(true),
-          cwd,
-          refreshGit: () => {
-            git.refresh();
-            contextManager.refreshGitContext();
-          },
-          setForgeMode,
-          currentMode: forgeMode,
-          currentModeLabel: modeLabel,
-          contextManager,
-          summarizeConversation,
-          coAuthorCommits,
-          setCoAuthorCommits,
-          chatStyle,
-          setChatStyle,
-          handleSuspend,
-          openGitMenu: () => setShowGitMenu(true),
-          openEditorWithFile,
-          setSessionConfig,
-          effectiveNvimConfig: effectiveConfig.nvimConfig,
-          openSetup: () => setShowSetup(true),
-          openEditorSettings: () => setShowEditorSettings(true),
-          openRouterSettings: () => setShowRouterSettings(true),
-          togglePlanPanel: () => setShowPlanPanel((prev) => !prev),
-        });
-        return;
-      }
-
-      const userMsg: ChatMessage = {
-        id: crypto.randomUUID(),
-        role: "user",
-        content: input,
-        timestamp: Date.now(),
-      };
-      setMessages((prev) => [...prev, userMsg]);
-
-      const newCoreMessages: ModelMessage[] = [
-        ...coreMessages,
-        { role: "user" as const, content: input },
-      ];
-      setCoreMessages(newCoreMessages);
-      setIsLoading(true);
-      setStreamSegments([]);
-      setLiveToolCalls([]);
-      setActivePlan(null);
-      setPendingQuestion(null);
-
-      // Abort controller for Ctrl+X
-      const abortController = new AbortController();
-      abortRef.current = abortController;
-
-      let fullText = "";
-      const completedCalls: import("../types/index.js").ToolCall[] = [];
-      const finalSegments: MessageSegment[] = [];
-
-      try {
-        const taskType = detectTaskType(input);
-        const modelId = resolveTaskModel(taskType, effectiveConfig.taskRouter, activeModel);
-        const model = resolveModel(modelId);
-
-        // Resolve subagent models from task router
-        const tr = effectiveConfig.taskRouter;
-        const explorationModelId = tr?.exploration ?? undefined;
-        const codingModelId = tr?.coding ?? undefined;
-        const subagentModels =
-          explorationModelId || codingModelId
-            ? {
-                exploration: explorationModelId ? resolveModel(explorationModelId) : undefined,
-                coding: codingModelId ? resolveModel(codingModelId) : undefined,
-              }
-            : undefined;
-
-        const agent = planModeRef.current
-          ? new ToolLoopAgent({
-              id: "forge-plan",
-              model,
-              tools: {
-                ...buildPlanModeTools(cwd, effectiveConfig.editorIntegration),
-                explore: buildSubagentTools({ defaultModel: model }).explore,
-                ...(interactiveCallbacks ? buildInteractiveTools(interactiveCallbacks) : {}),
-              },
-              instructions: contextManager.buildSystemPrompt(),
-              stopWhen: stepCountIs(50),
-            })
-          : createForgeAgent({
-              model,
-              contextManager,
-              interactive: interactiveCallbacks,
-              editorIntegration: effectiveConfig.editorIntegration,
-              subagentModels,
-            });
-        const result = await agent.stream({
-          messages: newCoreMessages,
-          abortSignal: abortController.signal,
-        });
-
-        const toolCallArgs = new Map<string, string>();
-        const thinkingParser = createThinkingParser();
-        let hasNativeReasoning = false;
-        let thinkingIdCounter = 0;
-
-        // Helpers for accumulating text/reasoning into finalSegments + streamSegments
-        const appendText = (text: string) => {
-          fullText += text;
-          const lastSeg = finalSegments[finalSegments.length - 1];
-          if (lastSeg?.type === "text") {
-            lastSeg.content += text;
-          } else {
-            finalSegments.push({ type: "text", content: text });
-          }
-          setStreamSegments((prev) => {
-            const last = prev[prev.length - 1];
-            if (last?.type === "text") {
-              return [
-                ...prev.slice(0, -1),
-                { type: "text" as const, content: last.content + text },
-              ];
-            }
-            return [...prev, { type: "text" as const, content: text }];
-          });
-        };
-
-        const pushReasoningSegment = (id: string) => {
-          finalSegments.push({ type: "reasoning", content: "", id });
-          setStreamSegments((prev) => [...prev, { type: "reasoning" as const, content: "", id }]);
-        };
-
-        const appendReasoningContent = (text: string) => {
-          const lastSeg = finalSegments[finalSegments.length - 1];
-          if (lastSeg?.type === "reasoning") {
-            lastSeg.content += text;
-          }
-          setStreamSegments((prev) => {
-            const last = prev[prev.length - 1];
-            if (last?.type === "reasoning") {
-              return [...prev.slice(0, -1), { ...last, content: last.content + text }];
-            }
-            return prev;
-          });
-        };
-
-        for await (const part of result.fullStream) {
-          switch (part.type) {
-            case "reasoning-start": {
-              hasNativeReasoning = true;
-              const id = (part as { id?: string }).id ?? `reasoning-${String(thinkingIdCounter++)}`;
-              pushReasoningSegment(id);
-              break;
-            }
-            case "reasoning-delta": {
-              appendReasoningContent((part as { text: string }).text);
-              break;
-            }
-            case "reasoning-end":
-              // Segment already accumulated
-              break;
-            case "text-delta": {
-              if (hasNativeReasoning) {
-                // SDK reasoning is structured — no tag parsing needed
-                appendText(part.text);
-              } else {
-                // Feed through thinking parser to extract <thinking> tags
-                const parsed = thinkingParser.feed(part.text);
-                for (const chunk of parsed) {
-                  switch (chunk.type) {
-                    case "text":
-                      appendText(chunk.content);
-                      break;
-                    case "reasoning-start":
-                      pushReasoningSegment(`thinking-${String(thinkingIdCounter++)}`);
-                      break;
-                    case "reasoning-content":
-                      appendReasoningContent(chunk.content);
-                      break;
-                    case "reasoning-end":
-                      break;
-                  }
-                }
-              }
-              break;
-            }
-            case "tool-input-start": {
-              // Mirror into local segments
-              const lastToolSeg = finalSegments[finalSegments.length - 1];
-              if (lastToolSeg?.type === "tools") {
-                lastToolSeg.toolCallIds.push(part.id);
-              } else {
-                finalSegments.push({ type: "tools", toolCallIds: [part.id] });
-              }
-              setLiveToolCalls((prev) => [
-                ...prev,
-                { id: part.id, toolName: part.toolName, state: "running" },
-              ]);
-              setStreamSegments((prev) => {
-                const last = prev[prev.length - 1];
-                if (last?.type === "tools") {
-                  return [
-                    ...prev.slice(0, -1),
-                    { type: "tools" as const, callIds: [...last.callIds, part.id] },
-                  ];
-                }
-                return [...prev, { type: "tools" as const, callIds: [part.id] }];
-              });
-              toolCallArgs.set(part.id, "");
-              break;
-            }
-            case "tool-input-delta":
-              toolCallArgs.set(part.id, (toolCallArgs.get(part.id) ?? "") + part.delta);
-              setLiveToolCalls((prev) =>
-                prev.map((tc) =>
-                  tc.id === part.id ? { ...tc, args: toolCallArgs.get(part.id) } : tc,
-                ),
-              );
-              break;
-            case "tool-result": {
-              const resultStr =
-                typeof part.output === "string" ? part.output : JSON.stringify(part.output);
-              setLiveToolCalls((prev) =>
-                prev.map((tc) =>
-                  tc.id === part.toolCallId ? { ...tc, state: "done", result: resultStr } : tc,
-                ),
-              );
-              completedCalls.push({
-                id: part.toolCallId,
-                name: part.toolName,
-                args: JSON.parse(toolCallArgs.get(part.toolCallId) ?? "{}"),
-                result: { success: true, output: resultStr },
-              });
-              break;
-            }
-            case "tool-error":
-              setLiveToolCalls((prev) =>
-                prev.map((tc) =>
-                  tc.id === part.toolCallId
-                    ? { ...tc, state: "error", error: String(part.error) }
-                    : tc,
-                ),
-              );
-              completedCalls.push({
-                id: part.toolCallId,
-                name: part.toolName,
-                args: JSON.parse(toolCallArgs.get(part.toolCallId) ?? "{}"),
-                result: { success: false, output: "", error: String(part.error) },
-              });
-              break;
-            case "finish-step": {
-              const su = part.usage as { inputTokens?: number; outputTokens?: number } | undefined;
-              const stepIn = su?.inputTokens ?? 0;
-              const stepOut = su?.outputTokens ?? 0;
-              setTokenUsage((prev) => ({
-                prompt: prev.prompt + stepIn,
-                completion: prev.completion + stepOut,
-                total: prev.total + stepIn + stepOut,
-              }));
-              break;
-            }
-            case "error": {
-              // Stream error (e.g. second API call after tool results failed).
-              // Extract error from whatever shape the SDK sends.
-              const ep = part as Record<string, unknown>;
-              const errText =
-                (typeof ep.errorText === "string" && ep.errorText) ||
-                (ep.error instanceof Error ? ep.error.message : null) ||
-                (typeof ep.error === "string" ? ep.error : null) ||
-                JSON.stringify(ep);
-              appendText(`\n\n_Error: ${errText}_`);
-              break;
-            }
-          }
-        }
-
-        // Flush any buffered partial tags from the thinking parser
-        if (!hasNativeReasoning) {
-          for (const chunk of thinkingParser.flush()) {
-            switch (chunk.type) {
-              case "text":
-                appendText(chunk.content);
-                break;
-              case "reasoning-content":
-                appendReasoningContent(chunk.content);
-                break;
-              default:
-                break;
-            }
-          }
-        }
-
-        // Get response messages from AI SDK (includes tool calls + results).
-        // Falls back to text-only if the provider didn't produce proper steps
-        // (e.g. proxy/OpenAI-compat providers that omit finish markers).
-        let responseMessages: ModelMessage[];
-        try {
-          const responseData = await result.response;
-          responseMessages = responseData.messages;
-        } catch {
-          // NoOutputGeneratedError — stream completed without finish-step events.
-          // Fall back to text-only so we don't lose the assistant's response.
-          responseMessages =
-            fullText.length > 0 ? [{ role: "assistant" as const, content: fullText }] : [];
-        }
-
-        // Embed plan as a segment if one was created
-        setActivePlan((currentPlan) => {
-          if (currentPlan) {
-            finalSegments.push({ type: "plan", plan: currentPlan });
-          }
-          return null;
-        });
-
-        const assistantMsg: ChatMessage = {
-          id: crypto.randomUUID(),
-          role: "assistant",
-          content: fullText,
-          timestamp: Date.now(),
-          toolCalls: completedCalls.length > 0 ? completedCalls : undefined,
-          segments: finalSegments.length > 0 ? finalSegments : undefined,
-        };
-
-        setMessages((prev) => {
-          const next = [...prev, assistantMsg];
-          // Auto-save session after each exchange — include full tool call history
-          const updatedCore: ModelMessage[] = [
-            ...coreMessages,
-            { role: "user" as const, content: input },
-            ...responseMessages,
-          ];
-          sessionManager.saveSession({
-            id: sessionIdRef.current,
-            title: SessionManager.deriveTitle(next),
-            messages: next.filter((m) => m.role !== "system"),
-            coreMessages: updatedCore,
-            cwd,
-            startedAt: next[0]?.timestamp ?? Date.now(),
-            updatedAt: Date.now(),
-            configOverrides: sessionConfig ?? undefined,
-          });
-          return next;
-        });
-        setCoreMessages((prev) => [...prev, ...responseMessages]);
-        setStreamSegments([]);
-        setLiveToolCalls([]);
-      } catch (err: unknown) {
-        const isAbort = abortController.signal.aborted;
-        const errorMsg = err instanceof Error ? err.message : String(err);
-        // Preserve any partial content the AI streamed before the error
-        if (fullText.trim().length > 0 || completedCalls.length > 0) {
-          const partialMsg: ChatMessage = {
-            id: crypto.randomUUID(),
-            role: "assistant",
-            content: fullText,
-            timestamp: Date.now(),
-            toolCalls: completedCalls.length > 0 ? completedCalls : undefined,
-            segments: finalSegments.length > 0 ? finalSegments : undefined,
-          };
-          setMessages((prev) => [...prev, partialMsg]);
-          setCoreMessages((prev) => [...prev, { role: "assistant" as const, content: fullText }]);
-        }
-        setMessages((prev) => [
-          ...prev,
-          {
-            id: crypto.randomUUID(),
-            role: "system",
-            content: isAbort ? "Generation interrupted." : `Error: ${errorMsg}`,
-            timestamp: Date.now(),
-          },
-        ]);
-        setStreamSegments([]);
-        setLiveToolCalls([]);
-      } finally {
-        setIsLoading(false);
-        abortRef.current = null;
-        setPendingQuestion(null);
-        setActivePlan(null);
-
-        // In plan mode, populate sidebar from structured write_plan data + show review
-        if (planModeRef.current) {
-          const writePlanCall = completedCalls.find(
-            (c) => c.name === "write_plan" && c.result?.success,
-          );
-          if (writePlanCall && Array.isArray(writePlanCall.args.steps)) {
-            const planSteps = writePlanCall.args.steps as Array<{
-              id: string;
-              label: string;
-            }>;
-            const sidebarData: Plan = {
-              title: String(writePlanCall.args.title ?? "Plan"),
-              steps: planSteps.map((s) => ({
-                id: s.id,
-                label: s.label,
-                status: "pending" as const,
-              })),
-              createdAt: Date.now(),
-            };
-            setSidebarPlan(sidebarData);
-            setShowPlanPanel(true);
-          }
-          setShowPlanReview(true);
-        } else {
-          // Process message queue
-          setMessageQueue((queue) => {
-            if (queue.length > 0) {
-              const [next, ...rest] = queue;
-              if (next) {
-                setTimeout(() => handleSubmit(next.content), 0);
-              }
-              return rest;
-            }
-            return queue;
-          });
-        }
-      }
-    },
-    [
-      coreMessages,
-      activeModel,
-      contextManager,
-      sessionManager,
-      interactiveCallbacks,
-      toggleFocus,
-      nvimOpen,
-      exit,
-      cwd,
-      git,
-      forgeMode,
-      modeLabel,
-      setForgeMode,
-      summarizeConversation,
-      sessionConfig,
-      coAuthorCommits,
-      chatStyle,
-      handleSuspend,
-      openEditorWithFile,
-      effectiveConfig.nvimConfig,
-      effectiveConfig.editorIntegration,
-      effectiveConfig.taskRouter,
-    ],
-  );
+  const isModalOpen =
+    showLlmSelector ||
+    showSkillSearch ||
+    showGitCommit ||
+    showGitMenu ||
+    showSetup ||
+    showSessionPicker ||
+    showHelpPopup ||
+    showErrorLog ||
+    showEditorSettings ||
+    showRouterSettings;
 
   if (suspended) {
     return <Box height={termHeight} />;
@@ -1102,12 +592,16 @@ export function App({ config, projectConfig }: Props) {
           </Text>
           <Text color="#333">│</Text>
           <TokenDisplay
-            prompt={tokenUsage.prompt}
-            completion={tokenUsage.completion}
-            total={tokenUsage.total}
+            prompt={chat.tokenUsage.prompt}
+            completion={chat.tokenUsage.completion}
+            total={chat.tokenUsage.total}
           />
           <Text color="#333">│</Text>
-          <ContextBar contextManager={contextManager} chatChars={chatChars} modelId={activeModel} />
+          <ContextBar
+            contextManager={contextManager}
+            chatChars={chat.chatChars}
+            modelId={chat.activeModel}
+          />
           <Text color="#333">│</Text>
           {git.isRepo ? (
             <Text color={git.isDirty ? "#FF8C00" : "#2d5"} wrap="truncate">
@@ -1146,6 +640,14 @@ export function App({ config, projectConfig }: Props) {
               </Text>
             </>
           )}
+          {tabMgr.tabCount > 1 && (
+            <>
+              <Text color="#333">│</Text>
+              <Text color="#8B5CF6">
+                Tab {String(tabMgr.activeTabIndex + 1)}/{String(tabMgr.tabCount)}
+              </Text>
+            </>
+          )}
         </Box>
         <Text italic>
           <Text color="#333">by </Text>
@@ -1154,8 +656,11 @@ export function App({ config, projectConfig }: Props) {
         </Text>
       </Box>
 
+      {/* Tab bar — only shown when 2+ tabs */}
+      <TabBar tabs={tabMgr.tabs} activeTabId={tabMgr.activeTabId} onSwitch={tabMgr.switchTab} />
+
       {/* System banner — ephemeral notifications between header and chat */}
-      <SystemBanner messages={messages} expanded={codeExpanded} />
+      <SystemBanner messages={chat.messages} expanded={codeExpanded} />
 
       {/* Main content — LLM selector lives here so its scrim stays within bounds */}
       <Box flexDirection="row" flexGrow={1} flexShrink={1} minHeight={0}>
@@ -1175,7 +680,7 @@ export function App({ config, projectConfig }: Props) {
         {/* Chat — full width, no border */}
         <Box flexDirection="column" width={editorVisible ? "40%" : "100%"}>
           {/* Messages */}
-          {messages.length === 0 && streamSegments.length === 0 ? (
+          {chat.messages.length === 0 && chat.streamSegments.length === 0 ? (
             <Box
               flexDirection="column"
               flexGrow={1}
@@ -1226,13 +731,14 @@ export function App({ config, projectConfig }: Props) {
                       justifyContent="flex-end"
                     >
                       <MessageList
-                        messages={(messages.length > 100 ? messages.slice(-100) : messages).filter(
-                          (m) => m.role !== "system",
-                        )}
+                        messages={(chat.messages.length > 100
+                          ? chat.messages.slice(-100)
+                          : chat.messages
+                        ).filter((m) => m.role !== "system")}
                         chatStyle={chatStyle}
                       />
 
-                      {streamSegments.length > 0 && (
+                      {chat.streamSegments.length > 0 && (
                         <Box paddingX={1} flexShrink={0} marginBottom={1}>
                           <Box
                             flexDirection="column"
@@ -1248,8 +754,8 @@ export function App({ config, projectConfig }: Props) {
                               <Text color="#9B30FF">󰚩 Forge</Text>
                             </Box>
                             <StreamSegmentList
-                              segments={streamSegments}
-                              toolCalls={liveToolCalls}
+                              segments={chat.streamSegments}
+                              toolCalls={chat.liveToolCalls}
                             />
                           </Box>
                         </Box>
@@ -1260,32 +766,20 @@ export function App({ config, projectConfig }: Props) {
               </Box>
               {/* Right sidebar — plan + changed files */}
               <RightSidebar
-                plan={showPlanPanel ? (activePlan ?? sidebarPlan) : null}
-                messages={messages}
+                plan={chat.showPlanPanel ? (chat.activePlan ?? chat.sidebarPlan) : null}
+                messages={chat.messages}
                 cwd={cwd}
               />
             </Box>
           )}
 
           {/* Bottom area — PlanReview, QuestionPrompt, or InputBox */}
-          {showPlanReview ? (
+          {chat.showPlanReview ? (
             <Box flexShrink={0} paddingX={1}>
               <PlanReviewPrompt
-                isActive={
-                  focusMode === "chat" &&
-                  !showLlmSelector &&
-                  !showSkillSearch &&
-                  !showGitCommit &&
-                  !showGitMenu &&
-                  !showSetup &&
-                  !showSessionPicker &&
-                  !showHelpPopup &&
-                  !showErrorLog &&
-                  !showEditorSettings &&
-                  !showRouterSettings
-                }
+                isActive={focusMode === "chat" && !isModalOpen}
                 onAccept={() => {
-                  setShowPlanReview(false);
+                  chat.setShowPlanReview(false);
 
                   // Build execution prompt from plan file, or original request + context
                   let executionPrompt: string | null = null;
@@ -1294,9 +788,8 @@ export function App({ config, projectConfig }: Props) {
                     const planContent = readFileSync(planPath, "utf-8");
                     executionPrompt = `Execute the following plan step by step. Create a plan checklist and update steps as you go.\n\n${planContent}`;
                   } catch {
-                    // No plan file — build from original request + AI context
-                    const originalRequest = planRequestRef.current;
-                    const lastAssistant = [...messages]
+                    const originalRequest = chat.planRequest;
+                    const lastAssistant = [...chat.messages]
                       .reverse()
                       .find((m) => m.role === "assistant");
                     if (originalRequest) {
@@ -1310,7 +803,7 @@ export function App({ config, projectConfig }: Props) {
                   }
 
                   if (!executionPrompt) {
-                    setMessages((prev) => [
+                    chat.setMessages((prev) => [
                       ...prev,
                       {
                         id: crypto.randomUUID(),
@@ -1322,13 +815,13 @@ export function App({ config, projectConfig }: Props) {
                     return;
                   }
 
-                  // Exit plan mode — refs update immediately (no stale closure issues)
-                  planModeRef.current = false;
-                  planRequestRef.current = null;
+                  // Exit plan mode
+                  chat.setPlanMode(false);
+                  chat.setPlanRequest(null);
                   setForgeMode("default");
                   contextManager.setForgeMode("default");
 
-                  setMessages((prev) => [
+                  chat.setMessages((prev) => [
                     ...prev,
                     {
                       id: crypto.randomUUID(),
@@ -1338,20 +831,18 @@ export function App({ config, projectConfig }: Props) {
                     },
                   ]);
 
-                  // Direct call — planModeRef is already false so handleSubmit creates full agent.
-                  // contextManager already has "default" mode so system prompt is correct.
-                  handleSubmit(executionPrompt);
+                  chat.handleSubmit(executionPrompt);
                 }}
                 onRevise={(feedback) => {
-                  setShowPlanReview(false);
-                  handleSubmit(feedback);
+                  chat.setShowPlanReview(false);
+                  chat.handleSubmit(feedback);
                 }}
                 onCancel={() => {
-                  planModeRef.current = false;
-                  planRequestRef.current = null;
-                  setShowPlanReview(false);
+                  chat.setPlanMode(false);
+                  chat.setPlanRequest(null);
+                  chat.setShowPlanReview(false);
                   setForgeMode("default");
-                  setMessages((prev) => [
+                  chat.setMessages((prev) => [
                     ...prev,
                     {
                       id: crypto.randomUUID(),
@@ -1363,46 +854,22 @@ export function App({ config, projectConfig }: Props) {
                 }}
               />
             </Box>
-          ) : pendingQuestion ? (
+          ) : chat.pendingQuestion ? (
             <Box flexShrink={0} paddingX={1}>
               <QuestionPrompt
-                question={pendingQuestion}
-                isActive={
-                  focusMode === "chat" &&
-                  !showLlmSelector &&
-                  !showSkillSearch &&
-                  !showGitCommit &&
-                  !showGitMenu &&
-                  !showSetup &&
-                  !showSessionPicker &&
-                  !showHelpPopup &&
-                  !showErrorLog &&
-                  !showEditorSettings &&
-                  !showRouterSettings
-                }
+                question={chat.pendingQuestion}
+                isActive={focusMode === "chat" && !isModalOpen}
               />
             </Box>
           ) : (
             <InputBox
-              onSubmit={handleSubmit}
-              isLoading={isLoading}
-              isFocused={
-                focusMode === "chat" &&
-                !showLlmSelector &&
-                !showSkillSearch &&
-                !showGitCommit &&
-                !showGitMenu &&
-                !showSetup &&
-                !showSessionPicker &&
-                !showHelpPopup &&
-                !showErrorLog &&
-                !showEditorSettings &&
-                !showRouterSettings
-              }
+              onSubmit={handleInputSubmit}
+              isLoading={chat.isLoading}
+              isFocused={focusMode === "chat" && !isModalOpen}
               onQueue={(msg) =>
-                setMessageQueue((prev) => [...prev, { content: msg, queuedAt: Date.now() }])
+                chat.setMessageQueue((prev) => [...prev, { content: msg, queuedAt: Date.now() }])
               }
-              queueCount={messageQueue.length}
+              queueCount={chat.messageQueue.length}
             />
           )}
         </Box>
@@ -1410,7 +877,7 @@ export function App({ config, projectConfig }: Props) {
         {/* LLM Selector — inside main content so scrim doesn't cover header/footer */}
         <LlmSelector
           visible={showLlmSelector}
-          activeModel={activeModel}
+          activeModel={chat.activeModel}
           onSelect={(modelId) => {
             if (routerSlotPicking) {
               // Assign to router slot
@@ -1426,7 +893,8 @@ export function App({ config, projectConfig }: Props) {
               setSessionConfig((prev) => ({ ...prev, taskRouter: updated }));
               setRouterSlotPicking(null);
             } else {
-              setActiveModel(modelId);
+              chat.setActiveModel(modelId);
+              chat.setTokenUsage({ prompt: 0, completion: 0, total: 0 });
             }
           }}
           onClose={() => {
@@ -1439,10 +907,10 @@ export function App({ config, projectConfig }: Props) {
         <GitCommitModal
           visible={showGitCommit}
           cwd={cwd}
-          coAuthor={coAuthorCommits}
+          coAuthor={chat.coAuthorCommits}
           onClose={() => setShowGitCommit(false)}
           onCommitted={(msg) => {
-            setMessages((prev) => [
+            chat.setMessages((prev) => [
               ...prev,
               {
                 id: crypto.randomUUID(),
@@ -1469,7 +937,7 @@ export function App({ config, projectConfig }: Props) {
           }}
           onSuspend={handleSuspend}
           onSystemMessage={(msg) => {
-            setMessages((prev) => [
+            chat.setMessages((prev) => [
               ...prev,
               { id: crypto.randomUUID(), role: "system", content: msg, timestamp: Date.now() },
             ]);
@@ -1485,9 +953,9 @@ export function App({ config, projectConfig }: Props) {
           visible={showSessionPicker}
           cwd={cwd}
           onClose={() => setShowSessionPicker(false)}
-          onRestore={handleRestoreSession}
+          onRestore={chat.restoreSession}
           onSystemMessage={(msg) => {
-            setMessages((prev) => [
+            chat.setMessages((prev) => [
               ...prev,
               { id: crypto.randomUUID(), role: "system", content: msg, timestamp: Date.now() },
             ]);
@@ -1500,7 +968,7 @@ export function App({ config, projectConfig }: Props) {
           contextManager={contextManager}
           onClose={() => setShowSkillSearch(false)}
           onSystemMessage={(msg) => {
-            setMessages((prev) => [
+            chat.setMessages((prev) => [
               ...prev,
               { id: crypto.randomUUID(), role: "system", content: msg, timestamp: Date.now() },
             ]);
@@ -1525,7 +993,7 @@ export function App({ config, projectConfig }: Props) {
         <RouterSettings
           visible={showRouterSettings && !routerSlotPicking}
           router={effectiveConfig.taskRouter}
-          activeModel={activeModel}
+          activeModel={chat.activeModel}
           onPickSlot={(slot) => {
             setRouterSlotPicking(slot);
             setShowLlmSelector(true);
@@ -1550,7 +1018,7 @@ export function App({ config, projectConfig }: Props) {
           visible={showSetup}
           onClose={() => setShowSetup(false)}
           onSystemMessage={(msg) => {
-            setMessages((prev) => [
+            chat.setMessages((prev) => [
               ...prev,
               { id: crypto.randomUUID(), role: "system", content: msg, timestamp: Date.now() },
             ]);
@@ -1560,7 +1028,7 @@ export function App({ config, projectConfig }: Props) {
         {/* Error Log */}
         <ErrorLog
           visible={showErrorLog}
-          messages={messages}
+          messages={chat.messages}
           onClose={() => setShowErrorLog(false)}
         />
       </Box>

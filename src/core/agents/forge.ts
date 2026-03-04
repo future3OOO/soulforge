@@ -1,3 +1,4 @@
+import type { ProviderOptions } from "@ai-sdk/provider-utils";
 import type { LanguageModel } from "ai";
 import { stepCountIs, ToolLoopAgent } from "ai";
 import type { EditorIntegration, InteractiveCallbacks } from "../../types/index.js";
@@ -11,6 +12,10 @@ interface ForgeAgentOptions {
   interactive?: InteractiveCallbacks;
   editorIntegration?: EditorIntegration;
   subagentModels?: { exploration?: LanguageModel; coding?: LanguageModel };
+  onApproveWebSearch?: (query: string) => Promise<boolean>;
+  providerOptions?: ProviderOptions;
+  headers?: Record<string, string>;
+  codeExecution?: boolean;
 }
 
 /**
@@ -24,20 +29,28 @@ export function createForgeAgent({
   interactive,
   editorIntegration,
   subagentModels,
+  onApproveWebSearch,
+  providerOptions,
+  headers,
+  codeExecution,
 }: ForgeAgentOptions) {
   return new ToolLoopAgent({
     id: "forge",
     model,
     tools: {
-      ...buildTools(undefined, editorIntegration),
+      ...buildTools(undefined, editorIntegration, onApproveWebSearch, { codeExecution }),
       ...buildSubagentTools({
         defaultModel: model,
         explorationModel: subagentModels?.exploration,
         codingModel: subagentModels?.coding,
+        providerOptions,
+        headers,
       }),
       ...(interactive ? buildInteractiveTools(interactive) : {}),
     },
     instructions: contextManager.buildSystemPrompt(),
     stopWhen: stepCountIs(500),
+    ...(providerOptions && Object.keys(providerOptions).length > 0 ? { providerOptions } : {}),
+    ...(headers ? { headers } : {}),
   });
 }

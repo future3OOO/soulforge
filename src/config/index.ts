@@ -29,6 +29,11 @@ const DEFAULT_CONFIG: AppConfig = {
     lspStatus: true,
     format: true,
   },
+  thinking: { mode: "auto" },
+  performance: { effort: "high" },
+  contextManagement: { compact: true, clearToolUses: true, clearThinking: true },
+  codeExecution: true,
+  webSearch: true,
 };
 
 /** Load global config from ~/.soulforge/config.json */
@@ -83,6 +88,13 @@ export function mergeConfigs(
     const ci = layer.codeIntelligence
       ? { ...merged.codeIntelligence, ...layer.codeIntelligence }
       : merged.codeIntelligence;
+    const th = layer.thinking ? { ...merged.thinking, ...layer.thinking } : merged.thinking;
+    const perf = layer.performance
+      ? { ...merged.performance, ...layer.performance }
+      : merged.performance;
+    const cm = layer.contextManagement
+      ? { ...merged.contextManagement, ...layer.contextManagement }
+      : merged.contextManagement;
     merged = {
       ...merged,
       ...layer,
@@ -90,6 +102,9 @@ export function mergeConfigs(
       theme: { ...merged.theme, ...layer.theme },
       editorIntegration: ei,
       codeIntelligence: ci,
+      thinking: th,
+      performance: perf,
+      contextManagement: cm,
     };
   }
   return merged;

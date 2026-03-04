@@ -2,7 +2,7 @@ import { Box, Text, useInput } from "ink";
 import { useEffect, useState } from "react";
 import { providerIcon } from "../core/icons.js";
 import { PROVIDER_CONFIGS } from "../core/llm/models.js";
-import { checkProviders } from "../core/llm/provider.js";
+import { checkProviders, type ProviderStatus } from "../core/llm/provider.js";
 import { useGroupedModels } from "../hooks/useGroupedModels.js";
 import { useProviderModels } from "../hooks/useProviderModels.js";
 import { POPUP_BG, POPUP_HL, PopupRow, SPINNER_FRAMES_FILLED } from "./shared.js";
@@ -52,7 +52,11 @@ export function LlmSelector({ visible, activeModel, onSelect, onClose }: Props) 
 
   const loading = isGrouped ? groupedLoading : directLoading;
 
-  const providerStatuses = checkProviders();
+  const [providerStatuses, setProviderStatuses] = useState<ProviderStatus[]>([]);
+
+  useEffect(() => {
+    checkProviders().then(setProviderStatuses);
+  }, []);
 
   useEffect(() => {
     if (visible) {

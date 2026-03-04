@@ -23,6 +23,11 @@ export class ContextManager {
   private editorCursorCol = 0;
   private editorVisualSelection: string | null = null;
   private editorIntegration: EditorIntegration | null = null;
+  private fileTreeCache: { tree: string; at: number } | null = null;
+  private projectInfoCache: { info: string | null; at: number } | null = null;
+
+  private static readonly FILE_TREE_TTL = 30_000; // 30s
+  private static readonly PROJECT_INFO_TTL = 300_000; // 5min
 
   constructor(cwd: string) {
     this.cwd = cwd;
@@ -54,6 +59,11 @@ export class ContextManager {
     this.editorCursorLine = cursorLine ?? 1;
     this.editorCursorCol = cursorCol ?? 0;
     this.editorVisualSelection = visualSelection ?? null;
+  }
+
+  /** Invalidate cached file tree (call after agent edits files) */
+  invalidateFileTree(): void {
+    this.fileTreeCache = null;
   }
 
   /** Pre-fetch git context (call before buildSystemPrompt) */
@@ -179,55 +189,16 @@ export class ContextManager {
       fileTree,
       "```",
       "",
-      "## Available Tools",
-      "",
-      "### File & Code Tools",
-      "- `read_file` — Read file contents from disk. Use to understand code before modifying it.",
-      "- `edit_file` — Edit/create files on disk via exact string replacement. The primary tool for ALL file changes.",
-      "- `shell` — Run shell commands. Use for builds, tests, installs, linting, and any CLI operation.",
-      "- `grep` — Regex search across files. Use to find patterns, function usages, imports, and definitions.",
-      "- `glob` — Find files by glob pattern. Use to discover file structure and locate files by name.",
-      "- `web_search` — Search the web. Use for documentation, API references, and error lookups.",
-      "- `memory_write` — Record architectural decisions to project memory (.soulforge/). Use when the user makes significant design choices, picks a library, or establishes a pattern worth preserving across sessions.",
+      "## Tool Guidance",
+      "- Prefer `read_code` over `read_file` for specific symbols (functions, classes, types).",
+      "- Use `navigate definition` instead of grep to find where a symbol is defined.",
+      "- Use `refactor rename` for safe cross-file renames instead of find-and-replace.",
+      "- Use `analyze diagnostics` after edits to check for type errors.",
+      "- Use git tools (`git_status`, `git_diff`, `git_commit`, etc.) instead of `shell` for git operations.",
+      "- Use `dispatch` to delegate work to subagents — 1 task for quick research, multiple tasks for parallel exploration or mixed explore+code workflows (up to 10 agents).",
+      "- Use `memory_write` to record important architectural decisions to project memory.",
       "",
       ...this.buildEditorToolsSection(),
-      "",
-      "### Code Intelligence Tools",
-      "These tools work without neovim — they use static analysis (ts-morph, tree-sitter, regex) to understand code.",
-      "- `navigate` — Find definitions, references, symbols, imports, and exports in any file.",
-      "- `read_code` — Read a specific function, class, type, or interface from a file. More precise than `read_file` — prefer this when you know the symbol name.",
-      "- `refactor` — Rename symbols across files, extract functions, or extract variables. Uses semantic analysis for safe transformations.",
-      "- `analyze` — Get diagnostics (errors/warnings), type information, or file outlines.",
-      "",
-      "**Code intelligence guidance:**",
-      "- Prefer `read_code` over `read_file` when you want a specific function or class.",
-      "- Use `navigate definition` instead of grep to find where a symbol is defined.",
-      "- Use `refactor rename` instead of find-and-replace for safe cross-file renames.",
-      "- Use `analyze diagnostics` after edits to verify no type errors were introduced.",
-      "",
-      "### Git Tools",
-      "Use these instead of `shell` for git operations — they provide structured output and are safer.",
-      "- `git_status` — Get repo status (branch, staged/modified/untracked files, ahead/behind)",
-      "- `git_diff` — Get diff (staged or unstaged). Use to review changes before committing.",
-      "- `git_log` — View recent commit history",
-      "- `git_commit` — Stage files and commit. Always use meaningful commit messages.",
-      "- `git_push` — Push to remote",
-      "- `git_pull` — Pull from remote",
-      "- `git_stash` — Stash or pop changes",
-      "",
-      "### Subagent Tools",
-      "- `explore` — Spawn a read-only subagent for research/exploration. It can read files, grep, glob, and web search but NOT edit or run commands. Use for investigating codebases, researching APIs, or answering questions that require reading many files.",
-      "- `code` — Spawn a full-access subagent for isolated coding subtasks. It can read, edit, and run shell commands. Use for self-contained tasks like 'add tests for X' or 'refactor module Y'.",
-      "",
-      "### UI Tools",
-      "- `editor_panel` — Open the editor panel, optionally with a file path. Use this to show files to the user in the embedded editor. This opens the panel; use `editor_navigate` to jump within it.",
-      "",
-      "### Interactive Tools",
-      "- `plan` — Create a visible implementation plan. The user sees a live checklist in the UI.",
-      '  Call with: `{ title: "short description", steps: [{ id: "step-1", label: "Do X" }, ...] }`',
-      "  **When to plan:** You MUST create a plan for tasks that involve 3+ steps, touch multiple files, or require architectural decisions. If the user's message starts with `[PLAN MODE]`, always plan first and wait for approval.",
-      "- `update_plan_step` — Update a step's status: `active` (starting), `done` (finished), `skipped` (not needed). Keep this updated as you work — it drives the live UI the user sees.",
-      "- `ask_user` — Ask the user a question with selectable options. Blocks until they answer. Use when you need clarification or the user must choose between approaches.",
       "",
       "## Planning & Interactive Workflow",
       "",
@@ -400,8 +371,13 @@ export class ContextManager {
     return lines;
   }
 
-  /** Try to detect project type and read key config files */
+  /** Try to detect project type and read key config files (cached with 5min TTL) */
   private getProjectInfo(): string | null {
+    const now = Date.now();
+    if (this.projectInfoCache && now - this.projectInfoCache.at < ContextManager.PROJECT_INFO_TTL) {
+      return this.projectInfoCache.info;
+    }
+
     const checks = [
       { file: "package.json", label: "Node.js project" },
       { file: "Cargo.toml", label: "Rust project" },
@@ -414,18 +390,27 @@ export class ContextManager {
       try {
         const content = readFileSync(join(this.cwd, check.file), "utf-8");
         const truncated = content.length > 500 ? `${content.slice(0, 500)}\n...` : content;
-        return `${check.label} (${check.file}):\n${truncated}`;
+        const info = `${check.label} (${check.file}):\n${truncated}`;
+        this.projectInfoCache = { info, at: now };
+        return info;
       } catch {}
     }
 
+    this.projectInfoCache = { info: null, at: now };
     return null;
   }
 
-  /** Generate a simple file tree */
+  /** Generate a simple file tree (cached with 30s TTL) */
   private getFileTree(maxDepth: number): string {
+    const now = Date.now();
+    if (this.fileTreeCache && now - this.fileTreeCache.at < ContextManager.FILE_TREE_TTL) {
+      return this.fileTreeCache.tree;
+    }
     const lines: string[] = [];
     this.walkDir(this.cwd, "", maxDepth, lines);
-    return lines.slice(0, 50).join("\n");
+    const tree = lines.slice(0, 50).join("\n");
+    this.fileTreeCache = { tree, at: now };
+    return tree;
   }
 
   private walkDir(dir: string, prefix: string, depth: number, lines: string[]): void {

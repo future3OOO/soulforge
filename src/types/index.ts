@@ -83,6 +83,8 @@ export interface InteractiveCallbacks {
   onPlanStepUpdate: (stepId: string, status: PlanStepStatus) => void;
   onAskUser: (question: string, options: QuestionOption[], allowSkip: boolean) => Promise<string>;
   onOpenEditor: (file?: string) => Promise<void>;
+  /** Called before every web_search execution. Resolves true = proceed, false = deny. */
+  onWebSearchApproval: (query: string) => Promise<boolean>;
 }
 
 export interface QueuedMessage {
@@ -136,6 +138,35 @@ export interface CodeIntelligenceConfig {
   language?: string;
 }
 
+// ─── AI Provider Config Types ───
+
+export type ThinkingMode = "adaptive" | "enabled" | "disabled" | "auto";
+
+export interface ThinkingConfig {
+  /** "auto" enables adaptive thinking for Anthropic models. Default: "auto" */
+  mode: ThinkingMode;
+  /** Budget tokens — only used when mode is "enabled". Min 1024. */
+  budgetTokens?: number;
+}
+
+export type EffortLevel = "low" | "medium" | "high" | "max";
+
+export interface PerformanceConfig {
+  /** Effort level for model reasoning. Default: "high" */
+  effort?: EffortLevel;
+  /** Speed mode — "fast" enables 2.5x output for Opus 4.6 */
+  speed?: "fast" | "standard";
+}
+
+export interface ContextManagementConfig {
+  /** Enable server-side context compaction for 200K+ models */
+  compact?: boolean;
+  /** Clear old tool use results (keep last 10) */
+  clearToolUses?: boolean;
+  /** Clear old thinking blocks (keep last 5 turns) */
+  clearThinking?: boolean;
+}
+
 export interface AppConfig {
   defaultModel: string;
   routerRules: RouterRule[];
@@ -152,6 +183,12 @@ export interface AppConfig {
   editorIntegration?: EditorIntegration;
   codeIntelligence?: CodeIntelligenceConfig;
   font?: string;
+  thinking?: ThinkingConfig;
+  performance?: PerformanceConfig;
+  contextManagement?: ContextManagementConfig;
+  codeExecution?: boolean;
+  /** Enable web search tool for all LLMs. Always prompts for approval before searching. Default: true */
+  webSearch?: boolean;
 }
 
 // ─── Focus Types ───

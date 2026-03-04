@@ -1,5 +1,6 @@
 import { existsSync, mkdirSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
+import { createAnthropic } from "@ai-sdk/anthropic";
 import { tool } from "ai";
 import { z } from "zod";
 import type { EditorIntegration } from "../../types/index.js";
@@ -43,8 +44,16 @@ export { buildInteractiveTools } from "./interactive.js";
 /**
  * Build Vercel AI SDK tool definitions.
  * AI SDK v6 uses `inputSchema` instead of `parameters`.
+ *
+ * @param onApproveWebSearch - If provided, called before every web_search with the query.
+ *   Resolves to true = allow, false = deny. When omitted, web_search executes unguarded.
  */
-export function buildTools(cwd?: string, editorSettings?: EditorIntegration) {
+export function buildTools(
+  cwd?: string,
+  editorSettings?: EditorIntegration,
+  onApproveWebSearch?: (query: string) => Promise<boolean>,
+  opts?: { codeExecution?: boolean },
+) {
   const memoryTool = createMemoryWriteTool(cwd ?? process.cwd());
   const ei = editorSettings ?? {
     diagnostics: true,
@@ -115,7 +124,19 @@ export function buildTools(cwd?: string, editorSettings?: EditorIntegration) {
         query: z.string().describe("Search query"),
         count: z.number().optional().describe("Number of results (default 5)"),
       }),
-      execute: (args) => webSearchTool.execute(args),
+      execute: async (args) => {
+        if (onApproveWebSearch) {
+          const approved = await onApproveWebSearch(args.query);
+          if (!approved) {
+            return {
+              success: false,
+              output: "Web search was denied by the user.",
+              error: "Web search denied.",
+            };
+          }
+        }
+        return webSearchTool.execute(args);
+      },
     }),
 
     memory_write: tool({
@@ -383,12 +404,19 @@ export function buildTools(cwd?: string, editorSettings?: EditorIntegration) {
       }),
       execute: (args) => gitStashTool.execute(args),
     }),
+
+    ...(opts?.codeExecution
+      ? { code_execution: createAnthropic().tools.codeExecution_20260120() }
+      : {}),
   };
 }
 
 /** Read-only tools for explore subagent */
-export function buildReadOnlyTools(editorSettings?: EditorIntegration) {
-  const all = buildTools(undefined, editorSettings);
+export function buildReadOnlyTools(
+  editorSettings?: EditorIntegration,
+  onApproveWebSearch?: (query: string) => Promise<boolean>,
+) {
+  const all = buildTools(undefined, editorSettings, onApproveWebSearch);
   return {
     read_file: all.read_file,
     grep: all.grep,
@@ -402,8 +430,12 @@ export function buildReadOnlyTools(editorSettings?: EditorIntegration) {
 }
 
 /** Read-only tools + write_plan for plan mode */
-export function buildPlanModeTools(cwd: string, editorSettings?: EditorIntegration) {
-  const all = buildTools(cwd, editorSettings);
+export function buildPlanModeTools(
+  cwd: string,
+  editorSettings?: EditorIntegration,
+  onApproveWebSearch?: (query: string) => Promise<boolean>,
+) {
+  const all = buildTools(cwd, editorSettings, onApproveWebSearch);
   return {
     read_file: all.read_file,
     grep: all.grep,
@@ -469,8 +501,13 @@ export function buildPlanModeTools(cwd: string, editorSettings?: EditorIntegrati
 }
 
 /** Full code tools for code subagent */
-export function buildCodeTools(cwd?: string, editorSettings?: EditorIntegration) {
-  return buildTools(cwd, editorSettings);
+export function buildCodeTools(
+  cwd?: string,
+  editorSettings?: EditorIntegration,
+  onApproveWebSearch?: (query: string) => Promise<boolean>,
+  opts?: { codeExecution?: boolean },
+) {
+  return buildTools(cwd, editorSettings, onApproveWebSearch, opts);
 }
 
 /** Get tool names for display */

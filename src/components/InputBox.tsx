@@ -50,6 +50,10 @@ const COMMANDS = [
   { cmd: "/nvim-config", icon: "\uF044", desc: "Switch neovim config mode" },
   { cmd: "/co-author-commits", icon: "󰊢", desc: "Toggle co-author trailer" },
   { cmd: "/stash pop", icon: "󰊢", desc: "Pop latest stash" },
+  { cmd: "/tabs", icon: "\uF0CB", desc: "List open tabs" },
+  { cmd: "/new-tab", icon: "\uF0CB", desc: "Open new tab (Alt+T)" },
+  { cmd: "/close-tab", icon: "\uF0CB", desc: "Close current tab (Alt+W)" },
+  { cmd: "/rename", icon: "\uF044", desc: "Rename current tab" },
   { cmd: "/quit", icon: "\uF08B", desc: "Exit SoulForge" },
 ];
 

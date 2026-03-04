@@ -1,8 +1,9 @@
-import { Box } from "ink";
+import { Box, Text } from "ink";
 import { useMemo } from "react";
 import type { ChatMessage, Plan } from "../types/index.js";
 import { ChangedFiles } from "./ChangedFiles.js";
 import { PlanView } from "./PlanView.js";
+import { POPUP_BG, PopupRow } from "./shared.js";
 
 export function RightSidebar({
   plan,
@@ -26,10 +27,27 @@ export function RightSidebar({
 
   if (!plan && !hasChanges) return null;
 
+  const innerW = 30;
+
   return (
     <Box flexDirection="column" flexShrink={0} width={34} paddingTop={1}>
-      {plan && <PlanView plan={plan} mode="overlay" />}
-      {hasChanges && <ChangedFiles messages={messages} cwd={cwd} />}
+      <Box
+        flexDirection="column"
+        borderStyle="round"
+        borderColor="#8B5CF6"
+        width={32}
+        overflowY="hidden"
+      >
+        {plan && <PlanView plan={plan} mode="overlay" />}
+        {plan && hasChanges && (
+          <PopupRow w={innerW}>
+            <Text color="#444" backgroundColor={POPUP_BG}>
+              {"─".repeat(innerW - 4)}
+            </Text>
+          </PopupRow>
+        )}
+        {hasChanges && <ChangedFiles messages={messages} cwd={cwd} />}
+      </Box>
     </Box>
   );
 }

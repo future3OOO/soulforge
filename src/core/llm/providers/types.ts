@@ -16,4 +16,5 @@ export interface ProviderDefinition {
   fallbackModels: ProviderModelInfo[];
   contextWindows: [pattern: string, tokens: number][];
   grouped?: boolean;
+  checkAvailability?(): Promise<boolean>;
 }

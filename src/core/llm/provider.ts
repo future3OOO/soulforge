@@ -15,14 +15,20 @@ export const PROVIDERS: Record<string, { name: string; envVar: string }> = Objec
 
 /**
  * Check which providers have API keys configured.
+ * Providers with a `checkAvailability` method (e.g. Ollama) are probed async.
  */
-export function checkProviders(): ProviderStatus[] {
-  return getAllProviders().map((p) => ({
-    id: p.id,
-    name: p.name,
-    envVar: p.envVar,
-    available: p.envVar === "" ? true : Boolean(process.env[p.envVar]),
-  }));
+export async function checkProviders(): Promise<ProviderStatus[]> {
+  return Promise.all(
+    getAllProviders().map(async (p) => {
+      let available: boolean;
+      if (p.checkAvailability) {
+        available = await p.checkAvailability();
+      } else {
+        available = p.envVar === "" ? true : Boolean(process.env[p.envVar]);
+      }
+      return { id: p.id, name: p.name, envVar: p.envVar, available };
+    }),
+  );
 }
 
 /**

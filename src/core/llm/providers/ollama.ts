@@ -38,6 +38,17 @@ export const ollama: ProviderDefinition = {
     { id: "deepseek-coder-v2", name: "DeepSeek Coder v2" },
   ],
 
+  async checkAvailability() {
+    try {
+      const res = await fetch("http://localhost:11434/api/tags", {
+        signal: AbortSignal.timeout(1000),
+      });
+      return res.ok;
+    } catch {
+      return false;
+    }
+  },
+
   contextWindows: [
     ["llama3.1:70b", 128_000],
     ["llama3.1", 128_000],
