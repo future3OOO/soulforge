@@ -181,6 +181,7 @@ export function InputBox({ onSubmit, isLoading, isFocused, onQueue, queueCount, 
   const inputRef = useRef<InputRenderable>(null);
   const containerRef = useRef<BoxRenderable>(null);
   const [cursorLine, setCursorLine] = useState(0);
+  const [pasteCollapsed, setPasteCollapsed] = useState(false);
 
   const [ghostTick, setGhostTick] = useState(0);
   const forgeStatusRef = useRef("");
@@ -309,6 +310,7 @@ export function InputBox({ onSubmit, isLoading, isFocused, onQueue, queueCount, 
   }, [matches, selectedIdx]);
 
   const insertNewline = useCallback(() => {
+    setPasteCollapsed(false);
     setValue((prev) => {
       const lines = prev.split("\n");
       lines.splice(cursorLine + 1, 0, "");
@@ -320,6 +322,11 @@ export function InputBox({ onSubmit, isLoading, isFocused, onQueue, queueCount, 
 
   const handleChange = useCallback((newValue: string) => {
     historyIdx.current = -1;
+    const oldLineCount = valueRef.current.split("\n").length;
+    const newLineCount = newValue.split("\n").length;
+    if (newLineCount - oldLineCount > 1 && newLineCount > 2) {
+      setPasteCollapsed(true);
+    }
     setValue(newValue);
   }, []);
 
@@ -336,6 +343,7 @@ export function InputBox({ onSubmit, isLoading, isFocused, onQueue, queueCount, 
   const resetInput = useCallback(() => {
     setValue("");
     setCursorLine(0);
+    setPasteCollapsed(false);
     historyIdx.current = -1;
     setInputKey((k) => k + 1);
   }, []);
@@ -460,6 +468,13 @@ export function InputBox({ onSubmit, isLoading, isFocused, onQueue, queueCount, 
         evt.preventDefault();
         return;
       }
+      return;
+    }
+
+    // ── Expand collapsed paste on up/down arrow ──
+    if (focused && pasteCollapsed && (evt.name === "up" || evt.name === "down")) {
+      setPasteCollapsed(false);
+      evt.preventDefault();
       return;
     }
 
@@ -748,6 +763,7 @@ export function InputBox({ onSubmit, isLoading, isFocused, onQueue, queueCount, 
             value={value}
             ghost={ghost}
             focused={focused}
+            pasteCollapsed={pasteCollapsed}
             handleChange={handleChange}
             handleSubmit={handleSubmit}
           />
@@ -757,12 +773,21 @@ export function InputBox({ onSubmit, isLoading, isFocused, onQueue, queueCount, 
       {/* ── Hints bar ── */}
       {focused && !fuzzyMode && isMultiline && (
         <box paddingX={2} height={1} flexDirection="row" gap={1}>
-          <text fg="#444">^U</text>
-          <text fg="#333">del line</text>
-          <text fg="#444">^K</text>
-          <text fg="#333">del to end</text>
-          <text fg="#444">S-Enter</text>
-          <text fg="#333">newline</text>
+          {pasteCollapsed ? (
+            <>
+              <text fg="#444">↑↓</text>
+              <text fg="#333">expand</text>
+            </>
+          ) : (
+            <>
+              <text fg="#444">^U</text>
+              <text fg="#333">del line</text>
+              <text fg="#444">^K</text>
+              <text fg="#333">del to end</text>
+              <text fg="#444">S-Enter</text>
+              <text fg="#333">newline</text>
+            </>
+          )}
         </box>
       )}
     </box>
@@ -780,6 +805,7 @@ const InputEditor = memo(function InputEditor({
   value,
   ghost,
   focused,
+  pasteCollapsed,
   handleChange,
   handleSubmit,
 }: {
@@ -792,6 +818,7 @@ const InputEditor = memo(function InputEditor({
   value: string;
   ghost: string;
   focused: boolean;
+  pasteCollapsed: boolean;
   handleChange: (v: string) => void;
   handleSubmit: (v: string) => void;
 }) {
@@ -824,6 +851,28 @@ const InputEditor = memo(function InputEditor({
     );
   }
 
+  // Collapsed paste: show first line + "+N lines" badge
+  if (pasteCollapsed) {
+    const firstLine = lines[0] ?? "";
+    const extraLines = lines.length - 1;
+    return (
+      <box flexDirection="column">
+        <box flexDirection="row" width="100%">
+          <text fg="#FF0040" attributes={TextAttributes.BOLD} flexShrink={0}>
+            {">"}{" "}
+          </text>
+          <text fg="#ccc" flexGrow={1}>
+            {firstLine}
+          </text>
+        </box>
+        <box flexDirection="row" width="100%" paddingLeft={2}>
+          <text fg="#6A0DAD">{`+${String(extraLines)} line${extraLines === 1 ? "" : "s"}`}</text>
+          <text fg="#444">{" (↑↓ to expand)"}</text>
+        </box>
+      </box>
+    );
+  }
+
   // Multi-row: wrapped single line or actual multiline
   return (
     <box flexDirection="column">
@@ -835,10 +884,7 @@ const InputEditor = memo(function InputEditor({
         const prefixAttrs = isFirstRow ? TextAttributes.BOLD : undefined;
 
         if (isActiveRow) {
-          // This row gets the live <input>
           const activeLine = lines[cursorLine] ?? "";
-          // For wrapped lines: only show the tail chunk in the input,
-          // reconstruct full value on change
           const wrapOffset = row.wrapIdx;
           const charsBeforeThisWrap = visualRows
             .filter((r) => r.lineIdx === cursorLine && r.wrapIdx < wrapOffset)
@@ -858,12 +904,10 @@ const InputEditor = memo(function InputEditor({
                 onInput={
                   row.isLastWrap && lines.length === 1
                     ? (newVal: string) => {
-                        // Single line that wraps: reconstruct full value
                         handleChange(activeLine.slice(0, charsBeforeThisWrap) + newVal);
                       }
                     : row.isLastWrap
                       ? (newVal: string) => {
-                          // Multiline: update only this line
                           const updated = [...lines];
                           updated[cursorLine] = activeLine.slice(0, charsBeforeThisWrap) + newVal;
                           handleChange(updated.join("\n"));
@@ -878,7 +922,6 @@ const InputEditor = memo(function InputEditor({
           );
         }
 
-        // Display-only row
         return (
           // biome-ignore lint/suspicious/noArrayIndexKey: stable visual row order
           <box key={vi} flexDirection="row" width="100%">

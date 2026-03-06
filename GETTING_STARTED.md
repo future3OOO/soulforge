@@ -50,11 +50,11 @@ You need at least one LLM provider key:
 
 | Provider | Env Variable | Models |
 |----------|-------------|--------|
-| Anthropic | `ANTHROPIC_API_KEY` | Claude Opus, Sonnet, Haiku |
+| Anthropic | `ANTHROPIC_API_KEY` | Claude Opus 4, Sonnet 4, Haiku 3.5 |
 | OpenAI | `OPENAI_API_KEY` | GPT-4o, o3, o4-mini |
 | xAI | `XAI_API_KEY` | Grok |
 | Google | `GOOGLE_GENERATIVE_AI_API_KEY` | Gemini |
-| Ollama | *(none — runs locally)* | Llama, Mistral, etc. |
+| Ollama | *(none — runs locally)* | Llama, Mistral, Qwen, etc. |
 
 Add to your shell profile (`~/.zshrc` or `~/.bashrc`):
 
@@ -62,11 +62,13 @@ Add to your shell profile (`~/.zshrc` or `~/.bashrc`):
 export ANTHROPIC_API_KEY=sk-ant-...
 ```
 
-Alternatively, a single [Vercel AI Gateway](https://sdk.vercel.ai/docs/ai-sdk-core/provider-management) key gives you access to all providers:
+Alternatively, a single [AI Gateway](https://sdk.vercel.ai/docs/ai-sdk-core/provider-management) key gives you access to all providers:
 
 ```bash
 export AI_GATEWAY_API_KEY=...
 ```
+
+Or use the built-in **Proxy provider** to relay through a local CLIProxyAPI instance (no API key needed — uses your Claude web session). Set up with `/proxy install` and `/proxy login` after launching SoulForge.
 
 ## Install & Run
 
@@ -105,7 +107,7 @@ When SoulForge starts you'll see:
 
 **Chat area** renders messages with markdown, syntax-highlighted code blocks, and live tool call progress.
 
-**Input box** accepts natural language or slash commands (type `/` to see them).
+**Input box** accepts natural language or slash commands (type `/` to see them). Pasting multi-line content collapses to show the first line + a line count badge — press up/down to expand.
 
 **Footer** shows keybinding shortcuts.
 
@@ -123,11 +125,35 @@ When Neovim is focused, all keystrokes go directly to it — use it exactly like
 
 Open a specific file: `/open src/index.tsx`
 
+### Neovim Config Modes
+
+SoulForge ships its own `init.lua` (includes Mason for auto-installing LSP servers). You can switch modes:
+
+```
+/nvim-config auto      use shipped config if no user config exists (default)
+/nvim-config user      always use your own nvim config
+/nvim-config default   always use the shipped config
+/nvim-config none      bare neovim, no config
+```
+
 ## Switching Models
 
 Press `Ctrl+L` to open the model picker. Pick a provider, then a model. The switch takes effect on the next message — you can change models mid-conversation.
 
-Use `/router` to assign different models to different task types. For example, Opus for planning, Haiku for code search.
+## Task Router
+
+Use `/router` to assign different models to different task types:
+
+| Task Type | Use Case |
+|-----------|----------|
+| `planning` | Plan mode, architecture decisions |
+| `coding` | File edits, implementation |
+| `exploration` | Read-only research, code analysis |
+| `webSearch` | Web search and summarization |
+| `semantic` | Repo map semantic summaries |
+| `default` | Fallback for unmatched tasks |
+
+For example, Opus for planning, Sonnet for coding, Haiku for exploration.
 
 ## Modes
 
@@ -145,7 +171,7 @@ Or switch directly: `/mode architect`
 
 ## Plan Mode
 
-`/plan refactor the auth system` enters plan mode. Forge researches the codebase, writes a plan to `.soulforge/plan.md`, then asks you to approve, revise, or cancel before executing anything.
+`/plan refactor the auth system` enters plan mode. Forge researches the codebase, writes a structured plan, then asks you to approve, revise, or cancel before executing anything.
 
 The plan sidebar (`Ctrl+T` to toggle) shows step-by-step progress during execution.
 
@@ -158,6 +184,14 @@ Three tabs:
 - **Search** — find and install from the [skills.sh](https://skills.sh) community registry
 - **Installed** — skills on your machine (`~/.agents/skills/`, `~/.claude/skills/`)
 - **Active** — skills loaded in the current session
+
+## Web Search
+
+Forge can search the web and read pages. Two search backends (Brave API → DuckDuckGo fallback) and two page fetchers (Jina Reader → Mozilla Readability fallback).
+
+When a web search model is configured via `/router`, searches spawn a dedicated agent that can run multiple queries, follow links, and synthesize a structured summary — all within a single tool call.
+
+Configure API keys via `/web-search`.
 
 ## Git
 
@@ -175,6 +209,39 @@ Three tabs:
 
 Or use slash commands: `/commit`, `/push`, `/pull`, `/status`, `/diff`, `/log`, `/branch`.
 
+Toggle co-author commit trailers with `/co-author-commits`.
+
+## Context Management
+
+SoulForge auto-summarizes when context exceeds 80% of the model's window. You can also:
+
+- `/summarize` or `/compact` — manually compact the conversation
+- `/context` — view the context budget inspector (shows per-section token breakdown, cache hit rate)
+- `/context clear` — reset conversation context
+
+## Repo Map
+
+On startup, SoulForge builds a live graph of your codebase — files, symbols, and import edges. PageRank ranks the most important files, which appear in the system prompt so the AI understands your codebase's shape.
+
+Configure via `/repo-map`. See [docs/repo-map.md](docs/repo-map.md) for the full technical reference.
+
+## Memory
+
+Forge can store decisions, patterns, and preferences that persist across conversations via a SQLite-backed memory system.
+
+- `/memory` — configure write scope (session/project/global), view and clear memories
+- Memory appears in the system prompt automatically
+
+## Scoped Configuration
+
+Every setting can be saved to one of three scopes:
+
+- **Session** — lost on exit (default)
+- **Project** — saved to `.soulforge/config.json` in the project root
+- **Global** — saved to `~/.soulforge/config.json` for all projects
+
+Project settings override global; session overrides both.
+
 ## Privacy
 
 Block files from AI access with `/privacy add <pattern>`:
@@ -186,16 +253,9 @@ Block files from AI access with `/privacy add <pattern>`:
 
 Forge will refuse to read, display, or access files matching these patterns — even via shell commands.
 
-## Config
+## Storage
 
-Config lives at `~/.soulforge/config.json`. Created automatically on first run. You can edit it directly or use slash commands:
-
-```
-/nvim-config user       use your own neovim config
-/nvim-config default    use soulforge's minimal config
-/editor-settings        toggle LSP integrations
-/chat-style bubble      switch chat layout
-```
+`/storage` shows per-component disk usage across project and global storage — repo map index, sessions, plans, memory, history, config, binaries, fonts. One-click cleanup for each component.
 
 ## Troubleshooting
 
@@ -212,13 +272,15 @@ Install a [Nerd Font](https://www.nerdfonts.com/) and set it as your terminal fo
 Make sure your terminal supports true color. Most modern terminals do, but you may need `export COLORTERM=truecolor` in your shell profile.
 
 **Forge seems slow**
-Switch to a faster model with `Ctrl+L` (e.g. Haiku or GPT-4o-mini). Shell commands have a 30-second timeout.
+Switch to a faster model with `Ctrl+L` (e.g. Haiku or GPT-4o-mini). Use `/router` to assign fast models to exploration tasks and reserve expensive models for coding.
 
 **Context getting large**
-SoulForge auto-summarizes when context exceeds 80% of the model's window. You can also manually run `/summarize` or `/clear` to reset.
+Run `/summarize` or `/compact` to condense the conversation. `/context` shows exactly where tokens are going.
 
 ## What's Next
 
 - Type `/help` for the full command reference
 - Press `Ctrl+S` to browse community skills
+- Use `/router` to optimize model assignment per task
 - Read [CONTRIBUTING.md](CONTRIBUTING.md) to hack on SoulForge itself
+- See [docs/](docs/) for deep dives on architecture, repo map, compound tools, and the agent bus
