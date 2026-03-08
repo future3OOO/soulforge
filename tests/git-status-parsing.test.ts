@@ -11,7 +11,6 @@ import {
   getGitStatus,
   getGitLog,
   getGitDiff,
-  gitInit,
   gitCommit,
   gitAdd,
   gitStash,
@@ -41,7 +40,7 @@ function makeTempDir(name: string): string {
 
 async function initRepo(name: string): Promise<string> {
   const dir = makeTempDir(name);
-  await gitInit(dir);
+  await run(["init", "-b", "main"], dir);
   await run(["config", "user.email", "test@test.com"], dir);
   await run(["config", "user.name", "Test"], dir);
   return dir;
@@ -149,6 +148,26 @@ describe("unquoteGitPath", () => {
 
   it("handles empty string", () => {
     expect(unquoteGitPath("")).toBe("");
+  });
+
+  it("unescapes octal byte sequences (non-ASCII filenames)", () => {
+    // "café.txt" → git quotes as "caf\303\251.txt" (UTF-8 bytes for é = 0xC3 0xA9)
+    expect(unquoteGitPath('"caf\\303\\251.txt"')).toBe("café.txt");
+  });
+
+  it("unescapes multi-byte CJK octal sequences", () => {
+    // "日" = UTF-8 bytes E6 97 A5 = octal 346 227 245
+    expect(unquoteGitPath('"\\346\\227\\245.txt"')).toBe("日.txt");
+  });
+
+  it("handles mixed ASCII and octal escapes", () => {
+    // "src/café/naïve.ts"
+    expect(unquoteGitPath('"src/caf\\303\\251/na\\303\\257ve.ts"')).toBe("src/café/naïve.ts");
+  });
+
+  it("handles single octal digit", () => {
+    // \0 = null byte (octal 0)
+    expect(unquoteGitPath('"a\\0b"')).toBe("a\0b");
   });
 
   it("does not strip single leading quote without trailing", () => {
@@ -883,11 +902,10 @@ describe("buildGitContext — upstream tracking", () => {
   });
 
   it("upstream arrow shown when tracking remote", async () => {
-    // Create a bare repo as "remote" and clone it
     const bareDir = makeTempDir("ctx-upstream-bare");
-    await run(["init", "--bare"], bareDir);
+    await run(["init", "--bare", "-b", "main"], bareDir);
 
-    const cloneDir = makeTempDir("ctx-upstream-clone");
+    const cloneDir = join(TMP, "ctx-upstream-clone");
     await run(["clone", bareDir, cloneDir], TMP);
     await run(["config", "user.email", "test@test.com"], cloneDir);
     await run(["config", "user.name", "Test"], cloneDir);
@@ -905,9 +923,9 @@ describe("buildGitContext — upstream tracking", () => {
 
   it("ahead/behind counts with remote", async () => {
     const bareDir = makeTempDir("ctx-ahead-bare");
-    await run(["init", "--bare"], bareDir);
+    await run(["init", "--bare", "-b", "main"], bareDir);
 
-    const cloneDir = makeTempDir("ctx-ahead-clone");
+    const cloneDir = join(TMP, "ctx-ahead-clone");
     await run(["clone", bareDir, cloneDir], TMP);
     await run(["config", "user.email", "test@test.com"], cloneDir);
     await run(["config", "user.name", "Test"], cloneDir);
@@ -981,6 +999,20 @@ describe("git — special file names", () => {
     writeFileSync(join(dir, "empty.txt"), "");
     const s = await getGitStatus(dir);
     expect(s.untracked).toContain("empty.txt");
+  });
+
+  it("non-ASCII filename unquoted correctly through getGitStatus", async () => {
+    const dir = await initRepoWithCommit("special-unicode");
+    writeFileSync(join(dir, "café.txt"), "latte");
+    const s = await getGitStatus(dir);
+    expect(s.untracked).toContain("café.txt");
+  });
+
+  it("CJK filename unquoted correctly through getGitStatus", async () => {
+    const dir = await initRepoWithCommit("special-cjk");
+    writeFileSync(join(dir, "日本語.txt"), "hello");
+    const s = await getGitStatus(dir);
+    expect(s.untracked).toContain("日本語.txt");
   });
 });
 

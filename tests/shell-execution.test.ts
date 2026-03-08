@@ -15,13 +15,19 @@ function runShell(
   const maxOutput = opts.maxOutput ?? 16_384;
 
   return new Promise((resolve) => {
-    const proc = spawn("sh", ["-c", command], { timeout });
+    const proc = spawn("sh", ["-c", command]);
 
     const stdoutChunks: Buffer[] = [];
     const stderrChunks: Buffer[] = [];
     let stdoutLen = 0;
     let stderrLen = 0;
     let timedOut = false;
+    let resolved = false;
+
+    const timer = setTimeout(() => {
+      timedOut = true;
+      proc.kill("SIGKILL");
+    }, timeout);
 
     proc.stdout.on("data", (data: Buffer) => {
       if (stdoutLen < maxOutput) {
@@ -37,20 +43,20 @@ function runShell(
       }
     });
 
-    proc.on("error", (err: Error & { code?: string }) => {
-      if (err.code === "ERR_CHILD_PROCESS_TIMEOUT" || err.message.includes("timed out")) {
-        timedOut = true;
-      }
-    });
-
-    proc.on("close", (code) => {
+    const finish = (code: number | null) => {
+      if (resolved) return;
+      resolved = true;
+      clearTimeout(timer);
       resolve({
         stdout: Buffer.concat(stdoutChunks).toString("utf-8").slice(0, maxOutput),
         stderr: Buffer.concat(stderrChunks).toString("utf-8").slice(0, maxOutput),
         code,
         timedOut,
       });
-    });
+    };
+
+    proc.on("error", () => finish(null));
+    proc.on("close", (code) => finish(code));
   });
 }
 
