@@ -3,7 +3,7 @@ import { useKeyboard, useTerminalDimensions } from "@opentui/react";
 import { useCallback, useEffect, useState } from "react";
 import { getGitDiff, getGitStatus, gitAdd, gitCommit } from "../core/git/status.js";
 
-import { POPUP_BG, POPUP_HL, PopupRow } from "./shared.js";
+import { Overlay, POPUP_BG, POPUP_HL, PopupRow } from "./shared.js";
 
 const MAX_POPUP_WIDTH = 56;
 
@@ -100,14 +100,7 @@ export function GitCommitModal({ visible, cwd, coAuthor, onClose, onCommitted, o
   const totalChanges = stagedFiles.length + modifiedFiles.length + untrackedFiles.length;
 
   return (
-    <box
-      position="absolute"
-      flexDirection="column"
-      alignItems="center"
-      justifyContent="center"
-      width="100%"
-      height="100%"
-    >
+    <Overlay>
       <box
         flexDirection="column"
         borderStyle="rounded"
@@ -213,6 +206,6 @@ export function GitCommitModal({ visible, cwd, coAuthor, onClose, onCommitted, o
           </text>
         </PopupRow>
       </box>
-    </box>
+    </Overlay>
   );
 }

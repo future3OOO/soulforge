@@ -3,6 +3,7 @@ import type { LanguageModel } from "ai";
 import { tool } from "ai";
 import { z } from "zod";
 import { logBackgroundError } from "../../stores/errors.js";
+import type { AgentFeatures } from "../../types/index.js";
 import type { RepoMap } from "../intelligence/repo-map.js";
 import { projectTool } from "../tools/project.js";
 import {
@@ -11,6 +12,7 @@ import {
   type AgentResult as BusAgentResult,
   DependencyFailedError,
   type FileReadRecord,
+  normalizePath,
   type SharedCache,
 } from "./agent-bus.js";
 import { createCodeAgent } from "./code.js";
@@ -27,6 +29,8 @@ interface SubagentModels {
   explorationModel?: LanguageModel;
   codingModel?: LanguageModel;
   webSearchModel?: LanguageModel;
+  trivialModel?: LanguageModel;
+  desloppifyModel?: LanguageModel;
   providerOptions?: ProviderOptions;
   headers?: Record<string, string>;
   onApproveWebSearch?: (query: string) => Promise<boolean>;
@@ -34,6 +38,7 @@ interface SubagentModels {
   repoMapContext?: string;
   repoMap?: RepoMap;
   sharedCacheRef?: SharedCacheRef;
+  agentFeatures?: AgentFeatures;
 }
 
 function formatToolArgs(toolCall: { toolName: string; input?: unknown }): string {
@@ -186,9 +191,10 @@ const RESULT_TOOLS = new Set([
   "navigate",
   "analyze",
   "web_search",
+  "fetch_page",
 ]);
-const TOOL_RESULT_CAP = 2000;
-const TOTAL_TOOL_RESULTS_CAP = 8000;
+const TOOL_RESULT_CAP = 4000;
+const TOTAL_TOOL_RESULTS_CAP = 16000;
 
 function buildFallbackResult(result: AgentResult): string {
   const filesRead = new Set<string>();
@@ -235,7 +241,7 @@ function buildFallbackResult(result: AgentResult): string {
   const parts: string[] = [];
   const text = result.text.trim();
   if (text) {
-    const cap = toolOutputs.length > 0 ? 2000 : 6000;
+    const cap = toolOutputs.length > 0 ? 4000 : 10000;
     parts.push(text.length > cap ? `${text.slice(0, cap)}...` : text);
   }
   if (filesEdited.size > 0) parts.push(`Files edited: ${[...filesEdited].join(", ")}`);
@@ -316,6 +322,106 @@ async function runEvaluator(
   }
 }
 
+const DESLOPPIFY_PROMPT = [
+  "You are a cleanup agent. Review the files that were just edited and remove:",
+  "- Tests that verify language/framework behavior rather than business logic",
+  "- Redundant type checks the type system already enforces",
+  "- Over-defensive error handling for impossible states",
+  "- console.log/debug statements",
+  "- Commented-out code",
+  "- Unnecessary empty lines or formatting noise",
+  "",
+  "Keep all business logic tests and meaningful error handling.",
+  "Run typecheck/lint after cleanup to verify nothing breaks.",
+  "If the code is already clean, call done immediately.",
+].join("\n");
+
+async function runDesloppify(
+  bus: AgentBus,
+  tasks: AgentTask[],
+  models: SubagentModels,
+  parentToolCallId: string,
+  abortSignal?: AbortSignal,
+): Promise<string | null> {
+  if (models.agentFeatures?.desloppify === false) return null;
+  const codeAgents = tasks.filter((t) => t.role === "code");
+  if (codeAgents.length === 0) return null;
+  if (!models.desloppifyModel) return null;
+
+  const editedFiles = bus.getEditedFiles();
+  if (editedFiles.size === 0) return null;
+
+  const editedPaths = [...editedFiles.keys()];
+
+  emitMultiAgentEvent({
+    parentToolCallId,
+    type: "agent-start",
+    agentId: "desloppify",
+    role: "code",
+    task: `cleanup ${String(editedPaths.length)} files`,
+    totalAgents: tasks.length + 1,
+    modelId:
+      typeof models.desloppifyModel === "object" && "modelId" in models.desloppifyModel
+        ? String(models.desloppifyModel.modelId)
+        : "unknown",
+    tier: "desloppify",
+  });
+
+  try {
+    const desloppifyTask: AgentTask = {
+      agentId: "desloppify",
+      role: "code",
+      task: `${DESLOPPIFY_PROMPT}\n\nFiles to review:\n${editedPaths.map((p) => `- ${p}`).join("\n")}`,
+    };
+
+    bus.registerTasks([desloppifyTask]);
+
+    const { agent } = createAgent(
+      { ...desloppifyTask, tier: "standard" },
+      { ...models, codingModel: models.desloppifyModel },
+      bus,
+    );
+
+    const callbacks = buildStepCallbacks(parentToolCallId, "desloppify");
+    const result = await agent.generate({
+      prompt: desloppifyTask.task,
+      abortSignal,
+      ...callbacks,
+    });
+
+    const doneResult = extractDoneResult(result);
+    const resultText = doneResult ? formatDoneResult(doneResult) : buildFallbackResult(result);
+
+    emitMultiAgentEvent({
+      parentToolCallId,
+      type: "agent-done",
+      agentId: "desloppify",
+      role: "code",
+      task: `cleanup ${String(editedPaths.length)} files`,
+      totalAgents: tasks.length + 1,
+      tier: "desloppify",
+    });
+
+    if (doneResult?.filesEdited && doneResult.filesEdited.length > 0) {
+      return `\n\n### De-sloppify pass\n${resultText}`;
+    }
+    return null;
+  } catch (err) {
+    const msg = err instanceof Error ? err.message : String(err);
+    logBackgroundError("desloppify", msg);
+    emitMultiAgentEvent({
+      parentToolCallId,
+      type: "agent-error",
+      agentId: "desloppify",
+      role: "code",
+      task: `cleanup ${String(editedPaths.length)} files`,
+      totalAgents: tasks.length + 1,
+      error: msg,
+    });
+    return null;
+  }
+}
+
 const MAX_RETRIES = 3;
 const BASE_DELAY_MS = 2000;
 const MAX_CONCURRENT_AGENTS = 3;
@@ -353,8 +459,39 @@ function sleep(ms: number, signal?: AbortSignal): Promise<void> {
   });
 }
 
-function createAgent(task: AgentTask, models: SubagentModels, bus: AgentBus) {
+function detectTaskTier(task: AgentTask): "trivial" | "standard" {
+  if (task.tier) return task.tier;
+  const t = task.task;
+  const targetFileLine = t.split("\n").find((l) => l.startsWith("Target files:"));
+  const targetFileCount = targetFileLine ? targetFileLine.split(",").length : 0;
+  const isSingleFileRead = task.role === "explore" && targetFileCount <= 1 && t.length < 200;
+  const isSmallEdit = task.role === "code" && targetFileCount <= 1 && t.length < 200;
+  return isSingleFileRead || isSmallEdit ? "trivial" : "standard";
+}
+
+function selectModel(task: AgentTask, models: SubagentModels): { model: LanguageModel } {
+  const tier = detectTaskTier(task);
   const useExplore = task.role === "explore" || models.readOnly === true;
+
+  if (tier === "trivial" && models.trivialModel && models.agentFeatures?.tierRouting !== false) {
+    return { model: models.trivialModel };
+  }
+
+  const base = useExplore
+    ? (models.explorationModel ?? models.defaultModel)
+    : (models.codingModel ?? models.defaultModel);
+  return { model: base };
+}
+
+function createAgent(
+  task: AgentTask,
+  models: SubagentModels,
+  bus: AgentBus,
+  // biome-ignore lint/suspicious/noExplicitAny: explore/code agents have different tool generics
+): { agent: any; modelId: string; tier: string } {
+  const useExplore = task.role === "explore" || models.readOnly === true;
+  const { model } = selectModel(task, models);
+  const tier = detectTaskTier(task);
   const opts = {
     bus,
     agentId: task.agentId,
@@ -365,9 +502,10 @@ function createAgent(task: AgentTask, models: SubagentModels, bus: AgentBus) {
     repoMapContext: models.repoMapContext,
     repoMap: models.repoMap,
   };
-  return useExplore
-    ? createExploreAgent(models.explorationModel ?? models.defaultModel, opts)
-    : createCodeAgent(models.codingModel ?? models.defaultModel, opts);
+  const agent = useExplore ? createExploreAgent(model, opts) : createCodeAgent(model, opts);
+  const modelId =
+    typeof model === "object" && "modelId" in model ? String(model.modelId) : "unknown";
+  return { agent, modelId, tier };
 }
 
 async function runAgentTask(
@@ -420,6 +558,13 @@ async function runAgentTask(
     }
   }
 
+  const taskTier = detectTaskTier(task);
+  const { model: selectedModel } = selectModel(task, models);
+  const selectedModelId =
+    typeof selectedModel === "object" && "modelId" in selectedModel
+      ? String(selectedModel.modelId)
+      : "unknown";
+
   emitMultiAgentEvent({
     parentToolCallId,
     type: "agent-start",
@@ -427,6 +572,8 @@ async function runAgentTask(
     role: task.role,
     task: task.task,
     totalAgents,
+    modelId: selectedModelId,
+    tier: taskTier,
   });
 
   const peerFindings = bus.summarizeFindings(task.agentId);
@@ -471,7 +618,7 @@ async function runAgentTask(
     }
 
     try {
-      const agent = createAgent(task, models, bus);
+      const { agent } = createAgent(task, models, bus);
       const callbacks = buildStepCallbacks(parentToolCallId, task.agentId);
 
       const result = await agent.generate({
@@ -482,7 +629,10 @@ async function runAgentTask(
 
       const toolUses =
         callbacks._acc.toolUses ||
-        result.steps.reduce((sum, s) => sum + (s.toolCalls?.length ?? 0), 0);
+        result.steps.reduce(
+          (sum: number, s: { toolCalls?: unknown[] }) => sum + (s.toolCalls?.length ?? 0),
+          0,
+        );
       const input = callbacks._acc.input || (result.totalUsage.inputTokens ?? 0);
       const output = callbacks._acc.output || (result.totalUsage.outputTokens ?? 0);
       const cacheRead =
@@ -515,6 +665,8 @@ async function runAgentTask(
         tokenUsage: { input, output, total: input + output },
         cacheHits: cacheRead > 0 ? cacheRead : undefined,
         resultChars: resultText.length,
+        modelId: selectedModelId,
+        tier: taskTier,
       });
       return { doneResult, resultText, callbacks, result: agentResult };
     } catch (error) {
@@ -569,16 +721,15 @@ export function buildSubagentTools(models: SubagentModels) {
   return {
     dispatch: tool({
       description:
-        "Dispatch parallel subagents. Agents share a read cache — no duplicated work. " +
-        "BEFORE writing tasks: scan the Repo Map, find exact file paths and symbol names, put them in each task. " +
+        "Dispatch parallel subagents. The system rejects explore dispatches for ≤6 files and code dispatches for ≤3 files — read or edit directly for those. " +
+        "BEFORE writing tasks: check the Repo Map and conversation for data you already have. Act on existing data first. " +
         'Task format: "Read [symbol] from [path], [symbol] from [path]. Return their implementations." ' +
-        "Every task MUST name specific files and symbols — never write 'investigate' or 'explore the X system'. " +
-        "For navigate calls (references, definition, call_hierarchy, etc.), ALWAYS include the file path — " +
-        'e.g. "Find references to mergeConfigs in src/config/index.ts", not just "Find references to mergeConfigs". ' +
+        "Every task MUST name specific files and symbols. " +
+        "For navigate calls (references, definition, call_hierarchy, etc.), include the file path — " +
+        'e.g. "Find references to mergeConfigs in src/config/index.ts". ' +
         "Include line numbers from the Repo Map when available (e.g. 'read lines 181-265'). " +
-        "Web search tasks: ONE focused query per task — never compound ('search for X, Y, Z'). " +
-        "Discovery fallback: if a file isn't in the Repo Map, give the agent specific symbol keywords to search via workspace_symbols — NOT open-ended exploration. " +
-        "2 agents handles most tasks. Split by file ownership, not concept. " +
+        "Web search tasks: ONE focused query per task. " +
+        "Split by file ownership, not concept. " +
         "explore: read-only extraction. code: edits (assign distinct files per agent). " +
         "dependsOn: only when one agent genuinely needs another's output.",
       inputSchema: z.object({
@@ -588,7 +739,12 @@ export function buildSubagentTools(models: SubagentModels) {
               task: z
                 .string()
                 .describe(
-                  "What the agent should do — include exact file paths and symbol names from the repo map",
+                  "What the agent should do — extraction instructions referencing the target files and symbols",
+                ),
+              targetFiles: z
+                .array(z.string())
+                .describe(
+                  "Exact file paths from the Repo Map that this task targets. Web search tasks use ['web'].",
                 ),
               role: z
                 .enum(["explore", "code"])
@@ -608,16 +764,109 @@ export function buildSubagentTools(models: SubagentModels) {
           .string()
           .optional()
           .describe("High-level objective (useful for multi-agent coordination)"),
+        force: z
+          .boolean()
+          .optional()
+          .describe(
+            "Override all dispatch validation (overlap check, ≤4 file rejection, web task limit). Only set true AFTER reviewing all previous dispatch results and confirming they lack the specific information you need. If previous results contain the data, act on them instead.",
+          ),
       }),
       execute: async (args, { abortSignal, toolCallId }) => {
         const bus = new AgentBus(cacheRef.current);
         try {
-          const tasks: AgentTask[] = args.tasks.map((t, i) => ({
-            agentId: t.id ?? `agent-${String(i + 1)}`,
-            role: t.role,
-            task: t.task,
-            dependsOn: t.dependsOn,
-          }));
+          const WEB_MARKER = "web";
+
+          if (models.agentFeatures?.targetFileValidation !== false) {
+            for (const t of args.tasks) {
+              const isWebTask =
+                t.targetFiles.length === 1 && t.targetFiles[0]?.toLowerCase() === WEB_MARKER;
+              if (isWebTask) continue;
+
+              const hasFilePaths = t.targetFiles.some((f) => f.includes("/") || f.includes("."));
+              if (!hasFilePaths) {
+                return `Error: task "${t.id ?? "?"}" has no valid file paths in targetFiles. Every non-web task must reference specific files from the Repo Map. Got: [${t.targetFiles.join(", ")}]`;
+              }
+            }
+          }
+
+          if (!args.force && cacheRef.current) {
+            const cache = cacheRef.current;
+            const allTargetFiles: string[] = [];
+            for (const t of args.tasks) {
+              const isWebTask =
+                t.targetFiles.length === 1 && t.targetFiles[0]?.toLowerCase() === WEB_MARKER;
+              if (!isWebTask) {
+                for (const f of t.targetFiles) allTargetFiles.push(normalizePath(f));
+              }
+            }
+            if (allTargetFiles.length > 0) {
+              const cached = allTargetFiles.filter((f) => cache.files.has(f));
+              if (cached.length > 0 && cached.length >= allTargetFiles.length * 0.5) {
+                const missing = allTargetFiles.filter((f) => !cache.files.has(f));
+                const cachedList = cached.map((f) => `\`${f}\``).join(", ");
+                const missingHint =
+                  missing.length > 0
+                    ? ` Files not yet read: ${missing.map((f) => `\`${f}\``).join(", ")}. Use read_file for these.`
+                    : "";
+                return `Dispatch rejected: ${String(cached.length)}/${String(allTargetFiles.length)} target files are already in your context (${cachedList}).${missingHint} Act on the data you have. Set force: true only if you need agents to EDIT these files or do work beyond reading.`;
+              }
+            }
+          }
+
+          if (!args.force) {
+            const webTasks = args.tasks.filter(
+              (t) => t.targetFiles.length === 1 && t.targetFiles[0]?.toLowerCase() === WEB_MARKER,
+            );
+            if (webTasks.length > 2) {
+              return `Dispatch rejected: ${String(webTasks.length)} web search tasks is excessive. Use at most 2 focused web tasks per dispatch. Check the conversation for URLs the user already shared (use fetch_page) and previous search results before searching again. Set force: true only after confirming existing context lacks the answer.`;
+            }
+
+            // Reject small dispatches — faster to do directly
+            const nonWebTasks = args.tasks.filter(
+              (t) =>
+                !(t.targetFiles.length === 1 && t.targetFiles[0]?.toLowerCase() === WEB_MARKER),
+            );
+            if (nonWebTasks.length > 0) {
+              const uniqueFiles = new Set<string>();
+              for (const t of nonWebTasks) {
+                for (const f of t.targetFiles) uniqueFiles.add(normalizePath(f));
+              }
+              const allExplore = nonWebTasks.every((t) => t.role === "explore");
+              const hasCode = nonWebTasks.some((t) => t.role === "code");
+              const MAX_EXPLORE_FILES = 6;
+              const MAX_CODE_FILES = 3;
+
+              if (allExplore && uniqueFiles.size <= MAX_EXPLORE_FILES) {
+                const fileList = [...uniqueFiles].map((f) => `\`${f}\``).join(", ");
+                return (
+                  `Dispatch rejected: ${String(uniqueFiles.size)} file${uniqueFiles.size === 1 ? "" : "s"} (${fileList}) — read them directly with read_code or read_file. ` +
+                  `Dispatch is for parallel work across ${String(MAX_EXPLORE_FILES + 1)}+ files or when agents need to EDIT. ` +
+                  `Set force: true only if you need agents to do multi-step research beyond simple reads.`
+                );
+              }
+
+              if (hasCode && uniqueFiles.size <= MAX_CODE_FILES) {
+                const fileList = [...uniqueFiles].map((f) => `\`${f}\``).join(", ");
+                return (
+                  `Dispatch rejected: ${String(uniqueFiles.size)} file${uniqueFiles.size === 1 ? "" : "s"} (${fileList}) — edit them directly with edit_file. ` +
+                  `Code dispatch is for edits across ${String(MAX_CODE_FILES + 1)}+ files where agents own distinct files. ` +
+                  `Set force: true only if the edit requires multi-step work (read → analyze → edit → verify) that justifies an agent.`
+                );
+              }
+            }
+          }
+
+          const tasks: AgentTask[] = args.tasks.map((t, i) => {
+            const isWebTask =
+              t.targetFiles.length === 1 && t.targetFiles[0]?.toLowerCase() === WEB_MARKER;
+            const fileHint = isWebTask ? "" : `\nTarget files: ${t.targetFiles.join(", ")}`;
+            return {
+              agentId: t.id ?? `agent-${String(i + 1)}`,
+              role: t.role,
+              task: `${t.task}${fileHint}`,
+              dependsOn: t.dependsOn,
+            };
+          });
 
           bus.registerTasks(tasks);
 
@@ -668,10 +917,19 @@ export function buildSubagentTools(models: SubagentModels) {
               throw new Error(resultText);
             }
             const editedMap = bus.getEditedFiles(task.agentId);
+
+            const desloppifyResult = await runDesloppify(
+              bus,
+              [task],
+              models,
+              toolCallId,
+              abortSignal,
+            );
+
             return {
               reads: bus.getFileReadRecords(task.agentId),
               filesEdited: [...editedMap.keys()],
-              output: resultText,
+              output: desloppifyResult ? `${resultText}\n${desloppifyResult}` : resultText,
             } satisfies DispatchOutput;
           }
 
@@ -806,6 +1064,15 @@ export function buildSubagentTools(models: SubagentModels) {
             }
           }
 
+          const desloppifyResult = await runDesloppify(
+            bus,
+            tasks,
+            models,
+            toolCallId,
+            combinedAbort,
+          );
+          if (desloppifyResult) sections.push(desloppifyResult);
+
           const evalResult = await runEvaluator(bus, tasks, toolCallId);
           if (evalResult) sections.push(evalResult);
 
@@ -852,7 +1119,7 @@ export function buildSubagentTools(models: SubagentModels) {
             continue;
           }
           blankRun = 0;
-          const limit = inCodeBlock || inStructuredSection ? 800 : 250;
+          const limit = inCodeBlock || inStructuredSection ? 1500 : 400;
           compact.push(line.length > limit ? `${line.slice(0, limit)}...` : line);
         }
 
@@ -887,7 +1154,7 @@ export function buildSubagentTools(models: SubagentModels) {
           if (dispatch.filesEdited.length > 0) {
             header.push(`Files edited: ${dispatch.filesEdited.join(", ")}`);
           }
-          header.push("Do NOT re-read these — their content is already below.\n");
+          header.push("All file content from these reads is included below. Act on it directly.\n");
           compact.unshift(...header);
         }
 

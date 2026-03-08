@@ -1,7 +1,7 @@
 import { useCallback, useState } from "react";
 import type { ForgeMode } from "../types/index.js";
 
-const MODE_ORDER: ForgeMode[] = ["default", "architect", "socratic", "challenge"];
+const MODE_ORDER: ForgeMode[] = ["default", "architect", "socratic", "challenge", "plan"];
 
 const MODE_LABELS: Record<ForgeMode, string> = {
   default: "Default",

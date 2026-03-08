@@ -33,6 +33,10 @@ export interface MultiAgentEvent {
   /** Number of findings shared on the bus */
   findingCount?: number;
   error?: string;
+  /** Model ID the agent was routed to */
+  modelId?: string;
+  /** Complexity tier (trivial/standard) */
+  tier?: string;
   /** Per-agent stats (emitted on agent-done/agent-error) */
   toolUses?: number;
   tokenUsage?: { input: number; output: number; total: number };

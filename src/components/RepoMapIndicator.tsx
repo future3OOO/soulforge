@@ -7,6 +7,7 @@ import { SPINNER_FRAMES } from "./shared.js";
 function buildContent(
   status: string,
   files: number,
+  symbols: number,
   progress: string,
   spinnerIdx: number,
   semStatus: string,
@@ -21,7 +22,10 @@ function buildContent(
 
   const parts: TextChunk[] = [];
   if (status === "ready") {
-    parts.push(fgStyle("#555")(icon("code")), fgStyle("#2d5")(` ${String(files)}`));
+    parts.push(
+      fgStyle("#555")(icon("code")),
+      fgStyle("#2d5")(` ${String(files)}f ${String(symbols)}s`),
+    );
   } else if (status === "error") {
     parts.push(fgStyle("#555")(icon("code")), fgStyle("#FF0040")(" err"));
   } else {
@@ -46,6 +50,7 @@ export function RepoMapIndicator() {
   const stateRef = useRef({
     status: useRepoMapStore.getState().status,
     files: useRepoMapStore.getState().files,
+    symbols: useRepoMapStore.getState().symbols,
     scanProgress: useRepoMapStore.getState().scanProgress,
     semStatus: useRepoMapStore.getState().semanticStatus,
     semProgress: useRepoMapStore.getState().semanticProgress,
@@ -57,6 +62,7 @@ export function RepoMapIndicator() {
         stateRef.current = {
           status: s.status,
           files: s.files,
+          symbols: s.symbols,
           scanProgress: s.scanProgress,
           semStatus: s.semanticStatus,
           semProgress: s.semanticProgress,
@@ -67,13 +73,14 @@ export function RepoMapIndicator() {
 
   useEffect(() => {
     const timer = setInterval(() => {
-      const { status, files, scanProgress, semStatus, semProgress } = stateRef.current;
+      const { status, files, symbols, scanProgress, semStatus, semProgress } = stateRef.current;
       if (status === "scanning" || semStatus === "generating") spinnerRef.current++;
       try {
         if (textRef.current)
           textRef.current.content = buildContent(
             status,
             files,
+            symbols,
             scanProgress,
             spinnerRef.current,
             semStatus,
@@ -84,12 +91,12 @@ export function RepoMapIndicator() {
     return () => clearInterval(timer);
   }, []);
 
-  const { status, files, scanProgress, semStatus, semProgress } = stateRef.current;
+  const { status, files, symbols, scanProgress, semStatus, semProgress } = stateRef.current;
   return (
     <text
       ref={textRef}
       truncate
-      content={buildContent(status, files, scanProgress, 0, semStatus, semProgress)}
+      content={buildContent(status, files, symbols, scanProgress, 0, semStatus, semProgress)}
     />
   );
 }

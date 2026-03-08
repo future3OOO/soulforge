@@ -10,6 +10,7 @@ interface RepoMapState {
   edges: number;
   dbSizeBytes: number;
   scanProgress: string;
+  scanError: string;
   semanticStatus: SemanticStatus;
   semanticCount: number;
   semanticProgress: string;
@@ -18,6 +19,7 @@ interface RepoMapState {
   setStatus: (status: RepoMapStatus) => void;
   setStats: (files: number, symbols: number, edges: number, dbSizeBytes: number) => void;
   setScanProgress: (msg: string) => void;
+  setScanError: (msg: string) => void;
   setSemanticStatus: (status: SemanticStatus) => void;
   setSemanticCount: (count: number) => void;
   setSemanticProgress: (msg: string) => void;
@@ -31,6 +33,7 @@ export const useRepoMapStore = create<RepoMapState>()((set) => ({
   edges: 0,
   dbSizeBytes: 0,
   scanProgress: "",
+  scanError: "",
   semanticStatus: "off",
   semanticCount: 0,
   semanticProgress: "",
@@ -39,6 +42,7 @@ export const useRepoMapStore = create<RepoMapState>()((set) => ({
   setStatus: (status) => set({ status }),
   setStats: (files, symbols, edges, dbSizeBytes) => set({ files, symbols, edges, dbSizeBytes }),
   setScanProgress: (scanProgress) => set({ scanProgress }),
+  setScanError: (scanError) => set({ scanError }),
   setSemanticStatus: (semanticStatus) => set({ semanticStatus }),
   setSemanticCount: (semanticCount) => set({ semanticCount }),
   setSemanticProgress: (semanticProgress) => set({ semanticProgress }),

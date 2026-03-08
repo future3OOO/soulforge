@@ -3,7 +3,7 @@ import { useKeyboard, useTerminalDimensions } from "@opentui/react";
 import { useEffect, useState } from "react";
 import type { EditorIntegration } from "../types/index.js";
 import type { ConfigScope } from "./shared.js";
-import { CONFIG_SCOPES, POPUP_BG, POPUP_HL, PopupRow } from "./shared.js";
+import { CONFIG_SCOPES, Overlay, POPUP_BG, POPUP_HL, PopupRow } from "./shared.js";
 
 const MAX_POPUP_WIDTH = 60;
 const CHROME_ROWS = 8;
@@ -140,14 +140,7 @@ export function EditorSettings({ visible, settings, initialScope, onUpdate, onCl
   if (!visible) return null;
 
   return (
-    <box
-      position="absolute"
-      flexDirection="column"
-      alignItems="center"
-      justifyContent="center"
-      width="100%"
-      height="100%"
-    >
+    <Overlay>
       <box
         flexDirection="column"
         borderStyle="rounded"
@@ -233,6 +226,6 @@ export function EditorSettings({ visible, settings, initialScope, onUpdate, onCl
           </text>
         </PopupRow>
       </box>
-    </box>
+    </Overlay>
   );
 }

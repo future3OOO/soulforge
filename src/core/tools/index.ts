@@ -24,6 +24,7 @@ import {
   editorRenameTool,
   editorSymbolsTool,
 } from "./editor";
+import { fetchPageTool } from "./fetch-page.js";
 import {
   gitBranchTool,
   gitCommitTool,
@@ -44,7 +45,12 @@ import { readCodeTool } from "./read-code.js";
 import { readFileTool } from "./read-file";
 import { refactorTool } from "./refactor.js";
 import { renameSymbolTool } from "./rename-symbol.js";
-import { tryInterceptGrep, tryInterceptNavigate } from "./repo-map-intercept.js";
+import {
+  tryInterceptDiscoverPattern,
+  tryInterceptGlob,
+  tryInterceptGrep,
+  tryInterceptNavigate,
+} from "./repo-map-intercept.js";
 import { shellTool } from "./shell";
 import { testScaffoldTool } from "./test-scaffold.js";
 import { buildWebSearchTool } from "./web-search";
@@ -133,10 +139,18 @@ export function buildTools(
         pattern: z.string().describe("Regex search pattern"),
         path: z.string().optional().describe("Directory to search"),
         glob: z.string().optional().describe("File glob filter"),
+        force: z
+          .boolean()
+          .optional()
+          .describe(
+            "Skip repo map fast-path. Only use after confirming the repo map result was incomplete or stale.",
+          ),
       }),
       execute: deferExecute((args) => {
-        const hit = tryInterceptGrep(args, opts?.repoMap, effectiveCwd);
-        if (hit) return Promise.resolve(hit);
+        if (!args.force) {
+          const hit = tryInterceptGrep(args, opts?.repoMap, effectiveCwd);
+          if (hit) return Promise.resolve(hit);
+        }
         return grepTool.execute(args);
       }),
     }),
@@ -146,13 +160,33 @@ export function buildTools(
       inputSchema: z.object({
         pattern: z.string().describe("Glob pattern"),
         path: z.string().optional().describe("Base directory"),
+        force: z
+          .boolean()
+          .optional()
+          .describe(
+            "Skip repo map fast-path. Only use after confirming the repo map result was incomplete or stale.",
+          ),
       }),
-      execute: deferExecute((args) => globTool.execute(args)),
+      execute: deferExecute((args) => {
+        if (!args.force) {
+          const hit = tryInterceptGlob(args, opts?.repoMap, effectiveCwd);
+          if (hit) return Promise.resolve(hit);
+        }
+        return globTool.execute(args);
+      }),
     }),
 
     web_search: buildWebSearchTool({
       webSearchModel: opts?.webSearchModel,
       onApprove: onApproveWebSearch,
+    }),
+
+    fetch_page: tool({
+      description: fetchPageTool.description,
+      inputSchema: z.object({
+        url: z.string().describe("URL to fetch and read"),
+      }),
+      execute: deferExecute((args) => fetchPageTool.execute(args)),
     }),
 
     ...memoryTools,
@@ -327,10 +361,18 @@ export function buildTools(
         file: z.string().optional().describe("File path to analyze"),
         scope: z.string().optional().describe("Filter symbols by name pattern"),
         query: z.string().optional().describe("Search query for workspace_symbols/search_symbols"),
+        force: z
+          .boolean()
+          .optional()
+          .describe(
+            "Skip repo map fast-path. Only use after confirming the repo map result was incomplete or stale.",
+          ),
       }),
       execute: deferExecute((args) => {
-        const hit = tryInterceptNavigate(args, opts?.repoMap, effectiveCwd);
-        if (hit) return Promise.resolve(hit);
+        if (!args.force) {
+          const hit = tryInterceptNavigate(args, opts?.repoMap, effectiveCwd);
+          if (hit) return Promise.resolve(hit);
+        }
         return navigateTool.execute(args, opts?.repoMap);
       }),
     }),
@@ -420,8 +462,20 @@ export function buildTools(
       inputSchema: z.object({
         query: z.string().describe("Concept to discover (e.g. 'provider', 'router', 'auth')"),
         file: z.string().optional().describe("File to scope the search to"),
+        force: z
+          .boolean()
+          .optional()
+          .describe(
+            "Skip repo map fast-path. Only use after confirming the repo map result was incomplete or stale.",
+          ),
       }),
-      execute: deferExecute((args) => discoverPatternTool.execute(args)),
+      execute: deferExecute((args) => {
+        if (!args.force) {
+          const hit = tryInterceptDiscoverPattern(args, opts?.repoMap, effectiveCwd);
+          if (hit) return Promise.resolve(hit);
+        }
+        return discoverPatternTool.execute(args);
+      }),
     }),
 
     test_scaffold: tool({
@@ -563,6 +617,8 @@ export const RESTRICTED_TOOL_NAMES: string[] = [
   "memory_write",
   "memory_list",
   "memory_search",
+  "fetch_page",
+  "test_scaffold",
   "dispatch",
   "ask_user",
   "plan",
@@ -587,6 +643,7 @@ export function buildRestrictedModeTools(
     grep: all.grep,
     glob: all.glob,
     web_search: all.web_search,
+    fetch_page: all.fetch_page,
     editor_read: all.editor_read,
     editor_navigate: all.editor_navigate,
     ...(all.editor_diagnostics ? { editor_diagnostics: all.editor_diagnostics } : {}),
@@ -618,6 +675,7 @@ export function buildReadOnlyTools(
     grep: all.grep,
     glob: all.glob,
     web_search: all.web_search,
+    fetch_page: all.fetch_page,
     editor_read: all.editor_read,
     ...(all.editor_diagnostics ? { editor_diagnostics: all.editor_diagnostics } : {}),
     ...(all.editor_symbols ? { editor_symbols: all.editor_symbols } : {}),
@@ -634,6 +692,37 @@ export function buildReadOnlyTools(
     memory_search: all.memory_search,
   };
 }
+
+/** Tools available during plan execution.
+ *  Executor gets edit/shell/project + read_file (fallback if edit fails) + update_plan_step.
+ *  No dispatch, explore, discover_pattern, web_search, test_scaffold — the plan already contains everything. */
+export const PLAN_EXECUTION_TOOL_NAMES: string[] = [
+  "read_file",
+  "read_code",
+  "edit_file",
+  "shell",
+  "project",
+  "grep",
+  "glob",
+  "navigate",
+  "analyze",
+  "git_diff",
+  "git_log",
+  "git_status",
+  "editor_read",
+  "editor_edit",
+  "editor_navigate",
+  "editor_diagnostics",
+  "editor_symbols",
+  "editor_hover",
+  "editor_references",
+  "editor_definition",
+  "editor_lsp_status",
+  "rename_symbol",
+  "move_symbol",
+  "update_plan_step",
+  "editor_panel",
+];
 
 export function planFileName(sessionId?: string): string {
   return sessionId ? `plan-${sessionId}.md` : "plan.md";
@@ -656,6 +745,7 @@ export function buildPlanModeTools(
     grep: all.grep,
     glob: all.glob,
     web_search: all.web_search,
+    fetch_page: all.fetch_page,
     editor_read: all.editor_read,
     editor_navigate: all.editor_navigate,
     ...(all.editor_diagnostics ? { editor_diagnostics: all.editor_diagnostics } : {}),
@@ -732,10 +822,18 @@ export function buildSubagentExploreTools(opts?: {
         pattern: z.string().describe("Regex search pattern"),
         path: z.string().optional().describe("Directory to search"),
         glob: z.string().optional().describe("File glob filter"),
+        force: z
+          .boolean()
+          .optional()
+          .describe(
+            "Skip repo map fast-path. Only use after confirming the repo map result was incomplete or stale.",
+          ),
       }),
       execute: deferExecute(async (args) => {
-        const hit = tryInterceptGrep(args, opts?.repoMap, subagentCwd);
-        if (hit) return hit;
+        if (!args.force) {
+          const hit = tryInterceptGrep(args, opts?.repoMap, subagentCwd);
+          if (hit) return hit;
+        }
         const result = await grepTool.execute({ ...args, maxCount: 10 });
         if (!result.success) return result;
         return { ...result, output: truncateBytes(result.output) };
@@ -747,8 +845,20 @@ export function buildSubagentExploreTools(opts?: {
       inputSchema: z.object({
         pattern: z.string().describe("Glob pattern"),
         path: z.string().optional().describe("Base directory"),
+        force: z
+          .boolean()
+          .optional()
+          .describe(
+            "Skip repo map fast-path. Only use after confirming the repo map result was incomplete or stale.",
+          ),
       }),
-      execute: deferExecute((args) => globTool.execute(args)),
+      execute: deferExecute((args) => {
+        if (!args.force) {
+          const hit = tryInterceptGlob(args, opts?.repoMap, subagentCwd);
+          if (hit) return Promise.resolve(hit);
+        }
+        return globTool.execute(args);
+      }),
     }),
 
     read_code: tool({
@@ -786,10 +896,18 @@ export function buildSubagentExploreTools(opts?: {
         file: z.string().optional().describe("File path to analyze"),
         scope: z.string().optional().describe("Filter symbols by name pattern"),
         query: z.string().optional().describe("Search query for workspace_symbols/search_symbols"),
+        force: z
+          .boolean()
+          .optional()
+          .describe(
+            "Skip repo map fast-path. Only use after confirming the repo map result was incomplete or stale.",
+          ),
       }),
       execute: deferExecute((args) => {
-        const hit = tryInterceptNavigate(args, opts?.repoMap, subagentCwd);
-        if (hit) return Promise.resolve(hit);
+        if (!args.force) {
+          const hit = tryInterceptNavigate(args, opts?.repoMap, subagentCwd);
+          if (hit) return Promise.resolve(hit);
+        }
         return navigateTool.execute(args, opts?.repoMap);
       }),
     }),
@@ -819,13 +937,33 @@ export function buildSubagentExploreTools(opts?: {
       inputSchema: z.object({
         query: z.string().describe("Concept to discover (e.g. 'provider', 'router', 'auth')"),
         file: z.string().optional().describe("File to scope the search to"),
+        force: z
+          .boolean()
+          .optional()
+          .describe(
+            "Skip repo map fast-path. Only use after confirming the repo map result was incomplete or stale.",
+          ),
       }),
-      execute: deferExecute((args) => discoverPatternTool.execute(args)),
+      execute: deferExecute((args) => {
+        if (!args.force) {
+          const hit = tryInterceptDiscoverPattern(args, opts?.repoMap, subagentCwd);
+          if (hit) return Promise.resolve(hit);
+        }
+        return discoverPatternTool.execute(args);
+      }),
     }),
 
     web_search: buildWebSearchTool({
       webSearchModel: opts?.webSearchModel,
       onApprove: opts?.onApproveWebSearch,
+    }),
+
+    fetch_page: tool({
+      description: fetchPageTool.description,
+      inputSchema: z.object({
+        url: z.string().describe("URL to fetch and read"),
+      }),
+      execute: deferExecute((args) => fetchPageTool.execute(args)),
     }),
   };
 }

@@ -66,6 +66,32 @@ export function Spinner({
   return <text fg={color}>{frames[frame % frames.length]}</text>;
 }
 
+const OVERLAY_DIM = 0.25;
+
+export function Overlay({ children }: { children: React.ReactNode }) {
+  return (
+    <box position="absolute" width="100%" height="100%">
+      <box
+        position="absolute"
+        width="100%"
+        height="100%"
+        backgroundColor="#000000"
+        style={{ opacity: OVERLAY_DIM }}
+      />
+      <box
+        position="absolute"
+        flexDirection="column"
+        alignItems="center"
+        justifyContent="center"
+        width="100%"
+        height="100%"
+      >
+        {children}
+      </box>
+    </box>
+  );
+}
+
 export function PopupRow({
   children,
   bg,

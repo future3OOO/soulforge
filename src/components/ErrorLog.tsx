@@ -4,7 +4,7 @@ import { useKeyboard, useTerminalDimensions } from "@opentui/react";
 import { useEffect, useMemo, useState } from "react";
 import { useErrorStore } from "../stores/errors.js";
 import type { ChatMessage } from "../types/index.js";
-import { POPUP_BG, POPUP_HL, PopupRow } from "./shared.js";
+import { Overlay, POPUP_BG, POPUP_HL, PopupRow } from "./shared.js";
 
 const CHROME_ROWS = 7;
 
@@ -275,14 +275,7 @@ export function ErrorLog({ visible, messages, onClose }: Props) {
     const statusColor = selectedEntry.kind === "tool-ok" ? "#2d5" : "#FF0040";
 
     return (
-      <box
-        position="absolute"
-        flexDirection="column"
-        alignItems="center"
-        justifyContent="center"
-        width="100%"
-        height="100%"
-      >
+      <Overlay>
         <box
           flexDirection="column"
           borderStyle="rounded"
@@ -362,19 +355,12 @@ export function ErrorLog({ visible, messages, onClose }: Props) {
             </text>
           </PopupRow>
         </box>
-      </box>
+      </Overlay>
     );
   }
 
   return (
-    <box
-      position="absolute"
-      flexDirection="column"
-      alignItems="center"
-      justifyContent="center"
-      width="100%"
-      height="100%"
-    >
+    <Overlay>
       <box
         flexDirection="column"
         borderStyle="rounded"
@@ -502,6 +488,6 @@ export function ErrorLog({ visible, messages, onClose }: Props) {
           </text>
         </PopupRow>
       </box>
-    </box>
+    </Overlay>
   );
 }

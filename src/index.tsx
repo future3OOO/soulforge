@@ -5,8 +5,7 @@ import type { App as AppComponent } from "./components/App.js";
 import { BRAND_PURPLE, BRAND_RED, garble } from "./components/splash.js";
 import { icon } from "./core/icons.js";
 import { disposeIntelligenceRouter } from "./core/intelligence/index.js";
-import type { ProviderStatus } from "./core/llm/provider.js";
-import { stopProxy } from "./core/proxy/lifecycle.js";
+import { deactivateCurrentProvider, type ProviderStatus } from "./core/llm/provider.js";
 import type { PrerequisiteStatus } from "./core/setup/prerequisites.js";
 import { resetStatusBarStore } from "./stores/statusbar.js";
 import { resetUIStore } from "./stores/ui.js";
@@ -37,7 +36,7 @@ function runCleanup(): void {
   cleanedUp = true;
   restoreTerminal();
   try {
-    stopProxy();
+    deactivateCurrentProvider();
   } catch {}
   try {
     disposeIntelligenceRouter();

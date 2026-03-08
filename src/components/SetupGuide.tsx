@@ -14,7 +14,7 @@ import {
   getInstallCommands,
   type PrerequisiteStatus,
 } from "../core/setup/prerequisites.js";
-import { POPUP_BG, POPUP_HL, PopupRow } from "./shared.js";
+import { Overlay, POPUP_BG, POPUP_HL, PopupRow } from "./shared.js";
 
 const MAX_POPUP_WIDTH = 64;
 const CHROME_ROWS = 10;
@@ -232,14 +232,7 @@ export function SetupGuide({ visible, onClose, onSystemMessage }: Props) {
   const missingCount = statuses.filter((s) => !s.installed).length;
 
   return (
-    <box
-      position="absolute"
-      flexDirection="column"
-      alignItems="center"
-      justifyContent="center"
-      width="100%"
-      height="100%"
-    >
+    <Overlay>
       <box
         flexDirection="column"
         borderStyle="rounded"
@@ -449,6 +442,6 @@ export function SetupGuide({ visible, onClose, onSystemMessage }: Props) {
           </text>
         </PopupRow>
       </box>
-    </box>
+    </Overlay>
   );
 }

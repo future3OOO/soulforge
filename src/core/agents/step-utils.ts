@@ -21,6 +21,7 @@ const READ_TOOLS = new Set([
   "navigate",
   "analyze",
   "web_search",
+  "fetch_page",
   "check_findings",
   "check_peers",
   "check_agent_result",

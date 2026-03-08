@@ -227,6 +227,29 @@ export class CodeIntelligenceRouter {
     };
   }
 
+  /** Get detailed LSP server info for the status popup */
+  getDetailedLspServers(): Array<{
+    language: string;
+    command: string;
+    args: string[];
+    pid: number | null;
+    cwd: string;
+    openFiles: number;
+    diagnosticCount: number;
+    diagnostics: Array<{ file: string; message: string; severity: number }>;
+    ready: boolean;
+  }> {
+    const lspBackend = this.backends.find((b) => b.name === "lsp");
+    if (lspBackend && "getDetailedServers" in lspBackend) {
+      return (
+        lspBackend as {
+          getDetailedServers: () => ReturnType<CodeIntelligenceRouter["getDetailedLspServers"]>;
+        }
+      ).getDetailedServers();
+    }
+    return [];
+  }
+
   /** Get PIDs of all child processes (LSP servers) managed by backends */
   getChildPids(): number[] {
     const lspBackend = this.backends.find((b) => b.name === "lsp");

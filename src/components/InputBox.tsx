@@ -37,6 +37,7 @@ interface Props {
 }
 
 const CMD_DEFS: Array<{ cmd: string; ic: string; desc: string }> = [
+  { cmd: "/agent-features", ic: "cog", desc: "Toggle agent features (de-sloppify, tier routing)" },
   { cmd: "/branch", ic: "git", desc: "Show/create branch" },
   { cmd: "/changes", ic: "changes", desc: "Toggle changed files tree" },
   { cmd: "/chat-style", ic: "chat", desc: "Toggle chat layout style" },
@@ -59,8 +60,10 @@ const CMD_DEFS: Array<{ cmd: string; ic: string; desc: string }> = [
   { cmd: "/init", ic: "git", desc: "Initialize git repo" },
   { cmd: "/lazygit", ic: "git", desc: "Launch lazygit" },
   { cmd: "/log", ic: "git", desc: "Show recent commits" },
+  { cmd: "/lsp", ic: "brain", desc: "Language server status & diagnostics" },
   { cmd: "/memory", ic: "memory", desc: "Manage memory scopes, view & clear" },
   { cmd: "/mode", ic: "cog", desc: "Switch forge mode" },
+  { cmd: "/models", ic: "system", desc: "Switch LLM model (Ctrl+L)" },
   { cmd: "/nerd-font", ic: "ghost", desc: "Toggle Nerd Font icons" },
   { cmd: "/new-tab", ic: "tabs", desc: "Open new tab (Alt+T)" },
   { cmd: "/nvim-config", ic: "pencil", desc: "Switch neovim config mode" },
@@ -68,6 +71,7 @@ const CMD_DEFS: Array<{ cmd: string; ic: string; desc: string }> = [
   { cmd: "/plan", ic: "plan", desc: "Toggle plan mode (research & plan only)" },
   { cmd: "/privacy", ic: "lock", desc: "Manage forbidden file patterns" },
   { cmd: "/provider-settings", ic: "system", desc: "Thinking, effort, speed, context mgmt" },
+  { cmd: "/providers", ic: "system", desc: "Provider & performance settings" },
   { cmd: "/proxy", ic: "proxy", desc: "Proxy status" },
   { cmd: "/proxy install", ic: "proxy", desc: "Install CLIProxyAPI" },
   { cmd: "/proxy login", ic: "proxy", desc: "Authenticate with Claude" },
@@ -876,154 +880,164 @@ export function InputBox({
   // ── Rendering ──
 
   const borderColor = fuzzyMode ? "#FF8C00" : showBusy ? "#4a1a6b" : focused ? "#6A0DAD" : "#333";
+  const inputWidth = termWidth >= 120 ? "60%" : termWidth >= 80 ? "80%" : "100%";
 
   return (
-    <box flexDirection="column" width="100%" flexShrink={0}>
-      {/* ── Autocomplete dropdown ── */}
-      {hasMatches && (
-        <box flexDirection="column" marginBottom={0}>
-          <box paddingX={1} height={1} flexDirection="row">
-            <text fg="#333">{"─".repeat(40)}</text>
-            {matches.length > maxVisible && <text fg="#555"> ↑↓ scroll</text>}
+    <box flexDirection="column" width="100%" flexShrink={0} alignItems="center">
+      <box flexDirection="column" width={inputWidth} flexShrink={0}>
+        {/* ── Autocomplete dropdown ── */}
+        {hasMatches && (
+          <box flexDirection="column" marginBottom={0}>
+            <box paddingX={1} height={1} flexDirection="row">
+              <text fg="#333">{"─".repeat(40)}</text>
+              {matches.length > maxVisible && <text fg="#555"> ↑↓ scroll</text>}
+            </box>
+            <scrollbox ref={acScrollRef} height={Math.min(matches.length, maxVisible)}>
+              {matches.map((match, i) => {
+                const isSelected = i === selectedIdx;
+                return (
+                  <box key={match.cmd} gap={1} paddingX={1} height={1} flexDirection="row">
+                    <text fg={isSelected ? "#FF0040" : "#333"}>{isSelected ? "›" : " "}</text>
+                    <text
+                      fg={isSelected ? "#FF0040" : "#9B30FF"}
+                      attributes={isSelected ? TextAttributes.BOLD : undefined}
+                    >
+                      {match.cmd}
+                    </text>
+                    <text fg={isSelected ? "#666" : "#444"}>{match.desc}</text>
+                  </box>
+                );
+              })}
+            </scrollbox>
           </box>
-          <scrollbox ref={acScrollRef} height={Math.min(matches.length, maxVisible)}>
-            {matches.map((match, i) => {
-              const isSelected = i === selectedIdx;
-              return (
-                <box key={match.cmd} gap={1} paddingX={1} height={1} flexDirection="row">
-                  <text fg={isSelected ? "#FF0040" : "#333"}>{isSelected ? "›" : " "}</text>
-                  <text
-                    fg={isSelected ? "#FF0040" : "#9B30FF"}
-                    attributes={isSelected ? TextAttributes.BOLD : undefined}
+        )}
+
+        {/* ── Fuzzy history results ── */}
+        {fuzzyMode && fuzzyResults.length > 0 && (
+          <box flexDirection="column" marginBottom={0}>
+            <box paddingX={1} height={1} flexDirection="row" width="100%">
+              <text fg="#FF8C00"> history </text>
+              <text fg="#FF8C00" flexGrow={1}>
+                {"─".repeat(Math.max(0, termWidth - 12))}
+              </text>
+            </box>
+            <scrollbox ref={fuzzyScrollRef} height={Math.min(fuzzyResults.length, fuzzyMaxVisible)}>
+              {fuzzyResults.map((result, i) => {
+                const isSelected = i === fuzzyCursor;
+                const maxChars = Math.max(20, termWidth - 6);
+                const displayText = (result.entry.split("\n")[0] ?? "").slice(0, maxChars);
+                const displayMatch = fuzzyQuery
+                  ? fuzzyFilter(fuzzyQuery, [displayText], 1)[0]
+                  : null;
+                return (
+                  <box
+                    key={`${result.entry.slice(0, 40)}-${String(i)}`}
+                    paddingX={1}
+                    height={1}
+                    flexDirection="row"
                   >
-                    {match.cmd}
-                  </text>
-                  <text fg={isSelected ? "#666" : "#444"}>{match.desc}</text>
-                </box>
-              );
-            })}
-          </scrollbox>
-        </box>
-      )}
-
-      {/* ── Fuzzy history results ── */}
-      {fuzzyMode && fuzzyResults.length > 0 && (
-        <box flexDirection="column" marginBottom={0}>
-          <box paddingX={1} height={1} flexDirection="row" width="100%">
-            <text fg="#FF8C00"> history </text>
-            <text fg="#FF8C00" flexGrow={1}>
-              {"─".repeat(Math.max(0, termWidth - 12))}
-            </text>
+                    <text fg={isSelected ? "#FF0040" : "#333"}>{isSelected ? "› " : "  "}</text>
+                    {displayMatch ? (
+                      <HighlightedText text={displayText} indices={displayMatch.indices} />
+                    ) : (
+                      <text fg={isSelected ? "#fff" : "#ccc"}>{displayText}</text>
+                    )}
+                  </box>
+                );
+              })}
+            </scrollbox>
           </box>
-          <scrollbox ref={fuzzyScrollRef} height={Math.min(fuzzyResults.length, fuzzyMaxVisible)}>
-            {fuzzyResults.map((result, i) => {
-              const isSelected = i === fuzzyCursor;
-              const maxChars = Math.max(20, termWidth - 6);
-              const displayText = (result.entry.split("\n")[0] ?? "").slice(0, maxChars);
-              const displayMatch = fuzzyQuery ? fuzzyFilter(fuzzyQuery, [displayText], 1)[0] : null;
-              return (
-                <box
-                  key={`${result.entry.slice(0, 40)}-${String(i)}`}
-                  paddingX={1}
-                  height={1}
-                  flexDirection="row"
-                >
-                  <text fg={isSelected ? "#FF0040" : "#333"}>{isSelected ? "› " : "  "}</text>
-                  {displayMatch ? (
-                    <HighlightedText text={displayText} indices={displayMatch.indices} />
-                  ) : (
-                    <text fg={isSelected ? "#fff" : "#ccc"}>{displayText}</text>
-                  )}
-                </box>
-              );
-            })}
-          </scrollbox>
-        </box>
-      )}
+        )}
 
-      {/* ── Loading status bar ── */}
-      {showBusy && (
-        <box paddingX={1} height={1} gap={1} flexDirection="row">
-          <text fg={isCompacting ? "#5af" : "#8B5CF6"}>{currentGhost}</text>
-          <text fg={isCompacting ? "#3388cc" : "#6A0DAD"}>{busyStatus}</text>
-          {elapsedLabel !== "" && <text fg="#555">{elapsedLabel}</text>}
-          {queueCount != null && queueCount > 0 && (
-            <text fg="#555">({String(queueCount)} queued)</text>
+        {/* ── Loading status bar ── */}
+        {showBusy && (
+          <box paddingX={1} height={1} gap={1} flexDirection="row">
+            <text fg={isCompacting ? "#5af" : "#8B5CF6"}>{currentGhost}</text>
+            <text fg={isCompacting ? "#3388cc" : "#6A0DAD"}>{busyStatus}</text>
+            {elapsedLabel !== "" && <text fg="#555">{elapsedLabel}</text>}
+            {queueCount != null && queueCount > 0 && (
+              <text fg="#555">({String(queueCount)} queued)</text>
+            )}
+          </box>
+        )}
+
+        {/* ── Input border box ── */}
+        <box
+          ref={containerRef}
+          borderStyle="rounded"
+          border={true}
+          borderColor={borderColor}
+          paddingX={1}
+          flexDirection="column"
+          width="100%"
+        >
+          {showBusy && !showAutocomplete ? (
+            <box
+              flexDirection="row"
+              alignItems="center"
+              width="100%"
+              justifyContent="space-between"
+            >
+              <box flexGrow={1}>
+                <input
+                  ref={inputRef}
+                  key={inputKey}
+                  value={value}
+                  onInput={handleChange}
+                  onSubmit={() => handleSubmit(value)}
+                  placeholder="/ commands · queue messages"
+                  focused={focused}
+                  scrollMargin={0.01}
+                />
+              </box>
+              <text fg="#555"> ^X stop</text>
+            </box>
+          ) : fuzzyMode ? (
+            <box flexDirection="row">
+              <text fg="#FF8C00" attributes={TextAttributes.BOLD}>
+                {"search: "}
+              </text>
+              <text fg="#fff">{fuzzyQuery}</text>
+              <text fg="#FF8C00">▌</text>
+            </box>
+          ) : (
+            <InputEditor
+              visualRows={visualRows}
+              lines={lines}
+              cursorLine={cursorLine}
+              activeVisualIdx={activeVisualIdx}
+              maxInputRows={maxInputRows}
+              inputRef={inputRef}
+              inputKey={inputKey}
+              value={value}
+              ghost={ghost}
+              focused={focused}
+              collapsedBlocks={collapsedBlocks}
+              handleChange={handleChange}
+              handleBlockInput={handleBlockInput}
+              handleSubmit={handleSubmit}
+            />
           )}
         </box>
-      )}
 
-      {/* ── Input border box ── */}
-      <box
-        ref={containerRef}
-        borderStyle="rounded"
-        border={true}
-        borderColor={borderColor}
-        paddingX={1}
-        flexDirection="column"
-        width="100%"
-      >
-        {showBusy && !showAutocomplete ? (
-          <box flexDirection="row" alignItems="center" width="100%" justifyContent="space-between">
-            <box flexGrow={1}>
-              <input
-                ref={inputRef}
-                key={inputKey}
-                value={value}
-                onInput={handleChange}
-                onSubmit={() => handleSubmit(value)}
-                placeholder="/ commands · queue messages"
-                focused={focused}
-                scrollMargin={0.01}
-              />
-            </box>
-            <text fg="#555"> ^X stop</text>
+        {/* ── Hints bar ── */}
+        {focused && !fuzzyMode && isMultiline && (
+          <box paddingX={2} height={1} flexDirection="row" gap={1}>
+            <text fg="#444">^U</text>
+            <text fg="#333">del line</text>
+            <text fg="#444">^K</text>
+            <text fg="#333">del to end</text>
+            <text fg="#444">S-Enter</text>
+            <text fg="#333">newline</text>
+            {collapsedBlocks.length > 0 ? (
+              <>
+                <text fg="#444">BS</text>
+                <text fg="#333">del paste</text>
+              </>
+            ) : null}
           </box>
-        ) : fuzzyMode ? (
-          <box flexDirection="row">
-            <text fg="#FF8C00" attributes={TextAttributes.BOLD}>
-              {"search: "}
-            </text>
-            <text fg="#fff">{fuzzyQuery}</text>
-            <text fg="#FF8C00">▌</text>
-          </box>
-        ) : (
-          <InputEditor
-            visualRows={visualRows}
-            lines={lines}
-            cursorLine={cursorLine}
-            activeVisualIdx={activeVisualIdx}
-            maxInputRows={maxInputRows}
-            inputRef={inputRef}
-            inputKey={inputKey}
-            value={value}
-            ghost={ghost}
-            focused={focused}
-            collapsedBlocks={collapsedBlocks}
-            handleChange={handleChange}
-            handleBlockInput={handleBlockInput}
-            handleSubmit={handleSubmit}
-          />
         )}
       </box>
-
-      {/* ── Hints bar ── */}
-      {focused && !fuzzyMode && isMultiline && (
-        <box paddingX={2} height={1} flexDirection="row" gap={1}>
-          <text fg="#444">^U</text>
-          <text fg="#333">del line</text>
-          <text fg="#444">^K</text>
-          <text fg="#333">del to end</text>
-          <text fg="#444">S-Enter</text>
-          <text fg="#333">newline</text>
-          {collapsedBlocks.length > 0 ? (
-            <>
-              <text fg="#444">BS</text>
-              <text fg="#333">del paste</text>
-            </>
-          ) : null}
-        </box>
-      )}
     </box>
   );
 }

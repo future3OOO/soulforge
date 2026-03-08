@@ -446,6 +446,41 @@ export class StandaloneLspClient {
     return this.process?.pid ?? null;
   }
 
+  /** Workspace root this client is attached to */
+  get workspaceRoot(): string {
+    return this.rootUri.replace("file://", "");
+  }
+
+  /** Number of documents currently open in this client */
+  get openDocumentCount(): number {
+    return this.openDocuments.size;
+  }
+
+  /** Total diagnostics across all open files */
+  get diagnosticCount(): number {
+    let count = 0;
+    for (const diags of this.diagnostics.values()) count += diags.length;
+    return count;
+  }
+
+  /** Recent diagnostics (errors/warnings) for display */
+  getRecentDiagnostics(limit = 20): Array<{ file: string; message: string; severity: number }> {
+    const results: Array<{ file: string; message: string; severity: number }> = [];
+    for (const [uri, diags] of this.diagnostics) {
+      const file = uri.replace("file://", "");
+      for (const d of diags) {
+        if (results.length >= limit) return results;
+        results.push({ file, message: d.message, severity: d.severity ?? 1 });
+      }
+    }
+    return results;
+  }
+
+  /** Server args */
+  get serverArgs(): string[] {
+    return this.config.args;
+  }
+
   /** Graceful shutdown */
   async stop(): Promise<void> {
     if (!this.process) return;

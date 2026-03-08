@@ -22,9 +22,11 @@ SoulForge combines a multi-agent system, deep code intelligence, and an embedded
 
 **Context Compaction** — Two strategies: V1 (LLM batch summarization) and V2 (incremental structured extraction). V2 builds working state as-you-go from tool calls and messages — compaction is near-instant with an optional cheap gap-fill pass. Configurable thresholds, dedicated model via task router, live toggle via `/compaction`. [Deep dive →](docs/compaction.md)
 
-**Task Router** — Assign different models per task type (planning, coding, exploration, web search, compact, semantic). Opus for architecture, Haiku for grep.
+**Task Router** — Assign different models per task type (planning, coding, exploration, web search, compact, semantic, trivial, de-sloppify). Opus for architecture, Haiku for grep. Complexity-tier routing auto-classifies trivial tasks and routes them to cheaper models.
 
-**7 LLM Providers** — Anthropic, OpenAI, xAI, Google, Ollama, AI Gateway, Proxy (CLIProxyAPI). Switch mid-conversation with `Ctrl+L`.
+**Agent Quality Pipeline** — Schema-enforced dispatch (required `targetFiles` rejects vague instructions before any agent runs), dispatch cache (parent reuses subagent file reads instead of re-reading), and done-tool contracts that demand pasteable code from subagents. The de-sloppify pass — a separate cleanup agent reviewing code in fresh context — is adapted from [Everything Claude Code](https://github.com/affaan-m/everything-claude-code). Toggle features via `/agent-features`.
+
+**6 LLM Providers** — Anthropic, OpenAI, xAI, Google, Ollama, Proxy (CLIProxyAPI). Switch mid-conversation with `Ctrl+L`.
 
 **Embedded Neovim** — Real Neovim via msgpack-RPC. Your config, plugins, and LSP all work. Shares the intelligence layer with the AI.
 
@@ -78,7 +80,7 @@ See [GETTING_STARTED.md](GETTING_STARTED.md) for the full setup guide.
 │  edit, read, grep, shell, git, rename, move, project...   │
 ├──────────────────────────────────────────────────────────┤
 │  Runtime: Neovim (RPC) ─ LSP ─ SQLite ─ Bun              │
-│  Providers: Anthropic, OpenAI, xAI, Google, Ollama, Proxy │
+│  Providers: Anthropic, OpenAI, xAI, Google, Ollama, Proxy  │
 └──────────────────────────────────────────────────────────┘
 ```
 

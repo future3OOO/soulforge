@@ -21,7 +21,13 @@ import type { UseTabsReturn } from "../hooks/useTabs.js";
 import { restart } from "../index.js";
 import { useRepoMapStore } from "../stores/repomap.js";
 import { useUIStore } from "../stores/ui.js";
-import type { AppConfig, ChatStyle, ForgeMode, NvimConfigMode } from "../types/index.js";
+import type {
+  AgentFeatures,
+  AppConfig,
+  ChatStyle,
+  ForgeMode,
+  NvimConfigMode,
+} from "../types/index.js";
 import type { CommandPickerConfig } from "./CommandPicker.js";
 import type { InfoPopupConfig } from "./InfoPopup.js";
 import type { ConfigScope } from "./shared.js";
@@ -60,11 +66,13 @@ export interface CommandContext {
   openRouterSettings: () => void;
   openProviderSettings: () => void;
   openWebSearchSettings: () => void;
+  openLspStatus: () => void;
   openCommandPicker: (config: CommandPickerConfig) => void;
   openInfoPopup: (config: InfoPopupConfig) => void;
   toggleChanges: () => void;
   saveToScope: (patch: Partial<AppConfig>, toScope: ConfigScope, fromScope?: ConfigScope) => void;
   detectScope: (key: string) => ConfigScope;
+  agentFeatures: AgentFeatures | undefined;
 }
 
 function formatBytes(bytes: number): string {
@@ -141,6 +149,7 @@ function openRepoMapMenu(ctx: CommandContext): void {
     title: "Repo Map",
     icon: "󰙅",
     currentValue: enabled ? "enable" : "disable",
+    keepOpen: true,
     scopeEnabled: true,
     initialScope: ctx.detectScope("repoMap"),
     options: [
@@ -1093,6 +1102,30 @@ async function handleCommandInner(input: string, ctx: CommandContext): Promise<v
     return;
   }
 
+  if (cmd === "/plan" || cmd.startsWith("/plan ")) {
+    const arg = trimmed.slice(5).trim();
+    if (arg) {
+      ctx.chat.setPlanMode(true);
+      ctx.chat.setPlanRequest(arg);
+      sysMsg(ctx, `Plan mode enabled. Task: ${arg}`);
+    } else {
+      const newState = !ctx.chat.planMode;
+      ctx.chat.setPlanMode(newState);
+      if (!newState) ctx.chat.setPlanRequest(null);
+      sysMsg(ctx, `Plan mode ${newState ? "enabled" : "disabled"}.`);
+    }
+    return;
+  }
+
+  if (cmd === "/continue") {
+    if (ctx.chat.isLoading) {
+      sysMsg(ctx, "Generation already in progress.");
+    } else {
+      ctx.chat.handleSubmit("Continue from where you left off.");
+    }
+    return;
+  }
+
   switch (cmd) {
     case "/quit":
     case "/exit":
@@ -1130,8 +1163,13 @@ async function handleCommandInner(input: string, ctx: CommandContext): Promise<v
       break;
     case "/provider-settings":
     case "/provider":
+    case "/providers":
     case "/perf":
       ctx.openProviderSettings();
+      break;
+    case "/models":
+    case "/model":
+      useUIStore.getState().openModal("llmSelector");
       break;
     case "/web-search":
       ctx.openWebSearchSettings();
@@ -1662,6 +1700,9 @@ async function handleCommandInner(input: string, ctx: CommandContext): Promise<v
     case "/setup":
       ctx.openSetup();
       break;
+    case "/lsp":
+      ctx.openLspStatus();
+      break;
     case "/storage": {
       openStorageMenu(ctx);
       break;
@@ -1891,6 +1932,53 @@ async function handleCommandInner(input: string, ctx: CommandContext): Promise<v
             ]);
           },
           onScopeMove: (value, from, to) => ctx.saveToScope(patch(value), to, from),
+        });
+        break;
+      }
+      if (cmd === "/agent-features") {
+        const featureDesc: Record<string, string> = {
+          desloppify: "cleanup pass after code agents (needs model in /router)",
+          tierRouting: "auto-route trivial tasks to cheaper models",
+          dispatchCache: "cache file reads across dispatch boundaries",
+          targetFileValidation: "require file paths on dispatch tasks",
+        };
+        const featureLabel: Record<string, string> = {
+          desloppify: "De-sloppify",
+          tierRouting: "Tier Routing",
+          dispatchCache: "Dispatch Cache",
+          targetFileValidation: "Target File Validation",
+        };
+        const localState = { ...ctx.agentFeatures };
+        const buildOptions = () =>
+          Object.entries(featureLabel).map(([key, label]) => ({
+            value: key,
+            label: `${label}: ${(localState as Record<string, unknown>)[key] !== false ? "on" : "off"}`,
+            description: featureDesc[key] ?? "",
+          }));
+        ctx.openCommandPicker({
+          title: "Agent Features",
+          icon: "󰒓",
+          keepOpen: true,
+          currentValue: "",
+          options: buildOptions(),
+          scopeEnabled: true,
+          initialScope: ctx.detectScope("agentFeatures"),
+          onSelect: (value, scope) => {
+            const key = value as keyof AgentFeatures;
+            const current = (localState as Record<string, unknown>)[key] !== false;
+            (localState as Record<string, unknown>)[key] = !current;
+            ctx.saveToScope({ agentFeatures: { [key]: !current } }, scope ?? "project");
+            sysMsg(
+              ctx,
+              `Agent feature "${key}" ${!current ? "enabled" : "disabled"} (${scope ?? "project"})`,
+            );
+            useUIStore.getState().updatePickerOptions(buildOptions());
+          },
+          onScopeMove: (value, from, to) => {
+            const key = value as keyof AgentFeatures;
+            const current = (localState as Record<string, unknown>)[key] !== false;
+            ctx.saveToScope({ agentFeatures: { [key]: current } }, to, from);
+          },
         });
         break;
       }

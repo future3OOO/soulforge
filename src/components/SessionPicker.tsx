@@ -2,7 +2,7 @@ import { TextAttributes } from "@opentui/core";
 import { useKeyboard, useTerminalDimensions } from "@opentui/react";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { type SessionListEntry, SessionManager } from "../core/sessions/manager.js";
-import { POPUP_BG, POPUP_HL, PopupRow } from "./shared.js";
+import { Overlay, POPUP_BG, POPUP_HL, PopupRow } from "./shared.js";
 
 const POPUP_CHROME = 7;
 
@@ -162,14 +162,7 @@ export function SessionPicker({ visible, cwd, onClose, onRestore, onSystemMessag
   if (!visible) return null;
 
   return (
-    <box
-      position="absolute"
-      flexDirection="column"
-      alignItems="center"
-      justifyContent="center"
-      width="100%"
-      height="100%"
-    >
+    <Overlay>
       <box
         flexDirection="column"
         borderStyle="rounded"
@@ -295,6 +288,6 @@ export function SessionPicker({ visible, cwd, onClose, onRestore, onSystemMessag
           </text>
         </PopupRow>
       </box>
-    </box>
+    </Overlay>
   );
 }

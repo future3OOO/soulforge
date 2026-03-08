@@ -27,12 +27,15 @@ export interface BusFinding {
   timestamp: number;
 }
 
+export type TaskTier = "trivial" | "standard";
+
 export interface AgentTask {
   agentId: string;
   role: "explore" | "code";
   task: string;
   dependsOn?: string[];
   timeoutMs?: number;
+  tier?: TaskTier;
 }
 
 export interface AgentResult {
@@ -779,6 +782,9 @@ export class AgentBus {
             break;
           case "web_search":
             summaries.push(`web_search "${rest[0] ?? ""}"`);
+            break;
+          case "fetch_page":
+            summaries.push(`fetch_page ${rest[0] ?? ""}`);
             break;
         }
       } catch {

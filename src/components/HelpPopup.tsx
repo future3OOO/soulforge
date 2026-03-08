@@ -1,7 +1,7 @@
 import { TextAttributes } from "@opentui/core";
 import { useKeyboard, useTerminalDimensions } from "@opentui/react";
 import { useEffect, useState } from "react";
-import { POPUP_BG, PopupRow } from "./shared.js";
+import { Overlay, POPUP_BG, PopupRow } from "./shared.js";
 
 const MAX_POPUP_WIDTH = 78;
 const CHROME_ROWS = 6;
@@ -21,7 +21,10 @@ const LINES: HelpLine[] = [
   { type: "entry", label: "/open <path>", desc: "open file in editor" },
   { type: "entry", label: "/editor-settings", desc: "toggle editor/LSP integrations" },
   { type: "entry", label: "/provider", desc: "thinking, effort, speed, context management" },
+  { type: "entry", label: "/models", desc: "switch LLM model (Ctrl+L)" },
+  { type: "entry", label: "/providers", desc: "provider & performance settings" },
   { type: "entry", label: "/router", desc: "assign different models per task type" },
+  { type: "entry", label: "/agent-features", desc: "toggle agent features (de-sloppify, routing)" },
   { type: "entry", label: "/skills", desc: "browse & install skills" },
   { type: "entry", label: "/sessions", desc: "browse & restore past sessions" },
   { type: "entry", label: "/errors", desc: "browse tool call & error log" },
@@ -178,14 +181,7 @@ export function HelpPopup({ visible, onClose }: Props) {
   if (!visible) return null;
 
   return (
-    <box
-      position="absolute"
-      flexDirection="column"
-      alignItems="center"
-      justifyContent="center"
-      width="100%"
-      height="100%"
-    >
+    <Overlay>
       <box
         flexDirection="column"
         borderStyle="rounded"
@@ -282,6 +278,6 @@ export function HelpPopup({ visible, onClose }: Props) {
           </text>
         </PopupRow>
       </box>
-    </box>
+    </Overlay>
   );
 }

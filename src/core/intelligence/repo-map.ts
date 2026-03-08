@@ -1582,6 +1582,85 @@ export class RepoMap {
     return matches.length > 0 ? (matches[0] as { path: string }).path : null;
   }
 
+  /** Substring search on symbol names — finds symbols containing the query (e.g. "provider" → "createOpenAIProvider") */
+  searchSymbolsSubstring(
+    query: string,
+    limit = 15,
+  ): Array<{ name: string; path: string; kind: string; isExported: boolean; pagerank: number }> {
+    const safe = query.replace(/%/g, "\\%").replace(/_/g, "\\_");
+    const like = `%${safe}%`;
+    const rows = this.db
+      .query<
+        {
+          name: string;
+          path: string;
+          kind: string;
+          is_exported: number;
+          pagerank: number;
+          mtime_ms: number;
+        },
+        [string, number]
+      >(
+        `SELECT s.name, f.path, s.kind, s.is_exported, f.pagerank, f.mtime_ms
+         FROM symbols s JOIN files f ON f.id = s.file_id
+         WHERE LOWER(s.name) LIKE LOWER(?) ESCAPE '\\'
+           AND s.kind IN ('interface','type','class','function','enum','variable','method')
+         ORDER BY s.is_exported DESC, f.pagerank DESC
+         LIMIT ?`,
+      )
+      .all(like, limit);
+
+    const results: Array<{
+      name: string;
+      path: string;
+      kind: string;
+      isExported: boolean;
+      pagerank: number;
+    }> = [];
+    const seen = new Set<string>();
+    for (const row of rows) {
+      const key = `${row.name}@${row.path}`;
+      if (seen.has(key)) continue;
+      seen.add(key);
+      const absPath = join(this.cwd, row.path);
+      try {
+        const stat = statSync(absPath);
+        if (Math.abs(stat.mtimeMs - row.mtime_ms) > 1000) continue;
+      } catch {
+        continue;
+      }
+      results.push({
+        name: row.name,
+        path: absPath,
+        kind: row.kind,
+        isExported: row.is_exported === 1,
+        pagerank: row.pagerank,
+      });
+    }
+    return results;
+  }
+
+  /** Match indexed files by SQL LIKE pattern (e.g. "%/providers/%" or "%.ts") */
+  matchFiles(likePattern: string, limit = 20): string[] {
+    const rows = this.db
+      .query<{ path: string; mtime_ms: number }, [string, number]>(
+        "SELECT path, mtime_ms FROM files WHERE path LIKE ? ESCAPE '\\' ORDER BY pagerank DESC LIMIT ?",
+      )
+      .all(likePattern, limit);
+    const results: string[] = [];
+    for (const row of rows) {
+      const absPath = join(this.cwd, row.path);
+      try {
+        const stat = statSync(absPath);
+        if (Math.abs(stat.mtimeMs - row.mtime_ms) > 1000) continue;
+      } catch {
+        continue;
+      }
+      results.push(absPath);
+    }
+    return results;
+  }
+
   getStats(): { files: number; symbols: number; edges: number; summaries: number } {
     const files = this.db.query<{ c: number }, []>("SELECT COUNT(*) as c FROM files").get()?.c ?? 0;
     const symbols =
@@ -1655,6 +1734,7 @@ export class RepoMap {
   }
 
   close(): void {
+    this.ready = false;
     if (this.dirtyTimer) {
       clearTimeout(this.dirtyTimer);
       this.dirtyTimer = null;

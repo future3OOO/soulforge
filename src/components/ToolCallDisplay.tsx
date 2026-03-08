@@ -177,6 +177,10 @@ function formatResult(toolName: string, result?: string): string {
       const match = out.match(/indexed at ([^\s]+)/);
       return match ? `→ ${match[1]}` : out.slice(0, 40);
     }
+    if (p.output && typeof p.output === "string" && p.output.startsWith("[from dispatch cache]")) {
+      const lines = p.output.split("\n").length - 1;
+      return `${String(lines)} lines [cached]`;
+    }
   } catch {
     // not JSON
   }
@@ -479,6 +483,8 @@ interface AgentInfo {
   toolUses?: number;
   tokenUsage?: { input: number; output: number; total: number };
   cacheHits?: number;
+  modelId?: string;
+  tier?: string;
 }
 
 interface MultiAgentState {
@@ -491,6 +497,19 @@ function humanizeTokens(n: number): string {
   if (n >= 1_000_000) return `${(n / 1_000_000).toFixed(1)}M`;
   if (n >= 1_000) return `${(n / 1_000).toFixed(1)}k`;
   return String(n);
+}
+
+function shortModelId(modelId: string): string {
+  const parts = modelId.split("/");
+  const name = parts[parts.length - 1] ?? modelId;
+  if (name.includes("haiku")) return "haiku";
+  if (name.includes("sonnet")) return "sonnet";
+  if (name.includes("opus")) return "opus";
+  if (name.includes("flash")) return "flash";
+  if (name.includes("pro")) return "pro";
+  if (name.includes("gpt-4o-mini")) return "4o-mini";
+  if (name.includes("gpt-4o")) return "4o";
+  return name.length > 15 ? `${name.slice(0, 12)}...` : name;
 }
 
 function applyMultiAgentEvent(
@@ -514,6 +533,8 @@ function applyMultiAgentEvent(
       role: event.role ?? "explore",
       task: event.task ?? "",
       state: "running",
+      modelId: event.modelId,
+      tier: event.tier,
     });
     return { ...s, totalAgents: total, agents: next };
   }
@@ -613,7 +634,11 @@ const MultiAgentChildRow = memo(
     const tokenUsage = isDone ? info.tokenUsage : liveStats?.tokenUsage;
     const cacheHits = isDone ? info.cacheHits : liveStats?.cacheHits;
 
+    const modelLabel = info.modelId ? shortModelId(info.modelId) : null;
+    const tierLabel = info.tier === "trivial" ? "⚡" : info.tier === "desloppify" ? "🧹" : null;
+
     const statParts: string[] = [];
+    if (modelLabel) statParts.push(modelLabel);
     if (toolUses != null && toolUses > 0) statParts.push(`${String(toolUses)} tool uses`);
     if (tokenUsage && tokenUsage.total > 0)
       statParts.push(`${humanizeTokens(tokenUsage.total)} tokens`);
@@ -641,7 +666,10 @@ const MultiAgentChildRow = memo(
             >
               {agentId}
             </span>
-            <span fg={isDone ? "#333" : roleColor}> ({info.role})</span>
+            <span fg={isDone ? "#333" : roleColor}>
+              {" "}
+              ({info.role}){tierLabel ? ` ${tierLabel}` : ""}
+            </span>
             <span fg={isDone ? "#333" : "#666"}> {taskStr}</span>
             {statStr ? <span fg={isDone ? "#555" : "#666"}>{statStr}</span> : null}
           </text>

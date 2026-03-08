@@ -26,6 +26,19 @@ interface NavigateArgs {
 const INTERCEPTABLE_NAVIGATE_ACTIONS = new Set(["workspace_symbols", "search_symbols"]);
 const MIN_SYMBOL_LEN = 3;
 const IDENTIFIER_RE = /^[a-zA-Z_][a-zA-Z0-9_]*$/;
+const READ_CODE_TARGETS = new Set(["function", "class", "type", "interface", "variable", "enum"]);
+
+/** Map repo-map kind to read_code target. Returns null if no direct mapping. */
+function kindToTarget(kind: string): string | null {
+  if (READ_CODE_TARGETS.has(kind)) return kind;
+  if (kind === "method") return "function";
+  return null;
+}
+
+/** Escape SQL LIKE special characters in user input */
+function escapeLike(s: string): string {
+  return s.replace(/%/g, "\\%").replace(/_/g, "\\_");
+}
 
 function isCleanIdentifier(pattern: string): string | null {
   const cleaned = pattern.replace(/[\\^$.*+?()[\]{}|]/g, "");
@@ -45,6 +58,132 @@ function formatMatches(
       return `  ${exp} ${rel} (${m.kind})`;
     })
     .join("\n");
+}
+
+interface GlobArgs {
+  pattern: string;
+  path?: string;
+}
+
+/**
+ * Convert a glob pattern to a SQL LIKE pattern for repo map file matching.
+ * Handles: ** → %, * → %, exact segments.
+ */
+function globToLike(pattern: string): string | null {
+  // Bail on brace expansion — too complex for LIKE translation
+  if (pattern.includes("{")) return null;
+
+  const normalized = pattern.replace(/\\/g, "/");
+
+  // Escape SQL LIKE special chars in the literal portions before converting glob wildcards
+  const escaped = normalized.replace(/%/g, "\\%").replace(/_/g, "\\_");
+
+  // Replace glob wildcards with SQL LIKE wildcards
+  let like = escaped
+    .replace(/\*\*\//g, "%") // **/ → %
+    .replace(/\/\*\*/g, "/%") // /** → /%
+    .replace(/\*\*/g, "%") // remaining ** → %
+    .replace(/\*/g, "%"); // * → %
+
+  // Collapse multiple % into one
+  like = like.replace(/%+/g, "%");
+
+  // Must have at least one non-wildcard segment to be useful
+  const meaningful = like.replace(/%/g, "").replace(/\./g, "");
+  if (meaningful.length < 2) return null;
+
+  // Ensure leading % for patterns that start with wildcards
+  if (!like.startsWith("%") && !like.startsWith("/")) {
+    like = `%${like}`;
+  }
+
+  return like;
+}
+
+export function tryInterceptGlob(
+  args: GlobArgs,
+  repoMap: RepoMap | undefined,
+  cwd: string,
+): InterceptResult | null {
+  if (!repoMap || !repoMap.isReady) return null;
+
+  const like = globToLike(args.pattern);
+  if (!like) return null;
+
+  const matches = repoMap.matchFiles(like);
+  if (matches.length === 0) return null;
+
+  const fileList = matches.map((p) => `  ${relative(cwd, p)}`).join("\n");
+  const output =
+    `REPO MAP — ${String(matches.length)} indexed file${matches.length === 1 ? "" : "s"} match "${args.pattern}":\n${fileList}\n` +
+    `Use read_file or read_code on these paths directly — dispatch is not needed. Glob was skipped.`;
+
+  return { intercepted: true, success: true, output, repoMapHit: true };
+}
+
+function formatSubstringMatches(
+  matches: Array<{ name: string; path: string; kind: string; isExported: boolean }>,
+  cwd: string,
+): string {
+  return matches
+    .map((m) => {
+      const rel = relative(cwd, m.path);
+      const exp = m.isExported ? "+" : " ";
+      return `  ${exp} ${m.name} → ${rel} (${m.kind})`;
+    })
+    .join("\n");
+}
+
+export function tryInterceptDiscoverPattern(
+  args: { query: string; file?: string },
+  repoMap: RepoMap | undefined,
+  cwd: string,
+): InterceptResult | null {
+  if (!repoMap || !repoMap.isReady) return null;
+  if (args.file) return null;
+
+  const query = args.query.toLowerCase();
+  const safeQuery = escapeLike(query);
+
+  // Exact symbol match first
+  const exactMatches = repoMap.findSymbols(query);
+
+  // Substring symbol match (e.g. "provider" → "createOpenAIProvider", "ProviderConfig")
+  const substringMatches = exactMatches.length === 0 ? repoMap.searchSymbolsSubstring(query) : [];
+
+  // File path match
+  const fileMatches = repoMap.matchFiles(`%${safeQuery}%`, 10);
+
+  if (exactMatches.length === 0 && substringMatches.length === 0 && fileMatches.length === 0)
+    return null;
+
+  const parts: string[] = [`REPO MAP — discover "${args.query}":`];
+
+  if (exactMatches.length > 0) {
+    parts.push(`\nExact symbols (${String(exactMatches.length)}):`);
+    parts.push(formatMatches(exactMatches, cwd));
+  }
+
+  if (substringMatches.length > 0) {
+    parts.push(`\nSymbols containing "${query}" (${String(substringMatches.length)}):`);
+    parts.push(formatSubstringMatches(substringMatches, cwd));
+  }
+
+  if (fileMatches.length > 0) {
+    parts.push(`\nFiles matching "${query}" (${String(fileMatches.length)}):`);
+    parts.push(fileMatches.map((p) => `  ${relative(cwd, p)}`).join("\n"));
+  }
+
+  parts.push(
+    "\nUse read_code or read_file on these paths directly — dispatch is not needed for reading indexed files.",
+  );
+
+  return {
+    intercepted: true,
+    success: true,
+    output: parts.join("\n"),
+    repoMapHit: true,
+  };
 }
 
 export function tryInterceptGrep(
@@ -67,22 +206,41 @@ export function tryInterceptGrep(
   const symbolName = isCleanIdentifier(args.pattern);
   if (!symbolName) return null;
 
-  const matches = repoMap.findSymbols(symbolName);
-  if (matches.length === 0) return null;
+  // Try exact match first
+  const exactMatches = repoMap.findSymbols(symbolName);
+  if (exactMatches.length > 0) {
+    const matchList = formatMatches(exactMatches, cwd);
+    const bestMatch = exactMatches[0] as { path: string; kind: string };
+    const bestRel = relative(cwd, bestMatch.path);
 
-  const matchList = formatMatches(matches, cwd);
-  const bestMatch = matches[0] as { path: string; kind: string };
-  const bestRel = relative(cwd, bestMatch.path);
+    const bestTarget = kindToTarget(bestMatch.kind);
+    const readHint = bestTarget
+      ? `read_code(${bestTarget}, "${symbolName}", "${bestRel}")`
+      : `read_file("${bestRel}")`;
 
-  const output =
-    matches.length === 1
-      ? `REPO MAP — "${symbolName}" is indexed at ${bestRel} (${bestMatch.kind}). ` +
-        `Use read_code(target, "${symbolName}", "${bestRel}") to read it directly. ` +
-        `Grep was skipped — the repo map already knows this symbol's location.`
-      : `REPO MAP — "${symbolName}" found in ${String(matches.length)} files:\n${matchList}\n` +
-        `Use read_code with the correct file path. Grep was skipped.`;
+    const output =
+      exactMatches.length === 1
+        ? `REPO MAP — "${symbolName}" is indexed at ${bestRel} (${bestMatch.kind}). ` +
+          `Use ${readHint} to read it directly. ` +
+          `Grep was skipped — the repo map already knows this symbol's location.`
+        : `REPO MAP — "${symbolName}" found in ${String(exactMatches.length)} files:\n${matchList}\n` +
+          `Use read_code with the correct file path. Grep was skipped.`;
 
-  return { intercepted: true, success: true, output, repoMapHit: true };
+    return { intercepted: true, success: true, output, repoMapHit: true };
+  }
+
+  // Fall back to substring match — "provider" finds "createOpenAIProvider", "ProviderConfig", etc.
+  const substringMatches = repoMap.searchSymbolsSubstring(symbolName);
+  if (substringMatches.length > 0) {
+    const matchList = formatSubstringMatches(substringMatches, cwd);
+    const output =
+      `REPO MAP — no exact symbol "${symbolName}", but ${String(substringMatches.length)} symbol${substringMatches.length === 1 ? "" : "s"} contain it:\n${matchList}\n` +
+      `Use read_code with the correct symbol name and file path. Grep was skipped.`;
+
+    return { intercepted: true, success: true, output, repoMapHit: true };
+  }
+
+  return null;
 }
 
 export function tryInterceptNavigate(
@@ -100,20 +258,38 @@ export function tryInterceptNavigate(
   const symbolName = isCleanIdentifier(query);
   if (!symbolName) return null;
 
-  const matches = repoMap.findSymbols(symbolName);
-  if (matches.length === 0) return null;
+  // Exact match
+  const exactMatches = repoMap.findSymbols(symbolName);
+  if (exactMatches.length > 0) {
+    const matchList = formatMatches(exactMatches, cwd);
+    const bestMatch = exactMatches[0] as { path: string; kind: string };
+    const bestRel = relative(cwd, bestMatch.path);
+    const bestTarget = kindToTarget(bestMatch.kind);
+    const readHint = bestTarget
+      ? `read_code(${bestTarget}, "${symbolName}", "${bestRel}")`
+      : `read_file("${bestRel}")`;
 
-  const matchList = formatMatches(matches, cwd);
-  const bestMatch = matches[0] as { path: string; kind: string };
-  const bestRel = relative(cwd, bestMatch.path);
+    const output =
+      exactMatches.length === 1
+        ? `REPO MAP — "${symbolName}" is indexed at ${bestRel} (${bestMatch.kind}). ` +
+          `Use ${readHint} directly. ` +
+          `${args.action} was skipped.`
+        : `REPO MAP — "${symbolName}" found in ${String(exactMatches.length)} files:\n${matchList}\n` +
+          `Use read_code with the correct file. ${args.action} was skipped.`;
 
-  const output =
-    matches.length === 1
-      ? `REPO MAP — "${symbolName}" is indexed at ${bestRel} (${bestMatch.kind}). ` +
-        `Use read_code(target, "${symbolName}", "${bestRel}") directly. ` +
-        `${args.action} was skipped.`
-      : `REPO MAP — "${symbolName}" found in ${String(matches.length)} files:\n${matchList}\n` +
-        `Use read_code with the correct file. ${args.action} was skipped.`;
+    return { intercepted: true, success: true, output, repoMapHit: true };
+  }
 
-  return { intercepted: true, success: true, output, repoMapHit: true };
+  // Substring match
+  const substringMatches = repoMap.searchSymbolsSubstring(symbolName);
+  if (substringMatches.length > 0) {
+    const matchList = formatSubstringMatches(substringMatches, cwd);
+    const output =
+      `REPO MAP — no exact symbol "${symbolName}", but ${String(substringMatches.length)} symbol${substringMatches.length === 1 ? "" : "s"} contain it:\n${matchList}\n` +
+      `Use read_code with the correct symbol name and file path. ${args.action} was skipped.`;
+
+    return { intercepted: true, success: true, output, repoMapHit: true };
+  }
+
+  return null;
 }

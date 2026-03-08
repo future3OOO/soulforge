@@ -41,17 +41,16 @@ function usageEqual(a: TokenUsage, b: TokenUsage): boolean {
 }
 
 function buildContent(u: TokenUsage): StyledText {
+  const uncachedInput = Math.max(0, u.prompt - u.cacheRead);
   const chunks = [
     fgStyle("#555")(`${icon("tokens")} `),
-    fgStyle("#2d9bf0")(fmt(u.prompt)),
+    fgStyle("#2d9bf0")(fmt(uncachedInput)),
     fgStyle("#444")("↑"),
     fgStyle("#e0a020")(fmt(u.completion)),
     fgStyle("#444")("↓"),
   ];
   if (u.cacheRead > 0) {
-    const pct = u.prompt > 0 ? Math.round((u.cacheRead / u.prompt) * 100) : 0;
-    const color = pct >= 50 ? "#2d5" : pct >= 20 ? "#4a9" : "#666";
-    chunks.push(fgStyle(color)(` saved ${String(pct)}%`));
+    chunks.push(fgStyle("#2d5")(` ${fmt(u.cacheRead)} cached`));
   }
   const sub = u.subagentInput + u.subagentOutput;
   if (sub > 0) {

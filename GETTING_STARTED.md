@@ -151,9 +151,33 @@ Use `/router` to assign different models to different task types:
 | `exploration` | Read-only research, code analysis |
 | `webSearch` | Web search and summarization |
 | `semantic` | Repo map semantic summaries |
+| `trivial` | Single-file reads, small edits (fast/cheap model) |
+| `desloppify` | Cleanup pass after code agents |
 | `default` | Fallback for unmatched tasks |
 
-For example, Opus for planning, Sonnet for coding, Haiku for exploration.
+For example, Opus for planning, Sonnet for coding, Haiku for exploration and trivial tasks.
+
+## Agent Features
+
+Use `/agent-features` to toggle agent behavior. All features default to **on** (when the relevant router model is configured).
+
+| Feature | What it does |
+|---------|-------------|
+| **De-sloppify** | Runs a cleanup agent after code agents to remove sloppy patterns (console.log, commented-out code, redundant checks). Requires a model in the `desloppify` router slot. |
+| **Tier Routing** | Auto-classifies tasks as trivial (single-file, short prompt) and routes them to the `trivial` model for faster, cheaper execution. |
+| **Dispatch Cache** | Caches file reads across dispatch boundaries so the parent agent doesn't re-read files that subagents already returned. |
+| **Target File Validation** | Requires file paths on dispatch tasks — rejects vague instructions before any subagent runs. |
+
+Settings are scoped (project or global) and saved to `.soulforge/config.json`:
+
+```json
+{
+  "agentFeatures": {
+    "desloppify": false,
+    "tierRouting": true
+  }
+}
+```
 
 ## Modes
 

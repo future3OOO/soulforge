@@ -3,7 +3,7 @@ import { useKeyboard, useTerminalDimensions } from "@opentui/react";
 import { useState } from "react";
 import { getGitLog, gitPull, gitPush, gitStash, gitStashPop } from "../core/git/status.js";
 
-import { POPUP_BG, POPUP_HL, PopupRow } from "./shared.js";
+import { Overlay, POPUP_BG, POPUP_HL, PopupRow } from "./shared.js";
 
 const MAX_POPUP_WIDTH = 46;
 const CHROME_ROWS = 7;
@@ -178,14 +178,7 @@ export function GitMenu({
   const innerW = popupWidth - 2;
 
   return (
-    <box
-      position="absolute"
-      flexDirection="column"
-      alignItems="center"
-      justifyContent="center"
-      width="100%"
-      height="100%"
-    >
+    <Overlay>
       <box
         flexDirection="column"
         borderStyle="rounded"
@@ -262,6 +255,6 @@ export function GitMenu({
           </text>
         </PopupRow>
       </box>
-    </box>
+    </Overlay>
   );
 }

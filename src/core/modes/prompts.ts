@@ -1,7 +1,7 @@
 import type { ForgeMode } from "../../types/index.js";
 
 const READ_ONLY =
-  "Read-only mode. No edit/shell/git tools. Available: read_file, grep, glob, web_search, navigate, read_code, analyze, memory, dispatch (explore).";
+  "Read-only mode. No edit/shell/git tools. Available: read_file, grep, glob, web_search, fetch_page, navigate, read_code, analyze, memory, dispatch (explore).";
 
 const MODE_INSTRUCTIONS: Record<ForgeMode, string | null> = {
   default: null,
@@ -25,11 +25,17 @@ const MODE_INSTRUCTIONS: Record<ForgeMode, string | null> = {
     "Respectful but relentless. When satisfied: switch to default mode.",
   ].join("\n"),
   plan: [
-    "PLAN MODE — research and design only. Do NOT implement.",
+    "PLAN MODE — research phase. Implementation tools are unavailable.",
     READ_ONLY,
-    "1. Research with read tools + dispatch. 2. `ask_user` for unclear requirements.",
-    "3. Call `plan` (title, files, steps, verification). 4. STOP — system prompts user to accept/revise/cancel.",
-    "On revision feedback: update plan, call `plan` again, STOP. Never implement.",
+    "Workflow:",
+    "1. Research every file you'll touch: read_file, read_code, navigate, grep. Copy the relevant code.",
+    "2. Ask the user (ask_user) when requirements are ambiguous.",
+    "3. Call `plan` — validation enforces completeness:",
+    "   - files[].code_snippets: paste current code you read (executor sees only the plan, no prior context)",
+    "   - steps[].edits: old→new diffs (old must be verbatim from code_snippets — validation checks this)",
+    "   - steps[].shell: commands to run (deps, tests, builds)",
+    "   - steps[].targetFiles: files each step touches",
+    "4. System prompts user to accept/revise/cancel. On revision: update plan, call `plan` again.",
   ].join("\n"),
 };
 

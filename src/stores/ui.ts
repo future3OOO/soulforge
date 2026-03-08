@@ -18,7 +18,8 @@ export type ModalName =
   | "infoPopup"
   | "repoMapStatus"
   | "setup"
-  | "webSearchSettings";
+  | "webSearchSettings"
+  | "lspStatus";
 
 type Modals = Record<ModalName, boolean>;
 
@@ -38,6 +39,7 @@ const INITIAL_MODALS: Modals = {
   repoMapStatus: false,
   setup: false,
   webSearchSettings: false,
+  lspStatus: false,
 };
 
 interface UIState {
@@ -60,6 +62,7 @@ interface UIState {
   setRouterSlotPicking: (slot: keyof TaskRouter | null) => void;
 
   openCommandPicker: (config: CommandPickerConfig) => void;
+  updatePickerOptions: (options: CommandPickerConfig["options"]) => void;
   openInfoPopup: (config: InfoPopupConfig) => void;
   closeInfoPopup: () => void;
 
@@ -97,6 +100,10 @@ export const useUIStore = create<UIState>()((set) => ({
     set((s) => ({
       commandPickerConfig: config,
       modals: { ...s.modals, commandPicker: true },
+    })),
+  updatePickerOptions: (options) =>
+    set((s) => ({
+      commandPickerConfig: s.commandPickerConfig ? { ...s.commandPickerConfig, options } : null,
     })),
   openInfoPopup: (config) =>
     set((s) => ({

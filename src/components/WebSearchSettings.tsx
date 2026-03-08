@@ -9,7 +9,7 @@ import {
   type SecretKey,
   setSecret,
 } from "../core/secrets.js";
-import { POPUP_BG, POPUP_HL, PopupRow } from "./shared.js";
+import { Overlay, POPUP_BG, POPUP_HL, PopupRow } from "./shared.js";
 
 const MAX_POPUP_WIDTH = 62;
 const CHROME_ROWS = 10;
@@ -235,14 +235,7 @@ export function WebSearchSettings({ visible, onClose }: Props) {
         : "";
 
     return (
-      <box
-        position="absolute"
-        flexDirection="column"
-        alignItems="center"
-        justifyContent="center"
-        width="100%"
-        height="100%"
-      >
+      <Overlay>
         <box
           flexDirection="column"
           borderStyle="rounded"
@@ -293,19 +286,12 @@ export function WebSearchSettings({ visible, onClose }: Props) {
             </text>
           </PopupRow>
         </box>
-      </box>
+      </Overlay>
     );
   }
 
   return (
-    <box
-      position="absolute"
-      flexDirection="column"
-      alignItems="center"
-      justifyContent="center"
-      width="100%"
-      height="100%"
-    >
+    <Overlay>
       <box
         flexDirection="column"
         borderStyle="rounded"
@@ -448,6 +434,6 @@ export function WebSearchSettings({ visible, onClose }: Props) {
           </text>
         </PopupRow>
       </box>
-    </box>
+    </Overlay>
   );
 }

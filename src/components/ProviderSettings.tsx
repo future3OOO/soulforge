@@ -9,7 +9,7 @@ import type {
   ThinkingMode,
 } from "../types/index.js";
 import type { ConfigScope } from "./shared.js";
-import { CONFIG_SCOPES, POPUP_BG, POPUP_HL, PopupRow } from "./shared.js";
+import { CONFIG_SCOPES, Overlay, POPUP_BG, POPUP_HL, PopupRow } from "./shared.js";
 
 const MAX_POPUP_WIDTH = 60;
 const CHROME_ROWS = 9;
@@ -297,14 +297,7 @@ export function ProviderSettings({
   const valW = 10;
 
   return (
-    <box
-      position="absolute"
-      flexDirection="column"
-      alignItems="center"
-      justifyContent="center"
-      width="100%"
-      height="100%"
-    >
+    <Overlay>
       <box
         flexDirection="column"
         borderStyle="rounded"
@@ -441,6 +434,6 @@ export function ProviderSettings({
           </text>
         </PopupRow>
       </box>
-    </box>
+    </Overlay>
   );
 }

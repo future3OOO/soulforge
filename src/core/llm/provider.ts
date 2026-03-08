@@ -31,6 +31,51 @@ export async function checkProviders(): Promise<ProviderStatus[]> {
   );
 }
 
+let activeProviderId: string | null = null;
+
+function extractProviderId(modelId: string): string {
+  const slashIdx = modelId.indexOf("/");
+  return slashIdx >= 0 ? modelId.slice(0, slashIdx) : "";
+}
+
+/**
+ * Notify the provider system that the active model changed.
+ * Deactivates the previous provider and activates the new one if they differ.
+ */
+export async function notifyProviderSwitch(newModelId: string): Promise<void> {
+  const newProviderId = extractProviderId(newModelId);
+  if (newProviderId === activeProviderId) return;
+
+  const oldProvider = activeProviderId ? getProvider(activeProviderId) : null;
+  if (oldProvider?.onDeactivate) {
+    oldProvider.onDeactivate();
+  }
+
+  activeProviderId = newProviderId;
+
+  const newProvider = getProvider(newProviderId);
+  if (newProvider?.onActivate) {
+    await newProvider.onActivate();
+  }
+}
+
+/**
+ * Deactivate the current provider (e.g. on app shutdown).
+ */
+export function deactivateCurrentProvider(): void {
+  if (activeProviderId) {
+    const provider = getProvider(activeProviderId);
+    if (provider?.onDeactivate) {
+      provider.onDeactivate();
+    }
+    activeProviderId = null;
+  }
+}
+
+export function getActiveProviderId(): string | null {
+  return activeProviderId;
+}
+
 /**
  * Resolve a model ID (e.g. "anthropic/claude-sonnet-4") to a LanguageModel.
  * Gateway path: "gateway/anthropic/claude-opus-4.6" → gateway("anthropic/claude-opus-4.6")

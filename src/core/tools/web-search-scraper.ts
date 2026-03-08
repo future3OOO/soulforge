@@ -12,6 +12,8 @@ interface SearchResult {
   snippet: string;
 }
 
+let lastBraveError: string | null = null;
+
 const searchCache = new Map<string, { results: SearchResult[]; ts: number; _backend: string }>();
 const CACHE_TTL = 5 * 60_000;
 const MAX_CACHE_SIZE = 100;
@@ -54,7 +56,14 @@ async function braveSearch(query: string, count: number): Promise<SearchResult[]
     signal: AbortSignal.timeout(10_000),
   });
 
-  if (!res.ok) return [];
+  if (!res.ok) {
+    lastBraveError =
+      res.status === 401 || res.status === 403
+        ? `Brave API key invalid (HTTP ${String(res.status)}) — falling back to DuckDuckGo`
+        : `Brave API error (HTTP ${String(res.status)}) — falling back to DuckDuckGo`;
+    return [];
+  }
+  lastBraveError = null;
 
   const data = (await res.json()) as {
     web?: { results?: Array<{ title?: string; url?: string; description?: string }> };
@@ -152,6 +161,7 @@ export const webSearchScraper = {
     try {
       let results = await braveSearch(query, count);
       let backend = "brave";
+      const warning = lastBraveError;
 
       if (results.length === 0) {
         results = await duckduckgoSearch(query, count);
@@ -164,10 +174,19 @@ export const webSearchScraper = {
         if (oldest) searchCache.delete(oldest);
       }
       searchCache.set(cacheKey, { results, ts: Date.now(), _backend: backend });
-      return { success: true, output: formatResults(query, results), backend };
+      const output = formatResults(query, results);
+      return {
+        success: true,
+        output: warning ? `⚠ ${warning}\n\n${output}` : output,
+        backend,
+      };
     } catch (err: unknown) {
       const msg = err instanceof Error ? err.message : String(err);
-      return { success: false, output: `Search error: ${msg}`, error: `Search error: ${msg}` };
+      return {
+        success: false,
+        output: `Search failed: ${msg}. If you know a specific URL, use fetch_page on it directly instead of searching.`,
+        error: msg,
+      };
     }
   },
 };

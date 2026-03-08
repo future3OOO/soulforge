@@ -6,7 +6,7 @@ import { PROVIDER_CONFIGS } from "../core/llm/models.js";
 import { checkProviders, type ProviderStatus } from "../core/llm/provider.js";
 import { useGroupedModels } from "../hooks/useGroupedModels.js";
 import { useProviderModels } from "../hooks/useProviderModels.js";
-import { POPUP_BG, POPUP_HL, PopupRow, SPINNER_FRAMES_FILLED } from "./shared.js";
+import { Overlay, POPUP_BG, POPUP_HL, PopupRow, SPINNER_FRAMES_FILLED } from "./shared.js";
 
 const MAX_POPUP_WIDTH = 60;
 
@@ -229,14 +229,7 @@ export const LlmSelector = memo(function LlmSelector({
 
   if (level === "provider") {
     return (
-      <box
-        position="absolute"
-        flexDirection="column"
-        alignItems="center"
-        justifyContent="center"
-        width="100%"
-        height="100%"
-      >
+      <Overlay>
         <box
           flexDirection="column"
           borderStyle="rounded"
@@ -292,7 +285,7 @@ export const LlmSelector = memo(function LlmSelector({
             </text>
           </PopupRow>
         </box>
-      </box>
+      </Overlay>
     );
   }
 
@@ -305,14 +298,7 @@ export const LlmSelector = memo(function LlmSelector({
       PROVIDER_CONFIGS.find((p) => p.id === expandedProvider)?.name ?? expandedProvider ?? "";
 
     return (
-      <box
-        position="absolute"
-        flexDirection="column"
-        alignItems="center"
-        justifyContent="center"
-        width="100%"
-        height="100%"
-      >
+      <Overlay>
         <box
           flexDirection="column"
           borderStyle="rounded"
@@ -429,7 +415,7 @@ export const LlmSelector = memo(function LlmSelector({
             </text>
           </PopupRow>
         </box>
-      </box>
+      </Overlay>
     );
   }
 
@@ -441,14 +427,7 @@ export const LlmSelector = memo(function LlmSelector({
     : (PROVIDER_CONFIGS.find((p) => p.id === expandedProvider)?.name ?? expandedProvider ?? "");
 
   return (
-    <box
-      position="absolute"
-      flexDirection="column"
-      alignItems="center"
-      justifyContent="center"
-      width="100%"
-      height="100%"
-    >
+    <Overlay>
       <box
         flexDirection="column"
         borderStyle="rounded"
@@ -559,6 +538,6 @@ export const LlmSelector = memo(function LlmSelector({
           </text>
         </PopupRow>
       </box>
-    </box>
+    </Overlay>
   );
 });

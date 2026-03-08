@@ -18,12 +18,11 @@ export function buildInteractiveTools(
   return {
     plan: tool({
       description:
-        "Create an implementation plan before executing multi-step tasks. " +
-        "The user MUST confirm before you proceed. " +
-        "CRITICAL: Research BEFORE calling plan — read every file you'll touch so the plan has exact details. " +
-        "The plan must be SELF-CONTAINED: exact file paths, symbol names, signatures, and implementation details " +
-        "so execution requires ZERO exploration or dispatch. Every file and symbol you'll touch must be listed. " +
-        "If you can't fill in exact details, you haven't researched enough — go read the code first.",
+        "Create an implementation plan. User confirms before execution. " +
+        "Research every file first — read_file, read_code, navigate. " +
+        "The plan is self-contained: file paths, symbols, code_snippets (current code), and edits (old→new diffs). " +
+        "The executor runs in a fresh context and only sees the plan markdown. " +
+        "Validation enforces: modified files must have code_snippets, steps with modify targets must have edits.",
       inputSchema: z.object({
         title: z.string().describe("Short plan title (2-6 words)"),
         context: z.string().describe("What problem this solves and why these changes are needed"),
@@ -58,6 +57,22 @@ export function buildInteractiveTools(
                 .optional()
                 .catch(undefined)
                 .describe("Symbols to change in this file — include for all modify/delete actions"),
+              code_snippets: z
+                .array(
+                  z.object({
+                    lines: z.string().describe("Line range, e.g. '10-45' or 'full'"),
+                    code: z
+                      .string()
+                      .describe("Exact current code copied from read_file/read_code output"),
+                  }),
+                )
+                .optional()
+                .catch(undefined)
+                .describe(
+                  "Current code from this file that the executor needs to see. " +
+                    "Paste the relevant sections you read during research — " +
+                    "the executor may have NO prior context (Clear & Implement clears everything).",
+                ),
             }),
           )
           .describe("All files to change — REQUIRED"),
@@ -66,14 +81,35 @@ export function buildInteractiveTools(
             z.object({
               id: z.string().describe("Step ID (step-1, step-2, etc.)"),
               label: z.string().describe("Short step label for the checklist"),
+              targetFiles: z
+                .array(z.string())
+                .optional()
+                .catch(undefined)
+                .describe("File paths this step touches — executor opens only these"),
+              edits: z
+                .array(
+                  z.object({
+                    file: z.string().describe("File path to edit"),
+                    old: z.string().describe("Exact text to find (copy from code_snippets)"),
+                    new: z.string().describe("Replacement text"),
+                  }),
+                )
+                .optional()
+                .catch(undefined)
+                .describe(
+                  "Concrete edit_file operations for this step. " +
+                    "old must be a verbatim substring of the current file content. " +
+                    "Omit only for create/delete/shell steps.",
+                ),
+              shell: z
+                .string()
+                .optional()
+                .describe("Shell command to run in this step (e.g. install deps, run tests)"),
               details: z
                 .string()
                 .optional()
                 .default("")
-                .describe(
-                  "Exact implementation instructions: what to read_code, what to edit_file (old → new), " +
-                    "what to shell/project. Must be executable without further research.",
-                ),
+                .describe("Additional context if edits alone aren't sufficient"),
             }),
           )
           .describe("Ordered implementation steps with full details"),
@@ -84,6 +120,43 @@ export function buildInteractiveTools(
           .describe("How to verify the changes work"),
       }),
       execute: async (args) => {
+        const errors: string[] = [];
+        const modifiedFiles = new Set(
+          args.files.filter((f) => f.action === "modify").map((f) => f.path),
+        );
+
+        for (const f of args.files) {
+          if (f.action === "modify" && (!f.code_snippets || f.code_snippets.length === 0)) {
+            errors.push(
+              `\`${f.path}\` is marked modify but has no code_snippets. Read the file and paste the relevant code.`,
+            );
+          }
+        }
+
+        const stepEditFiles = new Set<string>();
+        for (const s of args.steps) {
+          if (s.edits) {
+            for (const e of s.edits) stepEditFiles.add(e.file);
+          }
+        }
+        for (const path of modifiedFiles) {
+          if (!stepEditFiles.has(path)) {
+            errors.push(
+              `\`${path}\` is listed as modify but no step has edits for it. Add concrete old→new diffs.`,
+            );
+          }
+        }
+
+        if (errors.length > 0) {
+          return {
+            success: false,
+            output:
+              `Plan rejected by validation (${String(errors.length)} issue${errors.length > 1 ? "s" : ""}):\n` +
+              errors.map((e) => `- ${e}`).join("\n") +
+              "\n\nResearch more, then call plan again with the missing data.",
+          };
+        }
+
         const lines = [`# ${args.title}`, "", `## Context`, "", args.context, "", `## Files`];
         for (const f of args.files) {
           lines.push(`- **${f.action}** \`${f.path}\` — ${f.description}`);
@@ -93,10 +166,35 @@ export function buildInteractiveTools(
               lines.push(`  - ${s.action} \`${s.name}\` (${s.kind}${loc}): ${s.details}`);
             }
           }
+          if (f.code_snippets?.length) {
+            for (const snap of f.code_snippets) {
+              lines.push(`  - **current code** [lines ${snap.lines}]:`);
+              lines.push("    ```", ...snap.code.split("\n").map((l) => `    ${l}`), "    ```");
+            }
+          }
         }
         lines.push("", "## Steps");
         for (const s of args.steps) {
-          lines.push(`### ${s.id}. ${s.label}`, "", s.details, "");
+          lines.push(`### ${s.id}. ${s.label}`);
+          if (s.targetFiles?.length) {
+            lines.push("", `Files: ${s.targetFiles.map((f) => `\`${f}\``).join(", ")}`);
+          }
+          if (s.edits?.length) {
+            for (const e of s.edits) {
+              lines.push("", `**edit** \`${e.file}\`:`);
+              lines.push("```diff");
+              for (const ol of e.old.split("\n")) lines.push(`- ${ol}`);
+              for (const nl of e.new.split("\n")) lines.push(`+ ${nl}`);
+              lines.push("```");
+            }
+          }
+          if (s.shell) {
+            lines.push("", "```sh", s.shell, "```");
+          }
+          if (s.details) {
+            lines.push("", s.details);
+          }
+          lines.push("");
         }
         if (args.verification?.length) {
           lines.push("## Verification");
@@ -132,7 +230,7 @@ export function buildInteractiveTools(
             success: true,
             file: planFile,
             output:
-              "Plan confirmed by user. Proceed with execution step by step. Call update_plan_step to mark steps as active/done/skipped.",
+              "Plan confirmed. Execute step by step — update_plan_step(id, 'active') then update_plan_step(id, 'done') for each.",
           };
         }
         if (action === "clear_execute") {
@@ -152,7 +250,9 @@ export function buildInteractiveTools(
         return {
           success: true,
           file: planFile,
-          output: `User wants changes to the plan: ${action}`,
+          output:
+            `User wants changes: "${action}". ` +
+            "Research further if needed, then call `plan` again with the updated plan.",
         };
       },
     }),

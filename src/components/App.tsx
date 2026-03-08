@@ -17,6 +17,7 @@ import {
 import { ContextManager } from "../core/context/manager.js";
 import { icon, providerIcon, UI_ICONS } from "../core/icons.js";
 import { fetchOpenRouterMetadata } from "../core/llm/models.js";
+import { notifyProviderSwitch } from "../core/llm/provider.js";
 import { initForbidden } from "../core/security/forbidden.js";
 import { SessionManager } from "../core/sessions/manager.js";
 import { getMissingRequired } from "../core/setup/prerequisites.js";
@@ -51,6 +52,7 @@ import { InfoPopup } from "./InfoPopup.js";
 import { InputBox } from "./InputBox.js";
 import { LandingPage } from "./LandingPage.js";
 import { LlmSelector } from "./LlmSelector.js";
+import { LspStatusPopup } from "./LspStatusPopup.js";
 import { CodeExpandedProvider } from "./Markdown.js";
 import { MemoryIndicator } from "./MemoryIndicator.js";
 import { RAIL_BORDER, StaticMessage } from "./MessageList.js";
@@ -216,7 +218,7 @@ function nativeCopy(text: string): void {
 
 export function App({ config, projectConfig, resumeSessionId, bootProviders, bootPrereqs }: Props) {
   const renderer = useRenderer();
-  const { height: termHeight } = useTerminalDimensions();
+  const { height: termHeight, width: termWidth } = useTerminalDimensions();
   const [shutdownPhase, setShutdownPhase] = useState(-1);
   const savedSessionIdRef = useRef<string | null>(null);
   const [shutdownGhostTick, setShutdownGhostTick] = useState(0);
@@ -277,7 +279,9 @@ export function App({ config, projectConfig, resumeSessionId, bootProviders, boo
   // Tiered config: project > global
   const [globalConfig, setGlobalConfig] = useState<AppConfig>(config);
   const [projConfig, setProjConfig] = useState<Partial<AppConfig> | null>(projectConfig ?? null);
-  const [routerScope, setRouterScope] = useState<ConfigScope>("project");
+  const [routerScope, setRouterScope] = useState<ConfigScope>(() =>
+    projectConfig && "taskRouter" in projectConfig ? "project" : "global",
+  );
   const effectiveConfig = useMemo(
     () => mergeConfigs(globalConfig, projConfig),
     [globalConfig, projConfig],
@@ -855,14 +859,19 @@ export function App({ config, projectConfig, resumeSessionId, bootProviders, boo
           setShowReasoning: uiState.setShowReasoning,
           openSetup: () => uiState.openModal("setup"),
           openEditorSettings: () => uiState.openModal("editorSettings"),
-          openRouterSettings: () => uiState.openModal("routerSettings"),
+          openRouterSettings: () => {
+            setRouterScope(detectScope("taskRouter"));
+            uiState.openModal("routerSettings");
+          },
           openProviderSettings: () => uiState.openModal("providerSettings"),
           openWebSearchSettings: () => uiState.openModal("webSearchSettings"),
+          openLspStatus: () => uiState.openModal("lspStatus"),
           openCommandPicker: (pickerConfig) => uiState.openCommandPicker(pickerConfig),
           openInfoPopup: (popupConfig) => uiState.openInfoPopup(popupConfig),
           toggleChanges: () => uiState.toggleChangesExpanded(),
           saveToScope,
           detectScope,
+          agentFeatures: effectiveConfig.agentFeatures,
         });
         return;
       }
@@ -890,6 +899,7 @@ export function App({ config, projectConfig, resumeSessionId, bootProviders, boo
       effectiveConfig.compaction?.strategy,
       saveToScope,
       detectScope,
+      effectiveConfig.agentFeatures,
     ],
   );
 
@@ -920,8 +930,11 @@ export function App({ config, projectConfig, resumeSessionId, bootProviders, boo
       return;
     }
     if (focusMode === "editor") {
-      // Editor is focused — let useEditorInput handle all keys for Neovim.
-      // Only Ctrl+E (toggle) gets through (handled above).
+      // Editor is focused — only handle Ctrl+C (exit) here; all other keys go to Neovim.
+      if (evt.ctrl && evt.name === "c") {
+        handleExit();
+        return;
+      }
       return;
     }
     if (evt.ctrl && evt.name === "o") {
@@ -1061,31 +1074,43 @@ export function App({ config, projectConfig, resumeSessionId, bootProviders, boo
             {icon("ghost")} SoulForge
           </text>
         </box>
-        <box gap={1} flexShrink={1} flexDirection="row" justifyContent="center">
+        <box gap={1} flexShrink={1} flexDirection="row" justifyContent="center" overflow="hidden">
           <ContextBar contextManager={contextManager} modelId={chat.activeModel} />
           <text fg="#333">│</text>
           <TokenDisplay />
-          <text fg="#333">│</text>
-          <MemoryIndicator />
-          <text fg="#333">│</text>
-          <RepoMapIndicator />
-          <text fg="#333">│</text>
-          {git.isRepo ? (
-            <text fg={git.isDirty ? "#FF8C00" : "#2d5"} truncate>
-              {UI_ICONS.git} {truncate(git.branch ?? "HEAD", 30)}
-              {git.isDirty ? "*" : ""}
-            </text>
-          ) : (
-            <text fg="#333">{UI_ICONS.git} no repo</text>
+          {termWidth >= 90 && (
+            <>
+              <text fg="#333">│</text>
+              <MemoryIndicator />
+            </>
           )}
-          {lspServers.length > 0 && (
+          {termWidth >= 100 && (
+            <>
+              <text fg="#333">│</text>
+              <RepoMapIndicator />
+            </>
+          )}
+          {termWidth >= 80 && (
+            <>
+              <text fg="#333">│</text>
+              {git.isRepo ? (
+                <text fg={git.isDirty ? "#FF8C00" : "#2d5"} truncate>
+                  {UI_ICONS.git} {truncate(git.branch ?? "HEAD", termWidth >= 120 ? 30 : 15)}
+                  {git.isDirty ? "*" : ""}
+                </text>
+              ) : (
+                <text fg="#333">{UI_ICONS.git} no repo</text>
+              )}
+            </>
+          )}
+          {termWidth >= 100 && lspServers.length > 0 && (
             <>
               <text fg="#333">│</text>
               <text fg="#2d5" truncate>
                 {icon("brain")}{" "}
-                {lspServers
-                  .map((s) => LSP_SHORT_NAMES[s.command.split("/").pop() ?? ""] ?? s.language)
-                  .join(" ")}
+                {LSP_SHORT_NAMES[lspServers[0]?.command.split("/").pop() ?? ""] ??
+                  lspServers[0]?.language}
+                {lspServers.length > 1 ? ` +${String(lspServers.length - 1)}` : ""}
               </text>
             </>
           )}
@@ -1121,7 +1146,7 @@ export function App({ config, projectConfig, resumeSessionId, bootProviders, boo
             </>
           )}
         </box>
-        <BrandTag />
+        {termWidth >= 80 && <BrandTag />}
       </box>
 
       <TabBar tabs={tabMgr.tabs} activeTabId={tabMgr.activeTabId} onSwitch={tabMgr.switchTab} />
@@ -1283,115 +1308,18 @@ export function App({ config, projectConfig, resumeSessionId, bootProviders, boo
             </>
           )}
         </box>
+      </box>
 
-        <LlmSelector
-          visible={modals.llmSelector}
-          activeModel={chat.activeModel}
-          onSelect={(modelId) => {
-            const slot = useUIStore.getState().routerSlotPicking;
-            if (slot) {
-              const current = effectiveConfig.taskRouter ?? {
-                planning: null,
-                coding: null,
-                exploration: null,
-                webSearch: null,
-                compact: null,
-                semantic: null,
-                default: null,
-              };
-              const updated = { ...current, [slot]: modelId };
-              saveToScope({ taskRouter: updated }, routerScope);
-              useUIStore.getState().setRouterSlotPicking(null);
-            } else {
-              chat.setActiveModel(modelId);
-            }
-          }}
-          onClose={closeLlmSelector}
-        />
+      <box flexShrink={0} width="100%">
+        <Footer />
+      </box>
 
-        <GitCommitModal
-          visible={modals.gitCommit}
-          cwd={cwd}
-          coAuthor={chat.coAuthorCommits}
-          onClose={getCloser("gitCommit")}
-          onCommitted={(msg) => addSystemMessage(`Committed: ${msg}`)}
-          onRefresh={refreshGit}
-        />
-
-        <GitMenu
-          visible={modals.gitMenu}
-          cwd={cwd}
-          onClose={getCloser("gitMenu")}
-          onCommit={onGitMenuCommit}
-          onSuspend={handleSuspend}
-          onSystemMessage={addSystemMessage}
-          onRefresh={refreshGit}
-        />
-
-        <SessionPicker
-          visible={modals.sessionPicker}
-          cwd={cwd}
-          onClose={getCloser("sessionPicker")}
-          onRestore={(sessionId) => {
-            const data = sessionManager.loadSession(sessionId);
-            if (data) {
-              tabMgr.restoreFromMeta(data.meta.tabs, data.meta.activeTabId, data.tabMessages);
-              setForgeMode(data.meta.forgeMode);
-              restoreSessionMemory(data.meta.id);
-              setExitSessionId(data.meta.id);
-            }
-          }}
-          onSystemMessage={addSystemMessage}
-        />
-
-        <SkillSearch
-          visible={modals.skillSearch}
-          contextManager={contextManager}
-          onClose={getCloser("skillSearch")}
-          onSystemMessage={addSystemMessage}
-        />
-
-        <HelpPopup visible={modals.helpPopup} onClose={getCloser("helpPopup")} />
-
-        <EditorSettings
-          visible={modals.editorSettings}
-          settings={effectiveConfig.editorIntegration}
-          initialScope={detectScope("editorIntegration")}
-          onUpdate={(settings: EditorIntegration, toScope, fromScope) => {
-            saveToScope({ editorIntegration: settings }, toScope, fromScope);
-          }}
-          onClose={getCloser("editorSettings")}
-        />
-
-        <ProviderSettings
-          visible={modals.providerSettings}
-          globalConfig={globalConfig}
-          projectConfig={projConfig}
-          onUpdate={(patch, toScope, fromScope) => saveToScope(patch, toScope, fromScope)}
-          onClose={getCloser("providerSettings")}
-        />
-
-        <WebSearchSettings
-          visible={modals.webSearchSettings}
-          onClose={getCloser("webSearchSettings")}
-        />
-
-        <RouterSettings
-          visible={modals.routerSettings && !routerSlotPicking}
-          router={effectiveConfig.taskRouter}
-          activeModel={chat.activeModel}
-          scope={routerScope}
-          onScopeChange={(toScope, fromScope) => {
-            setRouterScope(toScope);
-            if (effectiveConfig.taskRouter) {
-              saveToScope({ taskRouter: effectiveConfig.taskRouter }, toScope, fromScope);
-            }
-          }}
-          onPickSlot={(slot) => {
-            useUIStore.getState().setRouterSlotPicking(slot);
-            useUIStore.getState().openModal("llmSelector");
-          }}
-          onClearSlot={(slot) => {
+      <LlmSelector
+        visible={modals.llmSelector}
+        activeModel={chat.activeModel}
+        onSelect={(modelId) => {
+          const slot = useUIStore.getState().routerSlotPicking;
+          if (slot) {
             const current = effectiveConfig.taskRouter ?? {
               planning: null,
               coding: null,
@@ -1399,40 +1327,144 @@ export function App({ config, projectConfig, resumeSessionId, bootProviders, boo
               webSearch: null,
               compact: null,
               semantic: null,
+              trivial: null,
+              desloppify: null,
               default: null,
             };
-            const updated = { ...current, [slot]: null };
+            const updated = { ...current, [slot]: modelId };
             saveToScope({ taskRouter: updated }, routerScope);
-          }}
-          onClose={getCloser("routerSettings")}
-        />
+            useUIStore.getState().setRouterSlotPicking(null);
+          } else {
+            chat.setActiveModel(modelId);
+            notifyProviderSwitch(modelId);
+          }
+        }}
+        onClose={closeLlmSelector}
+      />
 
-        <SetupGuide
-          visible={modals.setup}
-          onClose={getCloser("setup")}
-          onSystemMessage={addSystemMessage}
-        />
+      <GitCommitModal
+        visible={modals.gitCommit}
+        cwd={cwd}
+        coAuthor={chat.coAuthorCommits}
+        onClose={getCloser("gitCommit")}
+        onCommitted={(msg) => addSystemMessage(`Committed: ${msg}`)}
+        onRefresh={refreshGit}
+      />
 
-        <ErrorLog
-          visible={modals.errorLog}
-          messages={chat.messages}
-          onClose={getCloser("errorLog")}
-        />
+      <GitMenu
+        visible={modals.gitMenu}
+        cwd={cwd}
+        onClose={getCloser("gitMenu")}
+        onCommit={onGitMenuCommit}
+        onSuspend={handleSuspend}
+        onSystemMessage={addSystemMessage}
+        onRefresh={refreshGit}
+      />
 
-        <CommandPicker
-          visible={modals.commandPicker}
-          config={commandPickerConfig}
-          onClose={getCloser("commandPicker")}
-        />
+      <SessionPicker
+        visible={modals.sessionPicker}
+        cwd={cwd}
+        onClose={getCloser("sessionPicker")}
+        onRestore={(sessionId) => {
+          const data = sessionManager.loadSession(sessionId);
+          if (data) {
+            tabMgr.restoreFromMeta(data.meta.tabs, data.meta.activeTabId, data.tabMessages);
+            setForgeMode(data.meta.forgeMode);
+            restoreSessionMemory(data.meta.id);
+            setExitSessionId(data.meta.id);
+          }
+        }}
+        onSystemMessage={addSystemMessage}
+      />
 
-        <InfoPopup visible={modals.infoPopup} config={infoPopupConfig} onClose={closeInfoPopup} />
+      <SkillSearch
+        visible={modals.skillSearch}
+        contextManager={contextManager}
+        onClose={getCloser("skillSearch")}
+        onSystemMessage={addSystemMessage}
+      />
 
-        <RepoMapStatusPopup visible={modals.repoMapStatus} onClose={getCloser("repoMapStatus")} />
-      </box>
+      <HelpPopup visible={modals.helpPopup} onClose={getCloser("helpPopup")} />
 
-      <box flexShrink={0} width="100%">
-        <Footer />
-      </box>
+      <EditorSettings
+        visible={modals.editorSettings}
+        settings={effectiveConfig.editorIntegration}
+        initialScope={detectScope("editorIntegration")}
+        onUpdate={(settings: EditorIntegration, toScope, fromScope) => {
+          saveToScope({ editorIntegration: settings }, toScope, fromScope);
+        }}
+        onClose={getCloser("editorSettings")}
+      />
+
+      <ProviderSettings
+        visible={modals.providerSettings}
+        globalConfig={globalConfig}
+        projectConfig={projConfig}
+        onUpdate={(patch, toScope, fromScope) => saveToScope(patch, toScope, fromScope)}
+        onClose={getCloser("providerSettings")}
+      />
+
+      <WebSearchSettings
+        visible={modals.webSearchSettings}
+        onClose={getCloser("webSearchSettings")}
+      />
+
+      <RouterSettings
+        visible={modals.routerSettings && !routerSlotPicking}
+        router={effectiveConfig.taskRouter}
+        activeModel={chat.activeModel}
+        scope={routerScope}
+        onScopeChange={(toScope, fromScope) => {
+          setRouterScope(toScope);
+          if (effectiveConfig.taskRouter) {
+            saveToScope({ taskRouter: effectiveConfig.taskRouter }, toScope, fromScope);
+          }
+        }}
+        onPickSlot={(slot) => {
+          useUIStore.getState().setRouterSlotPicking(slot);
+          useUIStore.getState().openModal("llmSelector");
+        }}
+        onClearSlot={(slot) => {
+          const current = effectiveConfig.taskRouter ?? {
+            planning: null,
+            coding: null,
+            exploration: null,
+            webSearch: null,
+            compact: null,
+            semantic: null,
+            trivial: null,
+            desloppify: null,
+            default: null,
+          };
+          const updated = { ...current, [slot]: null };
+          saveToScope({ taskRouter: updated }, routerScope);
+        }}
+        onClose={getCloser("routerSettings")}
+      />
+
+      <SetupGuide
+        visible={modals.setup}
+        onClose={getCloser("setup")}
+        onSystemMessage={addSystemMessage}
+      />
+
+      <ErrorLog
+        visible={modals.errorLog}
+        messages={chat.messages}
+        onClose={getCloser("errorLog")}
+      />
+
+      <CommandPicker
+        visible={modals.commandPicker}
+        config={commandPickerConfig}
+        onClose={getCloser("commandPicker")}
+      />
+
+      <InfoPopup visible={modals.infoPopup} config={infoPopupConfig} onClose={closeInfoPopup} />
+
+      <RepoMapStatusPopup visible={modals.repoMapStatus} onClose={getCloser("repoMapStatus")} />
+
+      <LspStatusPopup visible={modals.lspStatus} onClose={getCloser("lspStatus")} />
     </box>
   );
 }

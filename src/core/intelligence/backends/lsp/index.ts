@@ -544,6 +544,46 @@ export class LspBackend implements IntelligenceBackend {
     return servers;
   }
 
+  /** Get detailed info about active servers for the LSP status popup */
+  getDetailedServers(): Array<{
+    language: string;
+    command: string;
+    args: string[];
+    pid: number | null;
+    cwd: string;
+    openFiles: number;
+    diagnosticCount: number;
+    diagnostics: Array<{ file: string; message: string; severity: number }>;
+    ready: boolean;
+  }> {
+    const servers: Array<{
+      language: string;
+      command: string;
+      args: string[];
+      pid: number | null;
+      cwd: string;
+      openFiles: number;
+      diagnosticCount: number;
+      diagnostics: Array<{ file: string; message: string; severity: number }>;
+      ready: boolean;
+    }> = [];
+    for (const [key, client] of this.standaloneClients) {
+      const language = key.split(":")[0] ?? "unknown";
+      servers.push({
+        language,
+        command: client.serverCommand,
+        args: client.serverArgs,
+        pid: client.pid,
+        cwd: client.workspaceRoot,
+        openFiles: client.openDocumentCount,
+        diagnosticCount: client.diagnosticCount,
+        diagnostics: client.getRecentDiagnostics(10),
+        ready: client.isReady,
+      });
+    }
+    return servers;
+  }
+
   /** Get PIDs of all running LSP server processes */
   getChildPids(): number[] {
     const pids: number[] = [];

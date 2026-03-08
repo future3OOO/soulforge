@@ -16,6 +16,10 @@ export interface TaskRouter {
   webSearch: string | null;
   compact: string | null;
   semantic: string | null;
+  /** Lightweight model for trivial dispatch tasks (single-file reads, small edits) */
+  trivial: string | null;
+  /** Model for de-sloppify cleanup pass after code agents */
+  desloppify: string | null;
   default: string | null;
 }
 
@@ -193,6 +197,17 @@ export interface CompactionConfig {
   llmExtraction?: boolean;
 }
 
+export interface AgentFeatures {
+  /** Run a cleanup agent after code agents to remove sloppy patterns. Default: true (when desloppify model is set in /router) */
+  desloppify?: boolean;
+  /** Auto-classify tasks as trivial and route to cheaper models. Default: true (when trivial model is set in /router) */
+  tierRouting?: boolean;
+  /** Cache file reads across dispatch boundaries so parent doesn't re-read. Default: true */
+  dispatchCache?: boolean;
+  /** Require targetFiles on dispatch tasks — reject vague instructions. Default: true */
+  targetFileValidation?: boolean;
+}
+
 export interface AppConfig {
   defaultModel: string;
   routerRules: RouterRule[];
@@ -236,6 +251,7 @@ export interface AppConfig {
   repoMap?: boolean;
   /** Semantic summary mode: "off" (default), "ast" (extract docstrings), "llm" (AI-generated). Boolean for backward compat: true → "llm", false → "off". */
   semanticSummaries?: "off" | "ast" | "llm" | boolean;
+  agentFeatures?: AgentFeatures;
 }
 
 // ─── Focus Types ───

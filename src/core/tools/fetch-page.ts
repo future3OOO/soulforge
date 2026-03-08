@@ -75,29 +75,50 @@ function getCached(url: string): { content: string; backend: string } | null {
   return { content: entry.content, backend: entry.backend };
 }
 
+let lastJinaWarning: string | null = null;
+
 async function jinaRead(url: string): Promise<{ content: string; backend: string } | null> {
-  try {
-    const headers: Record<string, string> = {
-      Accept: "text/markdown",
-    };
-    const apiKey = getSecret("jina-api-key");
-    const keyed = !!apiKey;
-    if (apiKey) {
-      headers.Authorization = `Bearer ${apiKey}`;
-    }
+  const apiKey = getSecret("jina-api-key");
+  const keyed = !!apiKey;
 
-    const res = await fetch(`https://r.jina.ai/${url}`, {
-      headers,
-      signal: AbortSignal.timeout(15_000),
-    });
+  const tryFetch = async (
+    useKey: boolean,
+  ): Promise<{ content: string; backend: string } | null> => {
+    try {
+      const headers: Record<string, string> = { Accept: "text/markdown" };
+      if (useKey && apiKey) {
+        headers.Authorization = `Bearer ${apiKey}`;
+      }
+      const res = await fetch(`https://r.jina.ai/${url}`, {
+        headers,
+        signal: AbortSignal.timeout(15_000),
+      });
+      if (!res.ok) {
+        if (useKey && (res.status === 401 || res.status === 403)) {
+          lastJinaWarning = `Jina API key invalid (HTTP ${String(res.status)}) — falling back to free tier`;
+          return null;
+        }
+        return null;
+      }
+      const text = await res.text();
+      if (text && text.length > 100) {
+        return { content: text, backend: useKey ? "jina-api" : "jina" };
+      }
+    } catch {}
+    return null;
+  };
 
-    if (!res.ok) return null;
+  const result = await tryFetch(keyed);
+  if (result) {
+    lastJinaWarning = null;
+    return result;
+  }
 
-    const text = await res.text();
-    if (text && text.length > 100) {
-      return { content: text, backend: keyed ? "jina-api" : "jina" };
-    }
-  } catch {}
+  if (keyed) {
+    const fallback = await tryFetch(false);
+    if (fallback) return fallback;
+  }
+
   return null;
 }
 
@@ -148,7 +169,7 @@ function truncate(text: string): string {
 export const fetchPageTool = {
   name: "fetch_page",
   description:
-    "Fetch a web page and extract its text content. Use after web_search to read full articles or documentation pages.",
+    "Fetch a web page and extract its text content. FIRST choice when the user provides a URL — read it before dispatching web search. Also use after web_search to read full articles or documentation pages.",
   execute: async (args: { url: string }): Promise<ToolResult> => {
     const urlError = validateUrl(args.url);
     if (urlError) return { success: false, output: urlError, error: urlError };
@@ -166,7 +187,13 @@ export const fetchPageTool = {
           if (oldest) pageCache.delete(oldest);
         }
         pageCache.set(args.url, { content: jina.content, ts: Date.now(), backend: jina.backend });
-        return { success: true, output: truncate(jina.content), backend: jina.backend };
+        const warning = lastJinaWarning;
+        const content = truncate(jina.content);
+        return {
+          success: true,
+          output: warning ? `⚠ ${warning}\n\n${content}` : content,
+          backend: jina.backend,
+        };
       }
 
       const res = await fetch(args.url, {

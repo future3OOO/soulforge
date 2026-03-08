@@ -193,6 +193,26 @@ Single-agent: return directly
 toModelOutput() — compact for parent context
 ```
 
+### Agent Quality Pipeline
+
+**File**: `src/core/agents/subagent-tools.ts`
+
+Built on SoulForge's AgentBus and dispatch infrastructure to improve subagent output quality and reduce wasted agent steps.
+
+**Schema Enforcement** — The dispatch schema requires a `targetFiles` array on every task. Pre-dispatch validation rejects tasks without real file paths (must contain `/` or `.`) before any subagent runs. File paths are auto-injected into subagent prompts.
+
+**Complexity-Tier Routing** — `detectTaskTier()` classifies tasks as `trivial` (single-file explore with short prompt, or single-file small edit) or `standard`. `selectModel()` routes trivial tasks to the `trivialModel` when configured. The `tier` field on the dispatch schema allows LLM override.
+
+**De-Sloppify Pass** — `runDesloppify()` runs a cleanup code agent after code agents finish, only when: (1) a `desloppifyModel` is configured, (2) code agents ran, and (3) files were actually edited. The cleanup agent runs in fresh context (never wrote the code it reviews) and removes: tests of language features, redundant type checks, console.log, commented-out code, over-defensive error handling. The "two agents > one constrained agent" concept is from [Everything Claude Code](https://github.com/affaan-m/everything-claude-code).
+
+**Dispatch Cache** — `wrapReadFileWithDispatchCache()` in forge.ts wraps the parent's `read_file` tool. When the parent reads a file that a subagent already read (stored in `SharedCacheRef`), it gets a cache hit instead of disk I/O.
+
+**Done Tool Contracts** — Explore and code done tools demand pasteable code, not prose descriptions. "The parent agent ONLY sees what you put here — your tool results are invisible to it." If the parent has to re-read files, the done call failed.
+
+**Result Richness** — Tool result caps sized to carry full context: 4K per tool result, 16K total. Code block line limits: 1500. Prevents re-read spirals by ensuring subagent results contain enough detail.
+
+All features can be toggled via `/agent-features` or `agentFeatures` in config.
+
 ---
 
 ## Intelligence Router

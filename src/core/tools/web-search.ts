@@ -1,5 +1,6 @@
 import type { LanguageModel } from "ai";
 import { tool } from "ai";
+import LinkifyIt from "linkify-it";
 import { z } from "zod";
 import { emitSubagentStep } from "../agents/subagent-events.js";
 import { createWebSearchAgent } from "../agents/web-search.js";
@@ -7,6 +8,21 @@ import { getShortModelLabel } from "../llm/models.js";
 import { webSearchScraper } from "./web-search-scraper.js";
 
 export { webSearchScraper as webSearchTool };
+
+const agentSearchCache = new Map<string, { output: string; ts: number }>();
+const AGENT_CACHE_TTL = 5 * 60_000;
+
+const linkify = new LinkifyIt();
+
+function extractUrlHint(query: string): string | null {
+  const matches = linkify.match(query);
+  if (!matches || matches.length === 0) return null;
+  return matches[0]?.url ?? null;
+}
+
+function normalizeQuery(q: string): string {
+  return q.toLowerCase().trim().replace(/\s+/g, " ");
+}
 
 function formatSearchArgs(tc: { toolName: string; input?: unknown }): string {
   const a = (tc.input ?? {}) as Record<string, unknown>;
@@ -34,7 +50,7 @@ export function buildWebSearchTool(opts?: {
 
   return tool({
     description: webSearchModel
-      ? "Search the web for current information. Dispatches a dedicated search agent that can run multiple queries and follow links for thorough research."
+      ? "Search the web when codebase and user-provided docs lack the answer. Before searching: check conversation for previous results, check codebase for existing patterns, fetch_page any URLs the user shared. Only search for specific gaps."
       : webSearchScraper.description,
     inputSchema: z.object({
       query: z.string().describe("Search query or research question"),
@@ -44,18 +60,33 @@ export function buildWebSearchTool(opts?: {
         .describe("Number of results (default 5, ignored when agent is used)"),
     }),
     execute: async (args, { toolCallId, abortSignal }) => {
-      if (onApprove) {
-        const approved = await onApprove(args.query);
-        if (!approved) {
-          return {
-            success: false,
-            output: "Web search was denied by the user.",
-            error: "Web search denied.",
-          };
-        }
+      if (!onApprove) {
+        return {
+          success: false,
+          output: "Web search is disabled. Enable it in settings to use this tool.",
+          error: "Web search disabled.",
+        };
+      }
+      const approved = await onApprove(args.query);
+      if (!approved) {
+        return {
+          success: false,
+          output: "Web search was denied by the user.",
+          error: "Web search denied.",
+        };
       }
 
       if (webSearchModel) {
+        const cacheKey = normalizeQuery(args.query);
+        const cached = agentSearchCache.get(cacheKey);
+        if (cached && Date.now() - cached.ts < AGENT_CACHE_TTL) {
+          return {
+            success: true,
+            output: `This query was already searched — the result is in your conversation above. Use that instead of re-searching.`,
+            backend: "dedup",
+          };
+        }
+
         const runningSteps = new Set<string>();
         const mid = typeof webSearchModel === "string" ? webSearchModel : webSearchModel.modelId;
         const backendLabel = getShortModelLabel(mid);
@@ -114,13 +145,18 @@ export function buildWebSearchTool(opts?: {
               });
             },
           });
+          agentSearchCache.set(cacheKey, { output: result.text, ts: Date.now() });
           return { success: true, output: result.text, backend: backendLabel };
         } catch (err: unknown) {
           markRunningStepsError();
           const msg = err instanceof Error ? err.message : String(err);
+          const urlHint = extractUrlHint(args.query);
+          const fallback = urlHint
+            ? ` Try fetch_page("${urlHint}") to access the resource directly.`
+            : " If you know a specific URL (docs page, npm package, GitHub repo), use fetch_page on that URL directly instead of searching.";
           return {
             success: false,
-            output: `Search agent error: ${msg}`,
+            output: `Search failed: ${msg}.${fallback}`,
             error: msg,
             backend: backendLabel,
           };

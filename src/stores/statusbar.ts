@@ -81,8 +81,34 @@ function collectChildPids(): number[] {
 
 function getChildRssKB(pids: number[]): Promise<number> {
   if (pids.length === 0) return Promise.resolve(0);
+  if (process.platform === "win32") {
+    return new Promise((resolve) => {
+      execFile(
+        "wmic",
+        [
+          "process",
+          "where",
+          `(${pids.map((p) => `ProcessId=${String(p)}`).join(" or ")})`,
+          "get",
+          "WorkingSetSize",
+        ],
+        (err, stdout) => {
+          if (err) {
+            resolve(0);
+            return;
+          }
+          let total = 0;
+          for (const line of stdout.split("\n")) {
+            const bytes = Number.parseInt(line.trim(), 10);
+            if (!Number.isNaN(bytes)) total += bytes / 1024;
+          }
+          resolve(total);
+        },
+      );
+    });
+  }
   return new Promise((resolve) => {
-    execFile("ps", ["-o", "rss=", ...pids.map(String)], (err, stdout) => {
+    execFile("ps", ["-p", pids.join(","), "-o", "rss="], (err, stdout) => {
       if (err) {
         resolve(0);
         return;

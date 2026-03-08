@@ -1,14 +1,27 @@
+import { resolve } from "node:path";
 import type { ProviderOptions } from "@ai-sdk/provider-utils";
 import type { LanguageModel } from "ai";
-import { stepCountIs, ToolLoopAgent } from "ai";
+import { stepCountIs, ToolLoopAgent, tool } from "ai";
 import { z } from "zod";
-import type { EditorIntegration, ForgeMode, InteractiveCallbacks } from "../../types/index.js";
+import type {
+  AgentFeatures,
+  EditorIntegration,
+  ForgeMode,
+  InteractiveCallbacks,
+} from "../../types/index.js";
 import type { ContextManager } from "../context/manager.js";
-import { buildInteractiveTools, buildTools, RESTRICTED_TOOL_NAMES } from "../tools/index.js";
+import {
+  buildInteractiveTools,
+  buildTools,
+  PLAN_EXECUTION_TOOL_NAMES,
+  RESTRICTED_TOOL_NAMES,
+} from "../tools/index.js";
+import { readFileTool } from "../tools/read-file.js";
+import { normalizePath } from "./agent-bus.js";
 import { repairToolCall, sanitizeToolInputsStep, smoothStreamOptions } from "./stream-options.js";
 import { buildSubagentTools, type SharedCacheRef } from "./subagent-tools.js";
 
-const RESTRICTED_MODES = new Set<ForgeMode>(["architect", "socratic", "challenge"]);
+const RESTRICTED_MODES = new Set<ForgeMode>(["architect", "socratic", "challenge", "plan"]);
 
 interface ForgeAgentOptions {
   model: LanguageModel;
@@ -16,7 +29,12 @@ interface ForgeAgentOptions {
   forgeMode?: ForgeMode;
   interactive?: InteractiveCallbacks;
   editorIntegration?: EditorIntegration;
-  subagentModels?: { exploration?: LanguageModel; coding?: LanguageModel };
+  subagentModels?: {
+    exploration?: LanguageModel;
+    coding?: LanguageModel;
+    trivial?: LanguageModel;
+    desloppify?: LanguageModel;
+  };
   webSearchModel?: LanguageModel;
   onApproveWebSearch?: (query: string) => Promise<boolean>;
   providerOptions?: ProviderOptions;
@@ -25,6 +43,8 @@ interface ForgeAgentOptions {
   cwd?: string;
   sessionId?: string;
   sharedCacheRef?: SharedCacheRef;
+  agentFeatures?: AgentFeatures;
+  planExecution?: boolean;
 }
 
 /**
@@ -53,6 +73,8 @@ export function createForgeAgent({
   cwd,
   sessionId,
   sharedCacheRef,
+  agentFeatures,
+  planExecution,
 }: ForgeAgentOptions) {
   const isRestricted = RESTRICTED_MODES.has(forgeMode);
   const repoMap = contextManager.isRepoMapReady() ? contextManager.getRepoMap() : undefined;
@@ -80,12 +102,15 @@ export function createForgeAgent({
           repoMapContext,
           repoMap,
           sharedCacheRef,
+          agentFeatures,
         }).dispatch,
       }
     : buildSubagentTools({
         defaultModel: model,
         explorationModel: subagentModels?.exploration,
         codingModel: subagentModels?.coding,
+        trivialModel: subagentModels?.trivial,
+        desloppifyModel: subagentModels?.desloppify,
         webSearchModel,
         providerOptions,
         headers,
@@ -93,19 +118,29 @@ export function createForgeAgent({
         repoMapContext,
         repoMap,
         sharedCacheRef,
+        agentFeatures,
       });
+
+  const cachedReadFile =
+    sharedCacheRef && agentFeatures?.dispatchCache !== false
+      ? wrapReadFileWithDispatchCache(directTools.read_file, sharedCacheRef)
+      : directTools.read_file;
 
   const allTools = {
     ...directTools,
+    read_file: cachedReadFile,
     ...subagentTools,
     ...(interactive ? buildInteractiveTools(interactive, { cwd, sessionId }) : {}),
   };
 
   const allToolNames = Object.keys(allTools) as (keyof typeof allTools)[];
   const restrictedSet = new Set(RESTRICTED_TOOL_NAMES);
-  const restrictedActiveTools = isRestricted
+  const planExecSet = new Set(PLAN_EXECUTION_TOOL_NAMES);
+  const activeToolOverride = isRestricted
     ? allToolNames.filter((name) => restrictedSet.has(name))
-    : undefined;
+    : planExecution
+      ? allToolNames.filter((name) => planExecSet.has(name))
+      : undefined;
 
   return new ToolLoopAgent({
     id: "forge",
@@ -132,7 +167,7 @@ export function createForgeAgent({
               instructions: `${settings.instructions}\n\n### Auto-Recalled Memories (matching this message)\n${recalled}`,
             }
           : {}),
-        ...(restrictedActiveTools ? { activeTools: restrictedActiveTools } : {}),
+        ...(activeToolOverride ? { activeTools: activeToolOverride } : {}),
       };
     },
     stopWhen: stepCountIs(500),
@@ -140,5 +175,34 @@ export function createForgeAgent({
     experimental_repairToolCall: repairToolCall,
     ...(providerOptions && Object.keys(providerOptions).length > 0 ? { providerOptions } : {}),
     ...(headers ? { headers } : {}),
+  });
+}
+
+function wrapReadFileWithDispatchCache(
+  _original: ReturnType<typeof buildTools>["read_file"],
+  cacheRef: SharedCacheRef,
+) {
+  return tool({
+    description: readFileTool.description,
+    inputSchema: z.object({
+      path: z.string().describe("File path to read"),
+      startLine: z.number().optional().describe("Start line (1-indexed)"),
+      endLine: z.number().optional().describe("End line (1-indexed)"),
+    }),
+    execute: async (args) => {
+      const cache = cacheRef.current;
+      if (cache) {
+        const normalized = normalizePath(resolve(args.path));
+        const cached = cache.files.get(normalized);
+        if (cached != null && args.startLine == null && args.endLine == null) {
+          const lines = cached.split("\n");
+          const numbered = lines
+            .map((line: string, i: number) => `${String(i + 1).padStart(4)}  ${line}`)
+            .join("\n");
+          return { success: true, output: `[from dispatch cache]\n${numbered}` };
+        }
+      }
+      return readFileTool.execute(args);
+    },
   });
 }

@@ -13,7 +13,7 @@ import {
   searchSkills,
 } from "../core/skills/manager.js";
 
-import { POPUP_BG, POPUP_HL, PopupRow } from "./shared.js";
+import { Overlay, POPUP_BG, POPUP_HL, PopupRow } from "./shared.js";
 
 const MAX_POPUP_WIDTH = 90;
 const CHROME_ROWS = 9;
@@ -254,14 +254,7 @@ export const SkillSearch = memo(function SkillSearch({
   const tabIdx = TABS.indexOf(tab);
 
   return (
-    <box
-      position="absolute"
-      flexDirection="column"
-      alignItems="center"
-      justifyContent="center"
-      width="100%"
-      height="100%"
-    >
+    <Overlay>
       <box
         flexDirection="column"
         borderStyle="rounded"
@@ -552,6 +545,6 @@ export const SkillSearch = memo(function SkillSearch({
           </text>
         </PopupRow>
       </box>
-    </box>
+    </Overlay>
   );
 });

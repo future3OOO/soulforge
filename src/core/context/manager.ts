@@ -12,7 +12,7 @@ import { buildForbiddenContext, isForbidden } from "../security/forbidden.js";
 import { onFileEdited, onFileRead } from "../tools/file-events.js";
 
 // Static prompt sections — extracted for stable cache prefix across turns and subagents
-const STATIC_TOOL_GUIDANCE = [
+const TOOL_GUIDANCE_BASE = [
   "## Intelligence Layer",
   "You have LSP-powered code intelligence with multi-tier fallback (LSP → ts-morph → tree-sitter → regex). Use it as the primary way to understand code.",
   "",
@@ -26,51 +26,87 @@ const STATIC_TOOL_GUIDANCE = [
   "- Discover patterns/architecture → `discover_pattern`",
   "- Tests/build/lint/typecheck → `project` (auto-detects toolchain)",
   "",
+  "**Compound tools** — `rename_symbol`, `move_symbol`, `project` do the COMPLETE job. Do not add extra verification steps.",
+];
+
+const TOOL_GUIDANCE_LOW_LEVEL_WITH_MAP = [
   "**Low-level tools** — use only when intelligence can't help:",
   "- `read_file` → config files (json/yaml/toml), markdown, raw text, or content after intelligence read",
   "- `grep` → string literals, log messages, non-code patterns (check Repo Map dependency counts first)",
   "- `glob` → finding files by pattern when not in the Repo Map",
   "- `shell` → only when `project` can't handle custom flags or non-standard commands",
-  "",
-  "**Compound tools** — `rename_symbol`, `move_symbol`, `project` do the COMPLETE job. Do not add extra verification steps.",
 ];
 
-const STATIC_DISPATCH_GUIDANCE = [
+const TOOL_GUIDANCE_LOW_LEVEL_NO_MAP = [
+  "**Low-level tools** — use only when intelligence can't help:",
+  "- `read_file` → config files (json/yaml/toml), markdown, raw text, or content after intelligence read",
+  "- `grep` → string literals, log messages, non-code patterns, symbol searches",
+  "- `glob` → finding files by name or pattern",
+  "- `shell` → only when `project` can't handle custom flags or non-standard commands",
+];
+
+const DISPATCH_GUIDANCE_BASE = [
   "## Dispatch — Parallel Agents",
   "Dispatch runs parallel agents with a shared read cache — instant dedup across agents.",
   "",
-  "**Use dispatch for:** multi-file implementation (agents own distinct files), parallel research across 3+ areas, simultaneous code + web research.",
-  "**Do NOT dispatch for:** ≤3 tool calls (do it yourself), rename/move (already atomic), single-file edits, sequential work.",
+  "**When dispatch earns its cost:** reading 7+ files, editing 4+ files (agents own distinct files), parallel code + web research.",
+  "**Faster to do yourself (system auto-rejects):** reading ≤6 files, editing ≤3 files, rename/move (already atomic), sequential work. Use read_code/read_file/edit_file directly.",
   "",
   "**Task quality — extraction, not investigation:**",
   "- Tasks are DATA EXTRACTION requests. Tell the agent exactly what to read and what to return.",
-  "- Every task MUST include exact file paths and symbol names from the Repo Map.",
-  "- Include line numbers when the Repo Map shows them (e.g. `read lines 181-265 of src/hooks/useChat.ts`).",
+  "- Every task requires `targetFiles` — exact file paths. The system rejects tasks without them.",
   "- Split by file ownership, not by concept. Overlapping files = wasted cache.",
-  "- If a symbol isn't in the Repo Map, give targeted search keywords — never open-ended exploration.",
   "",
-  "**You have the Repo Map — USE IT.** Before writing any task, look up every file and symbol you need.",
-  "The Repo Map gives you exact paths, symbol names, and line ranges. Put ALL of them in the task.",
-  "A task without specific file paths and symbol names is a BAD task — the agent will wander.",
+  "**Information priority — exhaust each level before escalating:**",
+  "1. Context — previous dispatch results, tool returns, user-provided content already in conversation.",
+  "2. Codebase — existing patterns, similar implementations in the project.",
+  "3. User-provided URLs — if the user shared a link, `fetch_page` it before searching. The answer is likely there.",
+  "4. Web search — ONLY for specific gaps not covered above. One focused query per task.",
   "",
-  '**Web search tasks:** ONE focused query per task. Never compound ("search for X, Y, Z, W").',
-  "Compound queries dilute focus — the agent splits attention and returns shallow results for each.",
-  "If you need 3 web searches, either dispatch 3 agents with 1 query each, or do them yourself.",
+  "**Web search tasks:** ONE focused query per task with `targetFiles: ['web']`.",
+  "Multiple queries in one task dilute focus — dispatch separate agents for each query.",
   "",
-  "BAD (vague, concept-driven — agent wanders and returns summaries):",
-  '  "Find where context percentage is displayed in the header"',
-  '  "Investigate how model switching affects token tracking"',
-  '  "Search for: 1) smooth streaming techniques, 2) ANSI fade effects, 3) React terminal animation, 4) SDK options"',
-  '  "Read the streaming implementation in useChat.ts"',
-  "GOOD (precise, extraction-driven — agent reads exact targets and returns code):",
-  '  "Read `ContextBar` from `src/components/ContextBar.tsx` and `useStatusBarStore` from `src/stores/statusbar.ts`. Return their full implementations."',
-  '  "In `src/hooks/useChat.ts`, read `flushStreamState` (line 181), `queueMicrotaskFlush` (line 269), and `appendText` (line 1076). Also read lines 1121-1170 (the stream loop text-delta handler). Return exact code for all four."',
-  '  "Search the web for: Vercel AI SDK smoothStream delayInMs recommended values and chunking options. Return the full API surface with defaults."',
+  "**Examples — compare task quality:**",
+  "  VAGUE (rejected or agent wanders):",
+  '    task: "Find where context percentage is displayed in the header"',
+  '    task: "Read the streaming implementation in useChat.ts"',
+  "  PRECISE (agent reads exact targets, returns code):",
+  '    task: "Read `ContextBar` from `src/components/ContextBar.tsx` and `useStatusBarStore` from `src/stores/statusbar.ts`. Return their full implementations."',
+  '    targetFiles: ["src/components/ContextBar.tsx", "src/stores/statusbar.ts"]',
   "",
-  "**After dispatch returns:** trust the results. Do NOT re-read files the agents already returned code from. If a dispatch result is missing code you need, your task was too vague — fix the task pattern next time, don't compensate by re-reading.",
+  '    task: "In `src/hooks/useChat.ts`, read `flushStreamState` (line 181), `queueMicrotaskFlush` (line 269), and `appendText` (line 1076). Return exact code for all three."',
+  '    targetFiles: ["src/hooks/useChat.ts"]',
+  "",
+  "**Before dispatching, check what you already have.** Tool results, previous dispatch results, and file contents already in conversation are your first source.",
+  "For 1-6 files to read or 1-3 files to edit, do it directly — the system rejects explore dispatches for ≤6 files and code dispatches for ≤3 files.",
+  "One dispatch per task is the target. A second dispatch means the first was poorly scoped — the system rejects dispatches where target files are already read.",
+  "",
+  "**After dispatch:** results include full code content. The system injects file-read records — trust them and act on the returned data.",
 ];
 
-export { STATIC_TOOL_GUIDANCE, STATIC_DISPATCH_GUIDANCE };
+const DISPATCH_GUIDANCE_WITH_MAP = [
+  "- Use exact file paths from the Repo Map for `targetFiles`. The system validates them.",
+  "- Include line numbers when the Repo Map shows them (e.g. `read lines 181-265 of src/hooks/useChat.ts`).",
+  "- If a symbol isn't in the Repo Map, give targeted search keywords for workspace_symbols.",
+  "",
+  "**You have the Repo Map — USE IT.** Before writing any task, look up every file and symbol you need.",
+  "The Repo Map gives you exact paths, symbol names, and line ranges. Put ALL of them in the task and `targetFiles`.",
+];
+
+function buildToolGuidance(hasRepoMap: boolean): string[] {
+  return [
+    ...TOOL_GUIDANCE_BASE,
+    "",
+    ...(hasRepoMap ? TOOL_GUIDANCE_LOW_LEVEL_WITH_MAP : TOOL_GUIDANCE_LOW_LEVEL_NO_MAP),
+  ];
+}
+
+function buildDispatchGuidance(hasRepoMap: boolean): string[] {
+  if (!hasRepoMap) return [...DISPATCH_GUIDANCE_BASE];
+  return [...DISPATCH_GUIDANCE_BASE, "", ...DISPATCH_GUIDANCE_WITH_MAP];
+}
+
+export { buildToolGuidance, buildDispatchGuidance };
 
 const IGNORED_DIRS = new Set([
   "node_modules",
@@ -137,7 +173,12 @@ export class ContextManager {
 
   private startRepoMapScan(): void {
     this.syncRepoMapStore("scanning");
-    this.repoMap.scan().catch(() => {});
+    this.repoMap.scan().catch((err: unknown) => {
+      const msg = err instanceof Error ? err.message : String(err);
+      this.repoMapReady = false;
+      this.syncRepoMapStore("error");
+      useRepoMapStore.getState().setScanError(`Repo map scan failed: ${msg}`);
+    });
   }
 
   private wireRepoMapCallbacks(): void {
@@ -151,6 +192,7 @@ export class ContextManager {
       if (success) {
         this.repoMapReady = true;
         this.syncRepoMapStore("ready");
+        useRepoMapStore.getState().setScanError("");
         if (!this.repoMap.isSemanticEnabled()) {
           const persisted = this.repoMap.detectPersistedSemanticMode();
           if (persisted !== "off") {
@@ -158,7 +200,9 @@ export class ContextManager {
           }
         }
       } else {
+        this.repoMapReady = false;
         this.syncRepoMapStore("error");
+        useRepoMapStore.getState().setScanError("Repo map scan completed with errors");
       }
     };
   }
@@ -218,6 +262,12 @@ export class ContextManager {
     this.editedFiles.add(absPath);
     this.repoMapCache = null;
     this.gitContextStale = true;
+    if (this.repoMapReady) {
+      const stats = this.repoMap.getStats();
+      useRepoMapStore
+        .getState()
+        .setStats(stats.files, stats.symbols, stats.edges, this.repoMap.dbSizeBytes());
+    }
   }
 
   /** Track a file mentioned in conversation (tool reads, grep hits, etc.) */
@@ -436,8 +486,14 @@ export class ContextManager {
 
   async refreshRepoMap(): Promise<void> {
     this.syncRepoMapStore("scanning");
+    useRepoMapStore.getState().setScanError("");
     this.repoMap.clear();
-    await this.repoMap.scan().catch(() => {});
+    await this.repoMap.scan().catch((err: unknown) => {
+      const msg = err instanceof Error ? err.message : String(err);
+      this.repoMapReady = false;
+      this.syncRepoMapStore("error");
+      useRepoMapStore.getState().setScanError(`Repo map scan failed: ${msg}`);
+    });
   }
 
   clearRepoMap(): void {
@@ -491,9 +547,18 @@ export class ContextManager {
       active: projectInfo !== null,
     });
 
-    if (this.repoMapReady) {
+    if (this.repoMapEnabled && this.repoMapReady) {
       const map = this.renderRepoMap();
-      sections.push({ section: "Repo map", chars: map.length, active: true });
+      if (map) {
+        sections.push({ section: "Repo map", chars: map.length, active: true });
+      } else {
+        const fileTree = this.getFileTree(3);
+        sections.push({
+          section: "File tree (repo map empty)",
+          chars: fileTree.length,
+          active: true,
+        });
+      }
     } else {
       const fileTree = this.getFileTree(3);
       sections.push({ section: "File tree", chars: fileTree.length, active: true });
@@ -565,8 +630,17 @@ export class ContextManager {
   /** Build a system prompt with project context */
   buildSystemPrompt(): string {
     const projectInfo = this.getProjectInfo();
-    const repoMapContent = this.repoMapEnabled && this.repoMapReady ? this.renderRepoMap() : null;
-    const codebaseSection = repoMapContent
+    let repoMapContent: string | null = null;
+    if (this.repoMapEnabled && this.repoMapReady) {
+      const rendered = this.renderRepoMap();
+      if (rendered) {
+        repoMapContent = rendered;
+      }
+      // else: DB has 0 files — fall back to file tree silently
+    }
+
+    const hasRepoMap = repoMapContent !== null;
+    const codebaseSection = hasRepoMap
       ? [
           "## Repo Map",
           "Live-updated after every edit. Ranked by PageRank + git co-change + conversation context.",
@@ -589,7 +663,7 @@ export class ContextManager {
       "",
       ...codebaseSection,
       "",
-      ...STATIC_TOOL_GUIDANCE,
+      ...buildToolGuidance(hasRepoMap),
       ...(this.repoMapReady && this.repoMap.getStats().symbols === 0
         ? [
             "",
@@ -597,7 +671,7 @@ export class ContextManager {
           ]
         : []),
       "",
-      ...STATIC_DISPATCH_GUIDANCE,
+      ...buildDispatchGuidance(hasRepoMap),
       "",
       ...this.buildEditorToolsSection(),
       "",
@@ -606,7 +680,7 @@ export class ContextManager {
       "1. Research every file you'll touch using intelligence tools → 2. `plan` (self-contained) → 3. User confirms → 4. Execute with `update_plan_step`.",
       "The plan tool renders a live checklist. Do NOT repeat plan steps in text.",
       "**Plan must be SELF-CONTAINED — zero exploration during execution:**",
-      "- `files[]` — every file, exact paths from the Repo Map.",
+      `- \`files[]\` — every file, exact paths${hasRepoMap ? " from the Repo Map" : ""}.`,
       "- `files[].symbols[]` — every symbol to add/modify/remove, with current signatures and exact changes.",
       "- `steps[].details` — full implementation instructions for each step.",
       "- After confirm → execute DIRECTLY. No new plan, no dispatch, no exploration.",
@@ -622,7 +696,7 @@ export class ContextManager {
       "- The user sees only a one-line tool summary. Include file contents or results in your text when asked.",
       "- On tool failure: read the error, adjust approach. Never retry the exact same call.",
       "- User can abort with Ctrl+X, resume with `/continue`.",
-      ...(repoMapContent
+      ...(hasRepoMap
         ? [
             "",
             "## IMPORTANT",

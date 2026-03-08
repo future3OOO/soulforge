@@ -1,8 +1,8 @@
 import { TextAttributes } from "@opentui/core";
 import { useKeyboard, useTerminalDimensions } from "@opentui/react";
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import type { ConfigScope } from "./shared.js";
-import { CONFIG_SCOPES, POPUP_BG, POPUP_HL, PopupRow } from "./shared.js";
+import { CONFIG_SCOPES, Overlay, POPUP_BG, POPUP_HL, PopupRow } from "./shared.js";
 
 const MAX_POPUP_WIDTH = 52;
 const CHROME_ROWS = 7;
@@ -24,6 +24,7 @@ export interface CommandPickerConfig {
   scopeEnabled?: boolean;
   initialScope?: ConfigScope;
   maxWidth?: number;
+  keepOpen?: boolean;
   onSelect: (value: string, scope?: ConfigScope) => void;
   onScopeMove?: (value: string, fromScope: ConfigScope, toScope: ConfigScope) => void;
 }
@@ -53,8 +54,15 @@ export function CommandPicker({ visible, config, onClose }: Props) {
     });
   };
 
+  const prevVisibleRef = useRef(false);
   useEffect(() => {
-    if (visible && config) {
+    if (!visible || !config) {
+      prevVisibleRef.current = visible;
+      return;
+    }
+    const justOpened = !prevVisibleRef.current;
+    prevVisibleRef.current = true;
+    if (justOpened) {
       let idx = config.options.findIndex((o) => o.value === config.currentValue);
       if (idx < 0) idx = config.options.findIndex((o) => !o.disabled);
       setCursor(idx >= 0 ? idx : 0);
@@ -105,7 +113,7 @@ export function CommandPicker({ visible, config, onClose }: Props) {
         const cb = config.onSelect;
         const val = option.value;
         const s = config.scopeEnabled ? scope : undefined;
-        onClose();
+        if (!config.keepOpen) onClose();
         setTimeout(() => cb(val, s), 0);
       }
       return;
@@ -133,14 +141,7 @@ export function CommandPicker({ visible, config, onClose }: Props) {
   if (!visible || !config) return null;
 
   return (
-    <box
-      position="absolute"
-      flexDirection="column"
-      alignItems="center"
-      justifyContent="center"
-      width="100%"
-      height="100%"
-    >
+    <Overlay>
       <box
         flexDirection="column"
         borderStyle="rounded"
@@ -271,6 +272,6 @@ export function CommandPicker({ visible, config, onClose }: Props) {
           </text>
         </PopupRow>
       </box>
-    </box>
+    </Overlay>
   );
 }

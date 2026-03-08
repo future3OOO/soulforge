@@ -61,6 +61,22 @@ export function getIntelligenceStatus(): {
   return router.getStatus();
 }
 
+/** Get detailed LSP server info for the status popup */
+export function getDetailedLspServers(): Array<{
+  language: string;
+  command: string;
+  args: string[];
+  pid: number | null;
+  cwd: string;
+  openFiles: number;
+  diagnosticCount: number;
+  diagnostics: Array<{ file: string; message: string; severity: number }>;
+  ready: boolean;
+}> {
+  if (!router) return [];
+  return router.getDetailedLspServers();
+}
+
 /** Get PIDs of all child processes managed by the intelligence system */
 export function getIntelligenceChildPids(): number[] {
   if (!router) return [];

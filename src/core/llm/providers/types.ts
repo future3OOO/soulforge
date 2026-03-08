@@ -17,4 +17,6 @@ export interface ProviderDefinition {
   contextWindows: [pattern: string, tokens: number][];
   grouped?: boolean;
   checkAvailability?(): Promise<boolean>;
+  onActivate?(): Promise<void>;
+  onDeactivate?(): void;
 }

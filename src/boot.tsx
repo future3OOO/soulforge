@@ -55,9 +55,17 @@ function center(row: number, text: string, style = ""): void {
 
 const sleep = (ms: number) => new Promise<void>((r) => setTimeout(r, ms));
 
+const bootStart = performance.now();
+
 function status(msg: string): void {
-  const c = Math.max(1, Math.floor((cols - msg.length) / 2) + 1);
-  process.stdout.write(`${at(ROW.status, 1)}\x1b[2K${at(ROW.status, c)}${MUTED}${msg}${RST}`);
+  const elapsed = ((performance.now() - bootStart) / 1000).toFixed(1);
+  const full = `${msg}  ${DIM}${elapsed}s${RST}`;
+  // biome-ignore lint/suspicious/noControlCharactersInRegex: stripping ANSI
+  const plain = full.replace(/\x1b\[[^m]*m/g, "");
+  const c = Math.max(1, Math.floor((cols - plain.length) / 2) + 1);
+  process.stdout.write(
+    `${at(ROW.status, 1)}\x1b[2K${at(ROW.status, c)}${MUTED}${msg}  ${DIM}${elapsed}s${RST}`,
+  );
 }
 
 // ─── Hide cursor, clear screen ───
@@ -197,6 +205,7 @@ if (nvim) {
 }
 
 if (!getVendoredPath("rg")) {
+  status("installing ripgrep…");
   installRipgrep().catch((err) => {
     logBackgroundError(
       "boot",
@@ -213,8 +222,7 @@ const [bootProviders, bootPrereqs] = await Promise.all([
   Promise.resolve(checkPrerequisites()),
 ]);
 
-// Eagerly warm up code intelligence (LSP servers, ts-morph, etc.)
-// Runs in the background so it's ready before the first tool call.
+status("warming up intelligence…");
 import("./core/intelligence/index.js")
   .then(({ warmupIntelligence }) => warmupIntelligence(process.cwd(), config.codeIntelligence))
   .catch((err) => {
@@ -224,9 +232,11 @@ import("./core/intelligence/index.js")
     );
   });
 
-status("starting…");
+status("loading UI framework…");
 const { createCliRenderer } = await import("@opentui/core");
 const { createRoot } = await import("@opentui/react");
+
+status("loading app…");
 const { App } = await import("./components/App.js");
 const { start } = await import("./index.js");
 

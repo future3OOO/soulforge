@@ -2,7 +2,7 @@ import { TextAttributes } from "@opentui/core";
 import { useKeyboard, useTerminalDimensions } from "@opentui/react";
 import { useEffect, useRef, useState } from "react";
 import { type RepoMapStatus, useRepoMapStore } from "../stores/repomap.js";
-import { POPUP_BG, PopupRow, SPINNER_FRAMES } from "./shared.js";
+import { Overlay, POPUP_BG, PopupRow, SPINNER_FRAMES } from "./shared.js";
 
 const LABEL_W = 18;
 const POPUP_W = 56;
@@ -71,6 +71,7 @@ export function RepoMapStatusPopup({ visible, onClose }: Props) {
     edges,
     dbSizeBytes: dbSize,
     scanProgress,
+    scanError,
     semanticStatus,
     semanticCount,
     semanticProgress,
@@ -115,17 +116,11 @@ export function RepoMapStatusPopup({ visible, onClose }: Props) {
     ...(semanticModel && semanticStatus !== "off"
       ? [{ label: "Semantic Model", value: semanticModel, valueColor: "#8B5CF6" }]
       : []),
+    ...(scanError ? [{ label: "Error", value: scanError, valueColor: "#FF0040" }] : []),
   ];
 
   return (
-    <box
-      position="absolute"
-      flexDirection="column"
-      alignItems="center"
-      justifyContent="center"
-      width="100%"
-      height="100%"
-    >
+    <Overlay>
       <box
         flexDirection="column"
         borderStyle="rounded"
@@ -183,6 +178,6 @@ export function RepoMapStatusPopup({ visible, onClose }: Props) {
           </text>
         </PopupRow>
       </box>
-    </box>
+    </Overlay>
   );
 }

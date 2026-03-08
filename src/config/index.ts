@@ -132,6 +132,8 @@ export function saveProjectConfig(cwd: string, patch: Partial<AppConfig>): void 
   if (patch.performance) merged.performance = { ...existing.performance, ...patch.performance };
   if (patch.contextManagement)
     merged.contextManagement = { ...existing.contextManagement, ...patch.contextManagement };
+  if (patch.agentFeatures)
+    merged.agentFeatures = { ...existing.agentFeatures, ...patch.agentFeatures };
 
   writeFileSync(file, JSON.stringify(merged, null, 2));
 }
@@ -152,6 +154,8 @@ export function saveGlobalConfig(patch: Partial<AppConfig>): void {
   if (patch.performance) merged.performance = { ...existing.performance, ...patch.performance };
   if (patch.contextManagement)
     merged.contextManagement = { ...existing.contextManagement, ...patch.contextManagement };
+  if (patch.agentFeatures)
+    merged.agentFeatures = { ...existing.agentFeatures, ...patch.agentFeatures };
 
   writeFileSync(CONFIG_FILE, JSON.stringify(merged, null, 2));
 }
@@ -189,6 +193,7 @@ const NESTED_KEYS = [
   "thinking",
   "performance",
   "contextManagement",
+  "agentFeatures",
 ] as const;
 
 export function applyConfigPatch<T extends Partial<AppConfig>>(

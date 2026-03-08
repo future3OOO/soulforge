@@ -134,8 +134,19 @@ export function PlanReviewPrompt({
           {icon("plan")} {plan.title}
         </text>
         <text fg="#333">{"\u2502"}</text>
+        <text fg="#444">{String(plan.steps.length)} steps</text>
+        <text fg="#333">{"\u2502"}</text>
         <text fg="#444">{planFile}</text>
       </box>
+
+      {plan.steps.map((step) => (
+        <box key={step.id} height={1} flexShrink={0}>
+          <text truncate>
+            <span fg="#555">{"  "}○ </span>
+            <span fg="#999">{step.label}</span>
+          </text>
+        </box>
+      ))}
 
       <box height={1} />
 

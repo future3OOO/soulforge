@@ -3,7 +3,7 @@ import { useKeyboard, useTerminalDimensions } from "@opentui/react";
 import { useState } from "react";
 import type { TaskRouter } from "../types/index.js";
 import type { ConfigScope } from "./shared.js";
-import { CONFIG_SCOPES, POPUP_BG, POPUP_HL, PopupRow } from "./shared.js";
+import { CONFIG_SCOPES, Overlay, POPUP_BG, POPUP_HL, PopupRow } from "./shared.js";
 
 const MAX_POPUP_WIDTH = 60;
 const CHROME_ROWS = 10;
@@ -21,6 +21,8 @@ const SLOTS: SlotItem[] = [
   { key: "webSearch", label: "Web Search", desc: "browser & web search tasks" },
   { key: "compact", label: "Compact", desc: "context compaction summarizer" },
   { key: "semantic", label: "Semantic", desc: "repo map summary generation" },
+  { key: "trivial", label: "Trivial", desc: "single-file reads, small edits (fast/cheap)" },
+  { key: "desloppify", label: "De-sloppify", desc: "cleanup pass after code agents" },
   { key: "default", label: "Default", desc: "everything else" },
 ];
 
@@ -107,14 +109,7 @@ export function RouterSettings({
   if (!visible) return null;
 
   return (
-    <box
-      position="absolute"
-      flexDirection="column"
-      alignItems="center"
-      justifyContent="center"
-      width="100%"
-      height="100%"
-    >
+    <Overlay>
       <box
         flexDirection="column"
         borderStyle="rounded"
@@ -214,6 +209,6 @@ export function RouterSettings({
           </text>
         </PopupRow>
       </box>
-    </box>
+    </Overlay>
   );
 }

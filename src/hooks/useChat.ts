@@ -1,14 +1,13 @@
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
 import type { ModelMessage, StreamTextResult, TextPart, ToolCallPart, ToolSet } from "ai";
-import { generateText, stepCountIs, ToolLoopAgent } from "ai";
+import { generateText } from "ai";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { StreamSegment } from "../components/StreamSegmentList.js";
 import type { LiveToolCall } from "../components/ToolCallDisplay.js";
 import { createForgeAgent } from "../core/agents/index.js";
-import { repairToolCall, sanitizeToolInputsStep } from "../core/agents/stream-options.js";
 import { onAgentStats, onMultiAgentEvent } from "../core/agents/subagent-events.js";
-import { buildSubagentTools, type SharedCacheRef } from "../core/agents/subagent-tools.js";
+import type { SharedCacheRef } from "../core/agents/subagent-tools.js";
 import {
   buildV2Summary,
   extractFromAssistantMessage,
@@ -20,7 +19,7 @@ import {
 import type { ContextManager } from "../core/context/manager.js";
 import { setCoAuthorEnabled } from "../core/git/status.js";
 import { getModelContextWindow, getShortModelLabel } from "../core/llm/models.js";
-import { resolveModel } from "../core/llm/provider.js";
+import { notifyProviderSwitch, resolveModel } from "../core/llm/provider.js";
 import {
   buildProviderOptions,
   degradeProviderOptions,
@@ -30,7 +29,7 @@ import { detectTaskType, resolveTaskModel } from "../core/llm/task-router.js";
 import { SessionManager } from "../core/sessions/manager.js";
 import { createThinkingParser } from "../core/thinking-parser.js";
 import { onFileEdited } from "../core/tools/file-events.js";
-import { buildInteractiveTools, buildPlanModeTools, planFileName } from "../core/tools/index.js";
+import { planFileName } from "../core/tools/index.js";
 import { logBackgroundError } from "../stores/errors.js";
 import { useStatusBarStore } from "../stores/statusbar.js";
 import type {
@@ -427,12 +426,14 @@ export function useChat({
   const setTokenUsage: typeof setTokenUsageRaw = useCallback((action) => {
     setTokenUsageRaw((prev) => {
       const next = typeof action === "function" ? action(prev) : action;
-      if (next.total === 0) {
-        baseTokenUsageRef.current = { ...ZERO_USAGE };
+      if (next.total === 0 || next.total < prev.total) {
+        baseTokenUsageRef.current = { ...next };
         streamingCharsRef.current = 0;
         toolCharsRef.current = 0;
-        setContextTokens(0);
-        setStreamingChars(0);
+        if (next.total === 0) {
+          setContextTokens(0);
+          setStreamingChars(0);
+        }
       }
       useStatusBarStore.getState().setTokenUsage(next);
       return next;
@@ -442,12 +443,14 @@ export function useChat({
   // Plan mode
   const [pendingPlanReview, setPendingPlanReview] = useState<PendingPlanReview | null>(null);
   const planPostActionRef = useRef<{
-    action: "execute" | "clear_execute" | "cancel";
+    action: "execute" | "clear_execute" | "cancel" | "revise";
     planContent: string | null;
     plan?: Plan;
+    reviseFeedback?: string;
   } | null>(null);
   const planModeRef = useRef(initialState?.planMode ?? false);
   const planRequestRef = useRef<string | null>(initialState?.planRequest ?? null);
+  const planExecutionRef = useRef(false);
 
   const coreCharsCache = useRef({ len: 0, chars: 0 });
   const coreChars = useMemo(() => {
@@ -886,19 +889,6 @@ export function useChat({
         setSidebarPlan(updater);
       },
       onPlanReview: (plan: Plan, planFile: string, planContent: string) => {
-        setMessages((prev) => [
-          ...prev,
-          {
-            id: crypto.randomUUID(),
-            role: "assistant" as const,
-            content: planContent,
-            timestamp: Date.now(),
-            segments: [
-              { type: "text" as const, content: planContent },
-              { type: "plan" as const, plan },
-            ],
-          },
-        ]);
         return new Promise<PlanReviewAction>((resolve) => {
           setPendingPlanReview({
             plan,
@@ -907,7 +897,7 @@ export function useChat({
             resolve: (action: PlanReviewAction) => {
               setPendingPlanReview(null);
 
-              if (action === "clear_execute" || (action === "execute" && planModeRef.current)) {
+              if (action === "execute" || action === "clear_execute") {
                 let content: string | null = null;
                 try {
                   content = readFileSync(
@@ -915,45 +905,35 @@ export function useChat({
                     "utf-8",
                   );
                 } catch {
-                  /* missing */
+                  content = planContent;
                 }
+                setMessages((prev) => [
+                  ...prev,
+                  {
+                    id: crypto.randomUUID(),
+                    role: "assistant" as const,
+                    content: `Plan: ${plan.title}`,
+                    timestamp: Date.now(),
+                    segments: [{ type: "plan" as const, plan }],
+                  },
+                ]);
                 planPostActionRef.current = {
                   action: action === "clear_execute" ? "clear_execute" : "execute",
                   planContent: content,
                   plan,
                 };
-                resolve(action);
-                abortRef.current?.abort();
-                return;
-              }
-
-              if (action === "cancel" && planModeRef.current) {
-                planPostActionRef.current = { action: "cancel", planContent: null };
-                resolve(action);
-                abortRef.current?.abort();
-                return;
-              }
-
-              const isRevise =
-                action !== "execute" && action !== "clear_execute" && action !== "cancel";
-              if (isRevise) {
-                setMessages((prev) => [
-                  ...prev,
-                  {
-                    id: crypto.randomUUID(),
-                    role: "user",
-                    content: action,
-                    timestamp: Date.now(),
-                  },
-                ]);
-                setActivePlan(null);
-                setSidebarPlan(null);
               } else if (action === "cancel") {
-                setActivePlan(null);
-                setSidebarPlan(null);
+                planPostActionRef.current = { action: "cancel", planContent: null };
+              } else {
+                planPostActionRef.current = {
+                  action: "revise",
+                  planContent: null,
+                  reviseFeedback: action,
+                };
               }
 
               resolve(action);
+              abortRef.current?.abort();
             },
           });
         });
@@ -1121,8 +1101,6 @@ export function useChat({
           const base = baseTokenUsageRef.current;
           const newUsage: TokenUsage = {
             ...base,
-            prompt: base.prompt + deltaIn,
-            completion: base.completion + deltaOut,
             total: base.total + deltaIn + deltaOut,
             subagentInput: base.subagentInput + deltaIn,
             subagentOutput: base.subagentOutput + deltaOut,
@@ -1160,23 +1138,29 @@ export function useChat({
         const explorationModelId = tr?.exploration ?? undefined;
         const codingModelId = tr?.coding ?? undefined;
         const webSearchModelId = tr?.webSearch ?? undefined;
-        const subagentModels =
-          explorationModelId || codingModelId
-            ? {
-                exploration: explorationModelId ? resolveModel(explorationModelId) : undefined,
-                coding: codingModelId ? resolveModel(codingModelId) : undefined,
-              }
-            : undefined;
+        const trivialModelId = tr?.trivial ?? undefined;
+        const desloppifyModelId = tr?.desloppify ?? undefined;
+        const hasSubagentModels =
+          explorationModelId || codingModelId || trivialModelId || desloppifyModelId;
+        const subagentModels = hasSubagentModels
+          ? {
+              exploration: explorationModelId ? resolveModel(explorationModelId) : undefined,
+              coding: codingModelId ? resolveModel(codingModelId) : undefined,
+              trivial: trivialModelId ? resolveModel(trivialModelId) : undefined,
+              desloppify: desloppifyModelId ? resolveModel(desloppifyModelId) : undefined,
+            }
+          : undefined;
         const webSearchModel = webSearchModelId ? resolveModel(webSearchModelId) : undefined;
         webSearchModelLabelRef.current = webSearchModelId
           ? getShortModelLabel(webSearchModelId)
           : null;
 
-        // Web search approval — only gate when webSearch is enabled (default true)
-        const webSearchApproval =
-          effectiveConfig.webSearch !== false
-            ? interactiveCallbacks.onWebSearchApproval
-            : undefined;
+        // Web search: when disabled, null out both approval AND model so the tool is inert
+        const webSearchEnabled = effectiveConfig.webSearch !== false;
+        const webSearchApproval = webSearchEnabled
+          ? interactiveCallbacks.onWebSearchApproval
+          : undefined;
+        const effectiveWebSearchModel = webSearchEnabled ? webSearchModel : undefined;
 
         // Build Anthropic-specific providerOptions (thinking, effort, context management)
         const { providerOptions, headers } = buildProviderOptions(
@@ -1187,61 +1171,24 @@ export function useChat({
 
         await contextManager.ensureGitContext();
 
-        const agent = planModeRef.current
-          ? new ToolLoopAgent({
-              id: "forge-plan",
-              model,
-              tools: {
-                ...buildPlanModeTools(cwd, effectiveConfig.editorIntegration, webSearchApproval, {
-                  webSearchModel,
-                  sessionId: sessionIdRef.current,
-                }),
-                dispatch: buildSubagentTools({
-                  defaultModel: model,
-                  webSearchModel,
-                  providerOptions,
-                  headers,
-                  onApproveWebSearch: webSearchApproval,
-                  repoMapContext: contextManager.isRepoMapReady()
-                    ? contextManager.renderRepoMap() || undefined
-                    : undefined,
-                  repoMap: contextManager.isRepoMapReady()
-                    ? contextManager.getRepoMap()
-                    : undefined,
-                  sharedCacheRef: sharedCacheRef.current,
-                }).dispatch,
-                ...(interactiveCallbacks
-                  ? buildInteractiveTools(interactiveCallbacks, {
-                      cwd,
-                      sessionId: sessionIdRef.current,
-                    })
-                  : {}),
-              },
-              instructions: contextManager.buildSystemPrompt(),
-              stopWhen: stepCountIs(50),
-              prepareStep: sanitizeToolInputsStep,
-              experimental_repairToolCall: repairToolCall,
-              ...(providerOptions && Object.keys(providerOptions).length > 0
-                ? { providerOptions }
-                : {}),
-              ...(headers ? { headers } : {}),
-            })
-          : createForgeAgent({
-              model,
-              contextManager,
-              forgeMode: contextManager.getForgeMode(),
-              interactive: interactiveCallbacks,
-              editorIntegration: effectiveConfig.editorIntegration,
-              subagentModels,
-              webSearchModel,
-              onApproveWebSearch: webSearchApproval,
-              providerOptions,
-              headers,
-              codeExecution: effectiveConfig.codeExecution,
-              cwd,
-              sessionId: sessionIdRef.current,
-              sharedCacheRef: sharedCacheRef.current,
-            });
+        const agent = createForgeAgent({
+          model,
+          contextManager,
+          forgeMode: contextManager.getForgeMode(),
+          interactive: interactiveCallbacks,
+          editorIntegration: effectiveConfig.editorIntegration,
+          subagentModels,
+          webSearchModel: effectiveWebSearchModel,
+          onApproveWebSearch: webSearchApproval,
+          providerOptions,
+          headers,
+          codeExecution: effectiveConfig.codeExecution,
+          cwd,
+          sessionId: sessionIdRef.current,
+          sharedCacheRef: sharedCacheRef.current,
+          agentFeatures: effectiveConfig.agentFeatures,
+          planExecution: planExecutionRef.current,
+        });
         let result!: StreamTextResult<ToolSet, never>;
         const MAX_TRANSIENT_RETRIES = 3;
         for (let retry = 0; retry <= MAX_TRANSIENT_RETRIES; retry++) {
@@ -1258,59 +1205,24 @@ export function useChat({
                           activeModelRef.current,
                           degradeLevel,
                         );
-                        return planModeRef.current
-                          ? new ToolLoopAgent({
-                              id: "forge-plan",
-                              model,
-                              tools: {
-                                ...buildPlanModeTools(
-                                  cwd,
-                                  effectiveConfig.editorIntegration,
-                                  webSearchApproval,
-                                  { sessionId: sessionIdRef.current },
-                                ),
-                                dispatch: buildSubagentTools({
-                                  defaultModel: model,
-                                  repoMapContext: contextManager.isRepoMapReady()
-                                    ? contextManager.renderRepoMap() || undefined
-                                    : undefined,
-                                  repoMap: contextManager.isRepoMapReady()
-                                    ? contextManager.getRepoMap()
-                                    : undefined,
-                                  sharedCacheRef: sharedCacheRef.current,
-                                }).dispatch,
-                                ...(interactiveCallbacks
-                                  ? buildInteractiveTools(interactiveCallbacks, {
-                                      cwd,
-                                      sessionId: sessionIdRef.current,
-                                    })
-                                  : {}),
-                              },
-                              instructions: contextManager.buildSystemPrompt(),
-                              stopWhen: stepCountIs(50),
-                              prepareStep: sanitizeToolInputsStep,
-                              ...(Object.keys(degraded.providerOptions).length > 0
-                                ? { providerOptions: degraded.providerOptions }
-                                : {}),
-                              ...(degraded.headers ? { headers: degraded.headers } : {}),
-                            })
-                          : createForgeAgent({
-                              model,
-                              contextManager,
-                              forgeMode: contextManager.getForgeMode(),
-                              interactive: interactiveCallbacks,
-                              editorIntegration: effectiveConfig.editorIntegration,
-                              subagentModels,
-                              onApproveWebSearch: webSearchApproval,
-                              providerOptions: degraded.providerOptions,
-                              headers: degraded.headers,
-                              codeExecution: effectiveConfig.codeExecution,
-                              cwd,
-                              sessionId: sessionIdRef.current,
-                            });
+                        return createForgeAgent({
+                          model,
+                          contextManager,
+                          forgeMode: contextManager.getForgeMode(),
+                          interactive: interactiveCallbacks,
+                          editorIntegration: effectiveConfig.editorIntegration,
+                          subagentModels,
+                          onApproveWebSearch: webSearchApproval,
+                          providerOptions: degraded.providerOptions,
+                          headers: degraded.headers,
+                          codeExecution: effectiveConfig.codeExecution,
+                          cwd,
+                          sessionId: sessionIdRef.current,
+                          agentFeatures: effectiveConfig.agentFeatures,
+                          planExecution: planExecutionRef.current,
+                        });
                       })();
-                // biome-ignore lint/suspicious/noExplicitAny: agent union type varies by plan mode — callOptionsSchema differs
-                result = (await (currentAgent as any).stream({
+                result = (await currentAgent.stream({
                   messages: newCoreMessages,
                   abortSignal: abortController.signal,
                   options: { userMessage: input },
@@ -1732,7 +1644,8 @@ export function useChat({
           ? `Provider returned a transient error (${rawMsg.slice(0, 120)}). Please retry.`
           : rawMsg;
         const errorStack = !isTransientStream && err instanceof Error ? err.stack : undefined;
-        if (fullText.trim().length > 0 || completedCalls.length > 0) {
+        const hasPlanPostAction = !!planPostActionRef.current;
+        if (!hasPlanPostAction && (fullText.trim().length > 0 || completedCalls.length > 0)) {
           const partialMsg: ChatMessage = {
             id: crypto.randomUUID(),
             role: "assistant",
@@ -1773,19 +1686,21 @@ export function useChat({
             setCoreMessages((prev) => [...prev, { role: "assistant" as const, content: fullText }]);
           }
         }
-        setMessages((prev) => [
-          ...prev,
-          {
-            id: crypto.randomUUID(),
-            role: "system",
-            content: isAbort
-              ? "Generation interrupted."
-              : errorStack
-                ? `Error: ${errorMsg}\n\n${errorStack}`
-                : `Error: ${errorMsg}`,
-            timestamp: Date.now(),
-          },
-        ]);
+        if (!hasPlanPostAction) {
+          setMessages((prev) => [
+            ...prev,
+            {
+              id: crypto.randomUUID(),
+              role: "system",
+              content: isAbort
+                ? "Generation interrupted."
+                : errorStack
+                  ? `Error: ${errorMsg}\n\n${errorStack}`
+                  : `Error: ${errorMsg}`,
+              timestamp: Date.now(),
+            },
+          ]);
+        }
         streamSegmentsBuffer.current = [];
         liveToolCallsBuffer.current = [];
         lastFlushedSegments.current = [];
@@ -1802,7 +1717,9 @@ export function useChat({
         useStatusBarStore.getState().setSubagentChars(0);
         setIsLoading(false);
         abortRef.current = null;
+        planExecutionRef.current = false;
         setPendingQuestion(null);
+        setPendingPlanReview(null);
         setActivePlan(null);
         contextManager.invalidateFileTree();
 
@@ -1811,64 +1728,87 @@ export function useChat({
           planPostActionRef.current = null;
           const pContent = postAction.planContent;
 
-          planModeRef.current = false;
-          planRequestRef.current = null;
-          contextManager.setForgeMode("default");
+          if (postAction.action === "revise") {
+            setActivePlan(null);
+            setSidebarPlan(null);
+            setCoreMessages((prev) => {
+              let end = prev.length;
+              while (end > 0) {
+                const m = prev[end - 1];
+                if (!m) break;
+                if (m.role === "tool") {
+                  end--;
+                  continue;
+                }
+                if (m.role === "assistant" && Array.isArray(m.content)) {
+                  const hasPlanCall = m.content.some(
+                    (p: unknown) =>
+                      typeof p === "object" &&
+                      p !== null &&
+                      "type" in p &&
+                      (p as { type: string }).type === "tool-call" &&
+                      "toolName" in p &&
+                      (p as { toolName: string }).toolName === "plan",
+                  );
+                  if (hasPlanCall) {
+                    end--;
+                    continue;
+                  }
+                }
+                break;
+              }
+              return prev.slice(0, end);
+            });
+            setTimeout(() => handleSubmit(postAction.reviseFeedback ?? "Revise the plan."), 0);
+          } else {
+            planModeRef.current = false;
+            planRequestRef.current = null;
+            contextManager.setForgeMode("default");
 
-          if (postAction.action === "cancel") {
-            setMessages((prev) => [
-              ...prev,
-              {
+            if (postAction.action === "cancel") {
+              setMessages((prev) => [
+                ...prev,
+                {
+                  id: crypto.randomUUID(),
+                  role: "system",
+                  content: "Plan cancelled.",
+                  timestamp: Date.now(),
+                },
+              ]);
+            } else if (
+              (postAction.action === "clear_execute" || postAction.action === "execute") &&
+              pContent
+            ) {
+              const isClear = postAction.action === "clear_execute";
+              if (isClear) {
+                contextManager.resetConversationTracking();
+                setCoreMessages([]);
+                setTokenUsage({ ...ZERO_USAGE });
+              }
+              const statusMsg: ChatMessage = {
                 id: crypto.randomUUID(),
                 role: "system",
-                content: "Plan cancelled.",
+                content: isClear
+                  ? "Context cleared — executing plan with fresh context..."
+                  : "Plan accepted — executing...",
                 timestamp: Date.now(),
-              },
-            ]);
-          } else if (postAction.action === "clear_execute" && pContent) {
-            contextManager.resetConversationTracking();
-            setCoreMessages([]);
-            setMessages([
-              {
-                id: crypto.randomUUID(),
-                role: "system",
-                content: "Context cleared — executing plan with fresh context...",
-                timestamp: Date.now(),
-              },
-            ]);
-            setTokenUsage({ ...ZERO_USAGE });
-            if (postAction.plan) {
-              setActivePlan(postAction.plan);
-              setSidebarPlan(postAction.plan);
+              };
+              setMessages(isClear ? [statusMsg] : (prev) => [...prev, statusMsg]);
+              if (postAction.plan) {
+                setActivePlan(postAction.plan);
+                setSidebarPlan(postAction.plan);
+              }
+              planExecutionRef.current = true;
+              const execPrompt =
+                `Execute this plan. The checklist is already live in the UI.\n` +
+                `Workflow per step:\n` +
+                `1. update_plan_step(stepId, "active")\n` +
+                `2. Apply edits: each step has old→new diffs — use edit_file with the exact old/new text.\n` +
+                `3. Run shell commands from the step if present.\n` +
+                `4. update_plan_step(stepId, "done")\n\n` +
+                `All file content is included in the code_snippets below. Edits are pre-validated against this content.\n\n${pContent}`;
+              setTimeout(() => handleSubmit(execPrompt), 0);
             }
-            setTimeout(
-              () =>
-                handleSubmit(
-                  `Execute this plan NOW. Do NOT create a new plan — the checklist is already live. ` +
-                    `Use update_plan_step to mark each step active/done as you go. ` +
-                    `All file paths and symbols are exact — go directly to each target, do NOT dispatch or explore.\n\n${pContent}`,
-                ),
-              0,
-            );
-          } else if (postAction.action === "execute" && pContent) {
-            setMessages((prev) => [
-              ...prev,
-              {
-                id: crypto.randomUUID(),
-                role: "system",
-                content: "Plan accepted — executing...",
-                timestamp: Date.now(),
-              },
-            ]);
-            setTimeout(
-              () =>
-                handleSubmit(
-                  `Execute this plan NOW. Do NOT create a new plan — the checklist is already live. ` +
-                    `Use update_plan_step to mark each step active/done as you go. ` +
-                    `All file paths and symbols are exact — go directly to each target, do NOT dispatch or explore.\n\n${pContent}`,
-                ),
-              0,
-            );
           }
         } else if (pendingCompactRef.current) {
           // Compact was requested during generation — run it now that state is settled
@@ -1967,6 +1907,7 @@ export function useChat({
       setMessages(state.messages);
       setCoreMessages(state.coreMessages);
       setActiveModel(state.activeModel);
+      notifyProviderSwitch(state.activeModel);
       setActivePlan(state.activePlan);
       setSidebarPlan(state.sidebarPlan);
       setTokenUsage(state.tokenUsage);

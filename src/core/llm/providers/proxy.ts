@@ -1,4 +1,5 @@
 import { createAnthropic } from "@ai-sdk/anthropic";
+import { ensureProxy, stopProxy } from "../../proxy/lifecycle.js";
 import type { ProviderDefinition, ProviderModelInfo } from "./types.js";
 
 const baseURL = process.env.PROXY_API_URL || "http://127.0.0.1:8317/v1";
@@ -21,6 +22,14 @@ export const proxy: ProviderDefinition = {
   // Models are fetched via grouped flow in models.ts
   async fetchModels(): Promise<ProviderModelInfo[] | null> {
     return null;
+  },
+
+  async onActivate() {
+    await ensureProxy();
+  },
+
+  onDeactivate() {
+    stopProxy();
   },
 
   fallbackModels: [

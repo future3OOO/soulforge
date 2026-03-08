@@ -1,7 +1,7 @@
 import { TextAttributes } from "@opentui/core";
 import { useKeyboard, useTerminalDimensions } from "@opentui/react";
 import { useEffect, useState } from "react";
-import { POPUP_BG, PopupRow } from "./shared.js";
+import { Overlay, POPUP_BG, PopupRow } from "./shared.js";
 
 const CHROME_ROWS = 6;
 
@@ -69,14 +69,7 @@ export function InfoPopup({ visible, config, onClose }: Props) {
     text.length > max ? `${text.slice(0, max - 1)}…` : text;
 
   return (
-    <box
-      position="absolute"
-      flexDirection="column"
-      alignItems="center"
-      justifyContent="center"
-      width="100%"
-      height="100%"
-    >
+    <Overlay>
       <box
         flexDirection="column"
         borderStyle="rounded"
@@ -207,6 +200,6 @@ export function InfoPopup({ visible, config, onClose }: Props) {
           </text>
         </PopupRow>
       </box>
-    </box>
+    </Overlay>
   );
 }
