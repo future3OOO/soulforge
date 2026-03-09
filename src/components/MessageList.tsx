@@ -9,6 +9,7 @@ import {
   TOOL_LABELS,
   type ToolCategory,
 } from "../core/tool-display.js";
+import { useUIStore } from "../stores/ui.js";
 import type {
   ChatMessage,
   ChatStyle,
@@ -222,7 +223,19 @@ function parseBackend(result?: { output: string }): string | null {
   return null;
 }
 
+function isDenied(error?: string): boolean {
+  return !!error && /denied|rejected|cancelled/i.test(error);
+}
+
+function cleanErrorForDisplay(error: string): string {
+  let clean = error.replace(/Available tools:\s*[\w,\s]+\.?/i, "").trim();
+  clean = clean.replace(/Value:\s*\{[^}]+\}\.?/i, "").trim();
+  clean = clean.replace(/\s{2,}/g, " ");
+  return clean || error;
+}
+
 function ToolCallRow({ tc }: { tc: ToolCall }) {
+  const errorsExpanded = useUIStore((s) => s.reasoningExpanded);
   const icon = TOOL_ICONS[tc.name] ?? "\uF0AD";
   const iconColor = TOOL_ICON_COLORS[tc.name] ?? "#888";
   const label = TOOL_LABELS[tc.name] ?? tc.name;
@@ -231,13 +244,46 @@ function ToolCallRow({ tc }: { tc: ToolCall }) {
   const category = backend ?? staticCategory;
   const categoryColor = category ? (CATEGORY_COLORS[category as ToolCategory] ?? "#444") : "#444";
   const argStr = formatToolSummary(tc);
-  const statusIcon = tc.result ? (tc.result.success ? "✓" : "✗") : "●";
-  const statusColor = tc.result ? (tc.result.success ? "#4a7" : "#f44") : "#666";
-  const resultText = tc.result
+  const denied = !tc.result?.success && isDenied(tc.result?.error);
+  const isError = !!tc.result && !tc.result.success && !denied;
+  const statusIcon = tc.result ? (tc.result.success ? "✓" : denied ? "⊘" : "✗") : "●";
+  const statusColor = tc.result ? (tc.result.success ? "#4a7" : denied ? "#666" : "#f44") : "#666";
+  const shortResult = tc.result
     ? tc.result.success
       ? "ok"
-      : (tc.result.error ?? "error")
+      : denied
+        ? "denied"
+        : "failed"
     : "pending";
+  const fullError = tc.result?.error ?? "";
+
+  if (isError && errorsExpanded && fullError.length > 0) {
+    return (
+      <box flexDirection="column" flexShrink={0}>
+        <box height={1} flexShrink={0}>
+          <text truncate>
+            <span fg={statusColor}>{statusIcon} </span>
+            <span fg={iconColor}>{icon} </span>
+            {category ? <span fg={categoryColor}>[{category}] </span> : null}
+            <span fg="#999">{label}</span>
+            {argStr ? <span fg="#777"> {argStr}</span> : null}
+            <span fg="#555"> → </span>
+            <span fg={statusColor}>{shortResult}</span>
+          </text>
+        </box>
+        <box paddingLeft={3} flexShrink={0}>
+          <text fg="#a55">{fullError}</text>
+        </box>
+      </box>
+    );
+  }
+
+  const displayResult = isError ? cleanErrorForDisplay(fullError) : shortResult;
+  const previewLen = 60;
+  const preview =
+    isError && displayResult.length > previewLen
+      ? `${displayResult.slice(0, previewLen - 3)}…`
+      : displayResult;
 
   return (
     <box height={1} flexShrink={0}>
@@ -248,7 +294,8 @@ function ToolCallRow({ tc }: { tc: ToolCall }) {
         <span fg="#999">{label}</span>
         {argStr ? <span fg="#777"> {argStr}</span> : null}
         <span fg="#555"> → </span>
-        <span fg={statusColor}>{resultText}</span>
+        <span fg={isError ? "#a55" : statusColor}>{preview}</span>
+        {isError ? <span fg="#333"> ^T</span> : null}
       </text>
     </box>
   );
@@ -328,10 +375,55 @@ function WritePlanCall({ tc }: { tc: ToolCall }) {
   return <StructuredPlanView plan={plan} planFile={parsePlanFile(tc)} />;
 }
 
+// ─── Plan execution detection ───
+
+function isPlanExecution(content: string): boolean {
+  return content.startsWith("Execute this plan.");
+}
+
+function parsePlanTitle(content: string): string {
+  const match = content.match(/^#\s+(.+)$/m);
+  return match?.[1] ?? "Plan";
+}
+
 // ─── UserMessage (accent mode) ───
 
 const UserMessageAccent = memo(function UserMessageAccent({ msg }: { msg: ChatMessage }) {
   const time = formatTime(msg.timestamp);
+  const expanded = useUIStore((s) => s.reasoningExpanded);
+  const isPlan = isPlanExecution(msg.content);
+
+  if (isPlan && !expanded) {
+    const title = parsePlanTitle(msg.content);
+    const lineCount = msg.content.split("\n").length;
+    return (
+      <box
+        flexDirection="column"
+        marginBottom={1}
+        border={["left"]}
+        borderColor={USER_COLOR}
+        customBorderChars={RAIL_BORDER}
+        paddingLeft={2}
+        paddingRight={1}
+        backgroundColor="#140810"
+      >
+        <box flexDirection="row">
+          <text fg={USER_COLOR} attributes={TextAttributes.BOLD}>
+            You
+          </text>
+          <text fg="#333"> · {time}</text>
+        </box>
+        <box height={1}>
+          <text truncate>
+            <span fg="#FF0040">{TOOL_ICONS.plan} </span>
+            <span fg="#ccc">Execute plan: {title}</span>
+            <span fg="#555"> ({String(lineCount)} lines)</span>
+            <span fg="#333"> ^T</span>
+          </text>
+        </box>
+      </box>
+    );
+  }
 
   return (
     <box
@@ -341,6 +433,8 @@ const UserMessageAccent = memo(function UserMessageAccent({ msg }: { msg: ChatMe
       borderColor={USER_COLOR}
       customBorderChars={RAIL_BORDER}
       paddingLeft={2}
+      paddingRight={1}
+      backgroundColor="#140810"
     >
       <box flexDirection="row">
         <text fg={USER_COLOR} attributes={TextAttributes.BOLD}>
@@ -360,7 +454,13 @@ const UserMessageBubble = memo(function UserMessageBubble({ msg }: { msg: ChatMe
 
   return (
     <box flexDirection="column" alignItems="flex-end" marginBottom={1}>
-      <box borderStyle="rounded" border={true} borderColor={USER_COLOR} paddingX={2}>
+      <box
+        borderStyle="rounded"
+        border={true}
+        borderColor={USER_COLOR}
+        paddingX={2}
+        backgroundColor="#140810"
+      >
         <text>{msg.content}</text>
       </box>
       <text fg="#555"> You · {time}</text>

@@ -277,7 +277,7 @@ export function InputBox({
 
   const refreshHistoryCache = useCallback(() => {
     try {
-      historyCacheRef.current = getHistoryDB().recent(100);
+      historyCacheRef.current = getHistoryDB().recent(500);
     } catch {
       historyCacheRef.current = [];
     }
@@ -314,7 +314,14 @@ export function InputBox({
 
   const focused = isFocused ?? true;
 
-  const showAutocomplete = value.startsWith("/") && focused && !fuzzyMode;
+  // Refresh history when input gains focus (covers tab switches, session restores)
+  // biome-ignore lint/correctness/useExhaustiveDependencies: refresh on focus gain
+  useEffect(() => {
+    if (focused) refreshHistoryCache();
+  }, [focused]);
+
+  const showAutocomplete =
+    value.startsWith("/") && focused && !fuzzyMode && historyIdx.current === -1;
   const query = value.toLowerCase();
   const matches = useMemo(() => {
     if (!showAutocomplete) return [];
@@ -748,23 +755,24 @@ export function InputBox({
       return;
     }
 
-    // Up arrow — collapsed blocks are single navigable lines
-    if (evt.name === "up") {
-      if (multiline && cursorLine > 0) {
-        let target = cursorLine - 1;
-        const hitBlock = findBlock(collapsedBlocks, target);
-        if (hitBlock) {
-          const onBlock = findBlock(collapsedBlocks, cursorLine);
-          target = onBlock === hitBlock ? hitBlock.start - 1 : hitBlock.start;
-        }
-        if (target >= 0) {
-          setCursorLine(target);
-          setInputKey((k) => k + 1);
-        }
-        evt.preventDefault();
-        return;
+    // Up arrow — multiline cursor navigation
+    if (evt.name === "up" && multiline && cursorLine > 0) {
+      let target = cursorLine - 1;
+      const hitBlock = findBlock(collapsedBlocks, target);
+      if (hitBlock) {
+        const onBlock = findBlock(collapsedBlocks, cursorLine);
+        target = onBlock === hitBlock ? hitBlock.start - 1 : hitBlock.start;
       }
-      // Single-line: history navigation
+      if (target >= 0) {
+        setCursorLine(target);
+        setInputKey((k) => k + 1);
+      }
+      evt.preventDefault();
+      return;
+    }
+
+    // Up arrow — single-line history navigation
+    if (evt.name === "up" && !multiline) {
       const history = historyCacheRef.current;
       if (history.length === 0) return;
       if (historyIdx.current === -1) {
@@ -783,22 +791,24 @@ export function InputBox({
       return;
     }
 
-    // Down arrow — collapsed blocks are single navigable lines
-    if (evt.name === "down") {
-      if (multiline && cursorLine < currentLines.length - 1) {
-        let target = cursorLine + 1;
-        const hitBlock = findBlock(collapsedBlocks, target);
-        if (hitBlock) {
-          const onBlock = findBlock(collapsedBlocks, cursorLine);
-          target = onBlock === hitBlock ? hitBlock.end + 1 : hitBlock.start;
-        }
-        if (target < currentLines.length) {
-          setCursorLine(target);
-          setInputKey((k) => k + 1);
-        }
-        evt.preventDefault();
-        return;
+    // Down arrow — multiline cursor navigation
+    if (evt.name === "down" && multiline && cursorLine < currentLines.length - 1) {
+      let target = cursorLine + 1;
+      const hitBlock = findBlock(collapsedBlocks, target);
+      if (hitBlock) {
+        const onBlock = findBlock(collapsedBlocks, cursorLine);
+        target = onBlock === hitBlock ? hitBlock.end + 1 : hitBlock.start;
       }
+      if (target < currentLines.length) {
+        setCursorLine(target);
+        setInputKey((k) => k + 1);
+      }
+      evt.preventDefault();
+      return;
+    }
+
+    // Down arrow — single-line history navigation
+    if (evt.name === "down" && !multiline) {
       if (historyIdx.current === -1) return;
       if (historyIdx.current === 0) {
         historyIdx.current = -1;
@@ -898,36 +908,12 @@ export function InputBox({
 
   // ── Rendering ──
 
-  const inputWidth = termWidth >= 120 ? "60%" : termWidth >= 80 ? "80%" : "100%";
-
-  // Accent styling per state
-  const ACCENT_ICONS = ["◇", "◈", "◆", "◈"];
-  const accentIcon = fuzzyMode
-    ? "◈"
-    : showBusy
-      ? (ACCENT_ICONS[ghostTick % ACCENT_ICONS.length] ?? "◆")
-      : focused
-        ? "◆"
-        : "·";
-  const accentIconColor = fuzzyMode
-    ? "#FF8C00"
-    : showBusy
-      ? "#8B5CF6"
-      : focused
-        ? "#FF0040"
-        : "#333";
-  const lineColor = fuzzyMode ? "#3a2200" : showBusy ? "#1a0a2e" : focused ? "#2a1045" : "#1a1a1a";
-
-  // Line widths for the bottom accent
-  const innerW = Math.max(10, contentWidth + 2);
-  const iconPad = ` ${accentIcon} `;
-  const sideLen = Math.max(0, Math.floor((innerW - iconPad.length) / 2));
-  const leftLine = "─".repeat(sideLen);
-  const rightLine = "─".repeat(Math.max(0, innerW - sideLen - iconPad.length));
+  // Border color per state
+  const borderColor = fuzzyMode ? "#FF8C00" : showBusy ? "#8B5CF6" : focused ? "#FF0040" : "#333";
 
   return (
-    <box flexDirection="column" width="100%" flexShrink={0} alignItems="center">
-      <box flexDirection="column" width={inputWidth} flexShrink={0}>
+    <box flexDirection="column" width="100%" flexShrink={0}>
+      <box flexDirection="column" width="100%" flexShrink={0}>
         {/* ── Autocomplete dropdown (floating overlay) ── */}
         {hasMatches && (
           <box position="absolute" bottom="100%" width="100%" zIndex={10}>
@@ -1037,13 +1023,16 @@ export function InputBox({
           </box>
         )}
 
-        {/* ── Top accent line ── */}
-        <box paddingX={1} height={1}>
-          <text fg={lineColor}>{"─".repeat(Math.max(10, contentWidth + 2))}</text>
-        </box>
-
-        {/* ── Input area (no border, custom frame) ── */}
-        <box ref={containerRef} paddingX={1} flexDirection="column" width="100%">
+        {/* ── Bordered input area ── */}
+        <box
+          ref={containerRef}
+          flexDirection="column"
+          width="100%"
+          borderStyle="rounded"
+          border={true}
+          borderColor={borderColor}
+          paddingX={1}
+        >
           {showBusy && !showAutocomplete ? (
             <box
               flexDirection="row"
@@ -1059,6 +1048,7 @@ export function InputBox({
                   onInput={handleChange}
                   onSubmit={() => handleSubmit(value)}
                   placeholder="/ commands · queue messages"
+                  placeholderColor="#555"
                   focused={focused}
                   scrollMargin={0.01}
                 />
@@ -1091,15 +1081,6 @@ export function InputBox({
               handleSubmit={handleSubmit}
             />
           )}
-        </box>
-
-        {/* ── Bottom accent line with centered icon ── */}
-        <box paddingX={1} height={1}>
-          <text>
-            <span fg={lineColor}>{leftLine}</span>
-            <span fg={accentIconColor}>{iconPad}</span>
-            <span fg={lineColor}>{rightLine}</span>
-          </text>
         </box>
 
         {/* ── Hints bar ── */}
@@ -1180,6 +1161,7 @@ const InputEditor = memo(function InputEditor({
           onInput={handleChange}
           onSubmit={() => handleSubmit(value)}
           placeholder="speak to the forge..."
+          placeholderColor="#555"
           focused={focused}
           flexGrow={1}
           scrollMargin={0.01}

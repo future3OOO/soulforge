@@ -1491,6 +1491,7 @@ export function useChat({
                       content: fullText,
                       timestamp: Date.now(),
                       toolCalls: [...completedCalls],
+                      segments: finalSegments.length > 0 ? [...finalSegments] : undefined,
                     };
                     setMessages((prev) => {
                       const allMsgs = [...prev, partialMsg];
