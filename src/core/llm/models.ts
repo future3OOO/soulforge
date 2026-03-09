@@ -18,7 +18,7 @@ export interface SubProvider {
 }
 
 // Backward-compat alias
-export type GatewaySubProvider = SubProvider;
+export type VercelGatewaySubProvider = SubProvider;
 
 export interface GroupedModelsResult {
   subProviders: SubProvider[];
@@ -27,7 +27,7 @@ export interface GroupedModelsResult {
 }
 
 // Backward-compat alias
-export type GatewayModelsResult = GroupedModelsResult;
+export type VercelGatewayModelsResult = GroupedModelsResult;
 
 export interface ProviderConfig {
   id: string;
@@ -167,7 +167,7 @@ export function getShortModelLabel(modelId: string): string {
     }
   }
 
-  // 2. Grouped provider cache (gateway, proxy)
+  // 2. Grouped provider cache (vercel_gateway, proxy)
   for (const entry of groupedCache.values()) {
     if (Date.now() - entry.ts > MODEL_CACHE_TTL) continue;
     for (const models of Object.values(entry.result.modelsByProvider)) {
@@ -239,7 +239,7 @@ export async function fetchProviderModels(providerId: string): Promise<FetchMode
   }
 }
 
-// ─── Grouped Models (Gateway, Proxy, etc.) ───
+// ─── Grouped Models (Vercel Gateway, Proxy, etc.) ───
 
 interface OpenAIModelEntry {
   id: string;
@@ -261,8 +261,8 @@ export function getCachedGroupedModels(providerId: string): GroupedModelsResult 
 }
 
 // Backward-compat wrapper
-export function getCachedGatewayModels(): GroupedModelsResult | null {
-  return getCachedGroupedModels("gateway");
+export function getCachedVercelGatewayModels(): GroupedModelsResult | null {
+  return getCachedGroupedModels("vercel_gateway");
 }
 
 function titleCase(s: string): string {
@@ -305,7 +305,8 @@ export async function fetchGroupedModels(providerId: string): Promise<GroupedMod
   const entry = groupedCache.get(providerId);
   if (entry && Date.now() - entry.ts <= MODEL_CACHE_TTL) return entry.result;
 
-  if (providerId === "gateway") return fetchGatewayGrouped();
+  if (providerId === "vercel_gateway") return fetchVercelGatewayGrouped();
+  if (providerId === "llmgateway") return fetchLLMGatewayGrouped();
   if (providerId === "proxy") return fetchProxyGrouped();
 
   return {
@@ -316,11 +317,11 @@ export async function fetchGroupedModels(providerId: string): Promise<GroupedMod
 }
 
 // Backward-compat wrapper
-export async function fetchGatewayModels(): Promise<GroupedModelsResult> {
-  return fetchGroupedModels("gateway");
+export async function fetchVercelGatewayModels(): Promise<GroupedModelsResult> {
+  return fetchGroupedModels("vercel_gateway");
 }
 
-async function fetchGatewayGrouped(): Promise<GroupedModelsResult> {
+async function fetchVercelGatewayGrouped(): Promise<GroupedModelsResult> {
   if (!process.env.AI_GATEWAY_API_KEY) {
     return {
       subProviders: [],
@@ -357,7 +358,7 @@ async function fetchGatewayGrouped(): Promise<GroupedModelsResult> {
       subProviders,
       modelsByProvider: grouped,
     };
-    groupedCache.set("gateway", { result, ts: Date.now() });
+    groupedCache.set("vercel_gateway", { result, ts: Date.now() });
     return result;
   } catch (err) {
     const msg = err instanceof Error ? err.message : "Unknown error";
@@ -365,6 +366,83 @@ async function fetchGatewayGrouped(): Promise<GroupedModelsResult> {
       subProviders: [],
       modelsByProvider: {},
       error: `Gateway error: ${msg}`,
+    };
+  }
+}
+
+async function fetchLLMGatewayGrouped(): Promise<GroupedModelsResult> {
+  const apiKey = process.env.LLM_GATEWAY_API_KEY;
+  if (!apiKey) {
+    return {
+      subProviders: [],
+      modelsByProvider: {},
+      error: "LLM_GATEWAY_API_KEY not set",
+    };
+  }
+
+  try {
+    const res = await fetch("https://api.llmgateway.io/v1/models", {
+      headers: { Authorization: `Bearer ${apiKey}` },
+    });
+    if (!res.ok) {
+      return {
+        subProviders: [],
+        modelsByProvider: {},
+        error: `LLM Gateway error: ${String(res.status)}`,
+      };
+    }
+
+    const data = (await res.json()) as {
+      data: {
+        id: string;
+        name: string;
+        family?: string;
+        context_length?: number;
+      }[];
+    };
+    const grouped: Record<string, ProviderModelInfo[]> = {};
+
+    for (const m of data.data) {
+      const group = m.family?.toLowerCase() || inferModelGroup(m.id);
+      if (!grouped[group]) grouped[group] = [];
+      grouped[group].push({
+        id: m.id,
+        name: m.name || m.id,
+        contextWindow: m.context_length,
+      });
+    }
+
+    const subProviders: SubProvider[] = Object.keys(grouped)
+      .sort()
+      .map((id) => ({ id, name: GROUP_DISPLAY_NAMES[id] ?? titleCase(id) }));
+
+    const result: GroupedModelsResult = {
+      subProviders,
+      modelsByProvider: grouped,
+    };
+    groupedCache.set("llmgateway", { result, ts: Date.now() });
+    return result;
+  } catch (err) {
+    const msg = err instanceof Error ? err.message : "Unknown error";
+    // Fall back to grouped fallback models
+    const provider = getProvider("llmgateway");
+    if (!provider) return { subProviders: [], modelsByProvider: {}, error: `LLM Gateway: ${msg}` };
+
+    const fallbackGrouped: Record<string, ProviderModelInfo[]> = {};
+    for (const m of provider.fallbackModels) {
+      const group = inferModelGroup(m.id);
+      if (!fallbackGrouped[group]) fallbackGrouped[group] = [];
+      fallbackGrouped[group].push(m);
+    }
+
+    const subProviders: SubProvider[] = Object.keys(fallbackGrouped)
+      .sort()
+      .map((id) => ({ id, name: GROUP_DISPLAY_NAMES[id] ?? titleCase(id) }));
+
+    return {
+      subProviders,
+      modelsByProvider: fallbackGrouped,
+      error: `LLM Gateway: ${msg}`,
     };
   }
 }

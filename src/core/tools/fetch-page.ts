@@ -185,9 +185,45 @@ function fallbackExtract(html: string): string {
   return text.trim();
 }
 
-function truncate(text: string): string {
-  if (text.length <= MAX_CONTENT_LENGTH) return text;
-  return `${text.slice(0, MAX_CONTENT_LENGTH)}\n\n... [truncated]`;
+function extractSiteLinks(content: string, baseUrl: string, isMarkdown: boolean): string[] {
+  let base: URL;
+  try {
+    base = new URL(baseUrl);
+  } catch {
+    return [];
+  }
+
+  const links: string[] = [];
+  const seen = new Set<string>();
+  const pattern = isMarkdown ? /\[([^\]]*)\]\(([^)]+)\)/g : /<a[^>]+href=["']([^"'#]+)["'][^>]*>/gi;
+
+  let m: RegExpExecArray | null;
+  while ((m = pattern.exec(content)) !== null) {
+    const raw = isMarkdown ? m[2] : m[1];
+    if (!raw || raw.startsWith("javascript:") || raw.startsWith("mailto:")) continue;
+    try {
+      const resolved = new URL(raw, baseUrl);
+      if (resolved.hostname !== base.hostname) continue;
+      const clean = resolved.origin + resolved.pathname.replace(/\/$/, "");
+      if (clean !== base.origin + base.pathname.replace(/\/$/, "") && !seen.has(clean)) {
+        seen.add(clean);
+        links.push(clean);
+      }
+    } catch {}
+    if (links.length >= 30) break;
+  }
+
+  return links;
+}
+
+function truncate(text: string, siteLinks: string[]): string {
+  const linksSection =
+    siteLinks.length > 0
+      ? `\n\n## Available pages (use these URLs with fetch_page instead of guessing)\n${siteLinks.map((l) => `- ${l}`).join("\n")}`
+      : "";
+  const budget = MAX_CONTENT_LENGTH - linksSection.length;
+  const body = text.length > budget ? `${text.slice(0, budget)}\n\n... [truncated]` : text;
+  return body + linksSection;
 }
 
 export const fetchPageTool = {
@@ -200,7 +236,9 @@ export const fetchPageTool = {
 
     const cached = getCached(args.url);
     if (cached) {
-      return { success: true, output: truncate(cached.content), backend: cached.backend };
+      const isMarkdown = cached.backend === "jina" || cached.backend === "jina-api";
+      const links = extractSiteLinks(cached.content, args.url, isMarkdown);
+      return { success: true, output: truncate(cached.content, links), backend: cached.backend };
     }
 
     try {
@@ -212,7 +250,8 @@ export const fetchPageTool = {
         }
         pageCache.set(args.url, { content: jina.content, ts: Date.now(), backend: jina.backend });
         const warning = lastJinaWarning;
-        const content = truncate(jina.content);
+        const links = extractSiteLinks(jina.content, args.url, true);
+        const content = truncate(jina.content, links);
         return {
           success: true,
           output: warning ? `⚠ ${warning}\n\n${content}` : content,
@@ -237,10 +276,12 @@ export const fetchPageTool = {
       const contentType = res.headers.get("content-type") ?? "";
       const body = await res.text();
       let content: string;
+      let links: string[] = [];
 
       if (contentType.includes("application/json")) {
         content = body;
       } else {
+        links = extractSiteLinks(body, args.url, false);
         content = extractWithReadability(body);
       }
 
@@ -250,7 +291,7 @@ export const fetchPageTool = {
         if (oldest) pageCache.delete(oldest);
       }
       pageCache.set(args.url, { content, ts: Date.now(), backend: fallbackBackend });
-      return { success: true, output: truncate(content), backend: fallbackBackend };
+      return { success: true, output: truncate(content, links), backend: fallbackBackend };
     } catch (err: unknown) {
       const msg = err instanceof Error ? err.message : String(err);
       return { success: false, output: `Fetch error: ${msg}`, error: msg };

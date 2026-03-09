@@ -47,7 +47,7 @@ const PROVIDER_CONSTRAINTS: Record<string, ProviderConstraints> = {
     adaptiveThinking: false,
     interleavedThinking: false,
   },
-  gateway: {
+  vercel_gateway: {
     anthropicOptions: true,
     effort: true,
     speed: true,
@@ -145,8 +145,8 @@ function getProviderConstraints(providerId: string): ProviderConstraints {
   const exact = PROVIDER_CONSTRAINTS[providerId];
   if (exact) return exact;
 
-  // Gateway with Claude models gets Anthropic-level support
-  if (providerId === "gateway") return PROVIDER_CONSTRAINTS.anthropic as ProviderConstraints;
+  // Vercel Gateway with Claude models gets Anthropic-level support
+  if (providerId === "vercel_gateway") return PROVIDER_CONSTRAINTS.anthropic as ProviderConstraints;
 
   return NO_SUPPORT;
 }
@@ -156,8 +156,8 @@ function getEffectiveCaps(modelId: string): ModelCapabilities & { anthropicOptio
   const { provider } = parseModelId(modelId);
   const pc = getProviderConstraints(provider);
 
-  // Gateway only gets anthropic options if the underlying model is Claude
-  const isGatewayNonClaude = provider === "gateway" && !isClaudeModel(modelId);
+  // Vercel Gateway only gets anthropic options if the underlying model is Claude
+  const isGatewayNonClaude = provider === "vercel_gateway" && !isClaudeModel(modelId);
 
   return {
     anthropicOptions: pc.anthropicOptions && !isGatewayNonClaude,

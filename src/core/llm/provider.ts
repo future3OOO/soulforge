@@ -78,7 +78,7 @@ export function getActiveProviderId(): string | null {
 
 /**
  * Resolve a model ID (e.g. "anthropic/claude-sonnet-4") to a LanguageModel.
- * Gateway path: "gateway/anthropic/claude-opus-4.6" → gateway("anthropic/claude-opus-4.6")
+ * Vercel Gateway path: "vercel_gateway/anthropic/claude-opus-4.6" → gateway("anthropic/claude-opus-4.6")
  * Direct path:  "anthropic/claude-opus-4.6" → createAnthropic()("claude-opus-4.6")
  */
 export function resolveModel(modelId: string): LanguageModel {

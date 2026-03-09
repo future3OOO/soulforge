@@ -10,7 +10,7 @@ export type SymbolLookup = (
   absPath: string,
 ) => Array<{ name: string; kind: string; isExported: boolean }>;
 
-interface PrepareStepOptions {
+export interface PrepareStepOptions {
   bus?: AgentBus;
   agentId?: string;
   role: "explore" | "code";

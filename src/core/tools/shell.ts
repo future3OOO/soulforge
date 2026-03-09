@@ -129,16 +129,40 @@ interface ShellArgs {
   timeout?: number;
 }
 
+const READ_CMD_REDIRECT: Record<string, string> = {
+  cat: "read_file",
+  head: "read_file",
+  tail: "read_file",
+  less: "read_file",
+  more: "read_file",
+  bat: "read_file",
+  tac: "read_file",
+  nl: "read_file",
+  grep: "grep",
+  rg: "grep",
+  ag: "grep",
+  ack: "grep",
+  find: "glob",
+};
+
+function detectReadCommand(command: string): string | null {
+  const trimmed = command.trim();
+  const first = trimmed.split(/[\s|;&]/)[0]?.replace(/^.*\//, "") ?? "";
+  const target = READ_CMD_REDIRECT[first];
+  if (!target) return null;
+  if (trimmed.includes("|") || trimmed.includes("&&") || trimmed.includes(";")) return null;
+  return `Command succeeded, but ${target} is faster, gets cached, and is visible to dispatch dedup. Use ${target} instead of shell for this.`;
+}
+
 export const shellTool = {
   name: "shell",
   description:
-    "Run a shell command (build, test, lint, install, git, etc). " +
-    "For type-checking, prefer analyze diagnostics. For file search, prefer grep/glob.",
+    "Run a shell command (build, install, git, process management). " +
+    "For reading files use read_file. For searching use grep/glob. For build/test/lint use project.",
   execute: async (args: ShellArgs): Promise<ToolResult> => {
     const command = args.command;
     const cwd = args.cwd ?? process.cwd();
 
-    // Check if the command tries to read forbidden files
     const blocked = checkShellForbidden(command);
     if (blocked) {
       const msg = `Access denied: command references a file matching forbidden pattern "${blocked}".`;
@@ -168,7 +192,9 @@ export const shellTool = {
         }
 
         if (code === 0) {
-          resolve({ success: true, output: stdout || stderr });
+          const hint = detectReadCommand(command);
+          const output = hint ? `${stdout || stderr}\n\n${hint}` : stdout || stderr;
+          resolve({ success: true, output });
         } else if (code === null) {
           resolve({
             success: false,

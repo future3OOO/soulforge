@@ -651,10 +651,10 @@ export function App({ config, projectConfig, resumeSessionId, bootProviders, boo
 
   const { displayProvider, displayModel, isGateway, isProxy } = useMemo(() => {
     const model = activeModelForHeader;
-    const isGw = model.startsWith("gateway/");
+    const isGw = model.startsWith("vercel_gateway/");
     const isPrx = model.startsWith("proxy/");
     if (isGw || isPrx) {
-      const prefix = isGw ? "gateway/" : "proxy/";
+      const prefix = isGw ? "vercel_gateway/" : "proxy/";
       const rest = model.slice(prefix.length);
       const idx = rest.indexOf("/");
       return {
@@ -989,7 +989,7 @@ export function App({ config, projectConfig, resumeSessionId, bootProviders, boo
             )}
             {isGateway && (
               <span fg="#555">
-                {icon("gateway")} gateway<span fg="#444">›</span>
+                {icon("vercel_gateway")} gateway<span fg="#444">›</span>
               </span>
             )}
             <span fg="#666">{providerIcon(displayProvider)} </span>

@@ -17,8 +17,7 @@ export const readCodeTool = {
   name: "read_code",
   description:
     "Read a specific function, class, type, or interface by name from a file. " +
-    "Returns ONLY that symbol's code — use INSTEAD of read_file when you know the symbol name. " +
-    "than read_file for understanding specific symbols.",
+    "Returns ONLY that symbol's code. More precise and token-efficient than read_file for targeted reading.",
   execute: async (args: ReadCodeArgs): Promise<ToolResult> => {
     try {
       const router = getIntelligenceRouter(process.cwd());

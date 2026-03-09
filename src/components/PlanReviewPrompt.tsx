@@ -69,32 +69,17 @@ export function PlanReviewPrompt({
 }: Props) {
   const [selectedIdx, setSelectedIdx] = useState(0);
   const [reviseInput, setReviseInput] = useState("");
-  const isReviseSelected = OPTIONS[selectedIdx]?.id === "revise";
-
-  const executeOption = (idx: number) => {
-    const opt = OPTIONS[idx];
-    if (!opt) return;
-    switch (opt.id) {
-      case "implement":
-        onAccept();
-        break;
-      case "clear_implement":
-        onClearAndImplement();
-        break;
-      case "revise":
-        if (reviseInput.trim()) {
-          onRevise(reviseInput.trim());
-          setReviseInput("");
-        }
-        break;
-      case "cancel":
-        onCancel();
-        break;
-    }
-  };
+  const [typing, setTyping] = useState(false);
 
   useKeyboard((evt) => {
     if (!isActive) return;
+
+    if (typing) {
+      if (evt.name === "escape") {
+        setTyping(false);
+      }
+      return;
+    }
 
     if (evt.name === "escape") {
       onCancel();
@@ -105,18 +90,29 @@ export function PlanReviewPrompt({
       setSelectedIdx((prev) => (prev > 0 ? prev - 1 : OPTIONS.length - 1));
       return;
     }
-    if (evt.name === "down") {
-      setSelectedIdx((prev) => (prev + 1) % OPTIONS.length);
-      return;
-    }
-    if (evt.name === "tab") {
+    if (evt.name === "down" || evt.name === "tab") {
       setSelectedIdx((prev) => (prev + 1) % OPTIONS.length);
       return;
     }
 
     if (evt.name === "return") {
-      executeOption(selectedIdx);
-      return;
+      const opt = OPTIONS[selectedIdx];
+      if (!opt) return;
+      switch (opt.id) {
+        case "implement":
+          onAccept();
+          break;
+        case "clear_implement":
+          onClearAndImplement();
+          break;
+        case "revise":
+          setTyping(true);
+          setReviseInput("");
+          break;
+        case "cancel":
+          onCancel();
+          break;
+      }
     }
   });
 
@@ -150,14 +146,30 @@ export function PlanReviewPrompt({
 
       <box height={1} />
 
-      {OPTIONS.map((opt, i) => {
-        const selected = i === selectedIdx;
-        const optColor = selected ? opt.color : DIM;
-        return (
-          <box key={opt.id} flexDirection="column">
-            <box gap={1} flexDirection="row">
+      {typing ? (
+        <box flexDirection="row" gap={1}>
+          <text fg={STEP_COLOR}>{" \u203A"}</text>
+          <input
+            value={reviseInput}
+            onInput={setReviseInput}
+            onSubmit={() => {
+              if (reviseInput.trim()) {
+                onRevise(reviseInput.trim());
+                setReviseInput("");
+              }
+            }}
+            focused={isActive}
+            flexGrow={1}
+            placeholder="what should change..."
+          />
+        </box>
+      ) : (
+        OPTIONS.map((opt, i) => {
+          const selected = i === selectedIdx;
+          return (
+            <box key={opt.id} gap={1} flexDirection="row">
               <text fg={selected ? opt.color : "#333"}>{selected ? " \u203A" : "  "}</text>
-              <text fg={optColor}>{opt.icon}</text>
+              <text fg={selected ? opt.color : DIM}>{opt.icon}</text>
               <text
                 fg={selected ? "#eee" : "#888"}
                 attributes={selected ? TextAttributes.BOLD : undefined}
@@ -166,33 +178,15 @@ export function PlanReviewPrompt({
               </text>
               {opt.description && <text fg={selected ? "#777" : "#444"}>{opt.description}</text>}
             </box>
-            {opt.id === "revise" && selected && (
-              <box flexDirection="row" paddingLeft={3} marginTop={0}>
-                <text fg={STEP_COLOR}>{"\u276F"} </text>
-                <input
-                  value={reviseInput}
-                  onInput={setReviseInput}
-                  flexGrow={1}
-                  onSubmit={() => {
-                    if (reviseInput.trim()) {
-                      onRevise(reviseInput.trim());
-                      setReviseInput("");
-                    }
-                  }}
-                  focused={isActive && isReviseSelected}
-                  placeholder="what should change..."
-                />
-              </box>
-            )}
-          </box>
-        );
-      })}
-
-      <box height={1} />
+          );
+        })
+      )}
 
       <box>
-        <text fg="#444">
-          {"  "}↑↓ select{"  "}⏎ confirm{"  "}esc cancel
+        <text fg="#555">
+          {typing
+            ? "  \u23CE submit  esc back"
+            : "  \u2191\u2193 select  \u23CE confirm  esc cancel"}
         </text>
       </box>
     </box>

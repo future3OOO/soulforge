@@ -60,7 +60,7 @@ const DISPATCH_GUIDANCE_BASE = [
   "**Information priority — exhaust each level before escalating:**",
   "1. Context — previous dispatch results, tool returns, user-provided content already in conversation.",
   "2. Codebase — existing patterns, similar implementations in the project.",
-  "3. User-provided URLs — if the user shared a link, `fetch_page` it before searching. The answer is likely there.",
+  "3. User-provided URLs — if the user shared a link, `fetch_page` it before searching. The answer is likely there. fetch_page returns a 'Pages on this site' section — use those links to navigate docs instead of guessing URLs.",
   "4. Web search — ONLY for specific gaps not covered above. One focused query per task.",
   "",
   "**Web search tasks:** ONE focused query per task with `targetFiles: ['web']`.",
@@ -81,7 +81,7 @@ const DISPATCH_GUIDANCE_BASE = [
   "For 1-6 files to read or 1-3 files to edit, do it directly — the system rejects explore dispatches for ≤6 files and code dispatches for ≤3 files.",
   "One dispatch per task is the target. A second dispatch means the first was poorly scoped — the system rejects dispatches where target files are already read.",
   "",
-  "**After dispatch:** results include full code content. The system injects file-read records — trust them and act on the returned data.",
+  "**After dispatch:** results include code content from subagent keyFindings. The system injects file-read records — trust them and act on the returned data. If lines were compacted, the output tells you exactly how many and what to do.",
 ];
 
 const DISPATCH_GUIDANCE_WITH_MAP = [

@@ -1,6 +1,15 @@
+import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
 import type { ToolResult } from "../../types/index.js";
 import { getIntelligenceRouter } from "../intelligence/index.js";
+
+function lineCount(file: string): number | null {
+  try {
+    return readFileSync(resolve(file), "utf-8").split("\n").length;
+  } catch {
+    return null;
+  }
+}
 
 interface DiscoverPatternArgs {
   query: string;
@@ -105,17 +114,21 @@ export const discoverPatternTool = {
           const exports = await router.executeWithFallback(language, "findExports", (b) =>
             b.findExports ? b.findExports(f) : Promise.resolve(null),
           );
-          return { file: f, exports };
+          const lines = lineCount(f);
+          return { file: f, exports, lines };
         }),
       );
-      for (const { file: f, exports } of fileExports) {
+      for (const { file: f, exports, lines } of fileExports) {
+        const sizeHint = lines
+          ? ` (${String(lines)} lines${lines > 100 ? " — use read_code for specific symbols" : ""})`
+          : "";
         if (exports && exports.length > 0) {
-          parts.push(`  ${f}:`);
+          parts.push(`  ${f}${sizeHint}:`);
           for (const exp of exports.slice(0, 8)) {
             parts.push(`    ${exp.kind} ${exp.name}`);
           }
         } else {
-          parts.push(`  ${f}`);
+          parts.push(`  ${f}${sizeHint}`);
         }
       }
 

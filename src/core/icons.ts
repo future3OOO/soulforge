@@ -40,7 +40,7 @@ const NERD: Record<string, string> = {
   context: "\uF1C0",
   lock: "\uF023",
   proxy: "󰌆",
-  gateway: "󰒍",
+  vercel_gateway: "󰒍",
   panel: "\uDB82\uDD28",
   file: "\uDB80\uDCCB",
   terminal: "\uF120",
@@ -117,7 +117,7 @@ const ASCII: Record<string, string> = {
   context: "◉",
   lock: "🔒",
   proxy: "⛨",
-  gateway: "☁",
+  vercel_gateway: "☁",
   panel: "▣",
   file: "□",
   terminal: "$",
@@ -244,7 +244,7 @@ function inferProviderId(idOrModel: string): string {
   if (id.startsWith("mistral") || id.startsWith("codestral") || id.startsWith("pixtral"))
     return "mistral";
   if (id.startsWith("deepseek")) return "deepseek";
-  if (id.includes("/")) return "gateway";
+  if (id.includes("/")) return "vercel_gateway";
   return idOrModel;
 }
 

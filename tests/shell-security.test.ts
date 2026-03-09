@@ -262,3 +262,68 @@ describe("shell security — FILE_READ_RE patterns", () => {
     expect(m![1]).toBe("cat");
   });
 });
+
+const READ_CMD_REDIRECT: Record<string, string> = {
+	cat: "read_file",
+	head: "read_file",
+	tail: "read_file",
+	less: "read_file",
+	more: "read_file",
+	bat: "read_file",
+	tac: "read_file",
+	nl: "read_file",
+	grep: "grep",
+	rg: "grep",
+	ag: "grep",
+	ack: "grep",
+	find: "glob",
+};
+
+function detectReadCommand(command: string): string | null {
+	const trimmed = command.trim();
+	const first = trimmed.split(/[\s|;&]/)[0]?.replace(/^.*\//, "") ?? "";
+	const target = READ_CMD_REDIRECT[first];
+	if (!target) return null;
+	if (trimmed.includes("|") || trimmed.includes("&&") || trimmed.includes(";")) return null;
+	return `Command succeeded, but ${target} is faster, gets cached, and is visible to dispatch dedup. Use ${target} instead of shell for this.`;
+}
+
+describe("detectReadCommand — read tool redirect", () => {
+	it("redirects simple cat/head/tail to read_file", () => {
+		for (const cmd of ["cat foo.ts", "head -n 20 bar.py", "tail setup.cfg"]) {
+			expect(detectReadCommand(cmd)).toContain("read_file");
+		}
+	});
+
+	it("redirects grep/rg/ag to grep tool", () => {
+		for (const cmd of ["grep 'pattern' src/", "rg foo", "ag bar"]) {
+			expect(detectReadCommand(cmd)).toContain("grep");
+		}
+	});
+
+	it("redirects find to glob", () => {
+		expect(detectReadCommand("find . -name '*.ts'")).toContain("glob");
+	});
+
+	it("skips piped commands (legitimate shell use)", () => {
+		expect(detectReadCommand("cat foo.ts | wc -l")).toBeNull();
+		expect(detectReadCommand("grep foo bar.ts | head -5")).toBeNull();
+	});
+
+	it("skips chained commands", () => {
+		expect(detectReadCommand("cat foo.ts && echo done")).toBeNull();
+		expect(detectReadCommand("grep foo bar.ts; echo ok")).toBeNull();
+	});
+
+	it("skips non-read commands", () => {
+		expect(detectReadCommand("git status")).toBeNull();
+		expect(detectReadCommand("bun test")).toBeNull();
+		expect(detectReadCommand("npm install")).toBeNull();
+		expect(detectReadCommand("ls -la")).toBeNull();
+	});
+
+	it("handles full path to command", () => {
+		expect(detectReadCommand("/usr/bin/cat foo.ts")).toContain("read_file");
+		expect(detectReadCommand("/usr/bin/grep pattern src/")).toContain("grep");
+	});
+});

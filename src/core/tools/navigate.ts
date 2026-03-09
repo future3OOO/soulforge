@@ -158,10 +158,9 @@ export const navigateTool = {
   name: "navigate",
   description:
     "Find where a symbol is defined, who calls it, what it imports/exports, and its type hierarchy. " +
-    "THE primary tool for understanding code structure — use BEFORE grep for code questions. " +
-    "Check Repo Map first: if the symbol/file is already listed, use read_code directly instead. " +
-    "workspace_symbols only finds exported symbols — for script-style entry points (boot.tsx, index.ts) with no exports, use analyze outline instead. " +
-    "Works without neovim — uses static analysis of the codebase.",
+    "Primary tool for code structure questions — faster and more precise than grep for symbol lookup. " +
+    "workspace_symbols finds exported symbols. For unexported entry points (boot.tsx, index.ts), use analyze outline. " +
+    "Static analysis — works without neovim.",
   execute: async (args: NavigateArgs, repoMap?: RepoMapLike): Promise<ToolResult> => {
     try {
       const router = getIntelligenceRouter(process.cwd());

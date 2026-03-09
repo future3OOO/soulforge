@@ -85,13 +85,14 @@ export const readFileTool = {
         .map((line: string, i: number) => `${String(start + i + 1).padStart(4)}  ${line}`)
         .join("\n");
 
+      emitFileRead(filePath);
+
       const isFullRead = args.startLine == null && args.endLine == null;
       if (isFullRead && lines.length > 100 && CODE_EXTENSIONS.has(extname(filePath))) {
         const outline = await getCompactOutline(filePath);
         if (outline) return { success: true, output: `${outline}\n${numbered}` };
       }
 
-      emitFileRead(filePath);
       return { success: true, output: numbered };
     } catch (err: unknown) {
       const msg = err instanceof Error ? err.message : String(err);

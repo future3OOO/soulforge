@@ -4,6 +4,7 @@ import {
 	buildPrepareStep,
 	buildSymbolLookup,
 	KEEP_RECENT_MESSAGES,
+	type PrepareStepOptions,
 } from "../src/core/agents/step-utils.js";
 
 const LONG_CONTENT = Array.from(
@@ -105,7 +106,7 @@ const TOOLS = {
 };
 
 function callPrepareStep(
-	opts: Parameters<typeof buildPrepareStep>[0],
+	opts: PrepareStepOptions,
 	stepArgs: {
 		stepNumber: number;
 		messages: ModelMessage[];
@@ -113,13 +114,16 @@ function callPrepareStep(
 	},
 ) {
 	const fn = buildPrepareStep(opts);
-	return fn({
+	const result = fn({
 		stepNumber: stepArgs.stepNumber,
 		messages: stepArgs.messages,
 		steps: (stepArgs.steps ?? []) as never,
 		model: {} as never,
 		experimental_context: undefined,
 	});
+	return result as
+		| { messages?: ModelMessage[]; toolChoice?: string; activeTools?: string[]; system?: string }
+		| undefined;
 }
 
 // ---------------------------------------------------------------------------
