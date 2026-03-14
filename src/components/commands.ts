@@ -14,7 +14,7 @@ import {
   gitStashPop,
 } from "../core/git/status.js";
 import { icon, setNerdFont } from "../core/icons.js";
-import { getIntelligenceStatus } from "../core/intelligence/index.js";
+import { getIntelligenceStatus, runIntelligenceHealthCheck } from "../core/intelligence/index.js";
 
 import { getModelContextInfo, getShortModelLabel } from "../core/llm/models.js";
 import { SessionManager } from "../core/sessions/manager.js";
@@ -1856,6 +1856,111 @@ async function handleCommandInner(input: string, ctx: CommandContext): Promise<v
       break;
     case "/lsp-install": {
       ctx.openLspInstall();
+      break;
+    }
+    case "/diagnose": {
+      sysMsg(ctx, "Running intelligence health check...");
+      const healthResult = await runIntelligenceHealthCheck();
+      if (!healthResult) {
+        sysMsg(ctx, "Intelligence router not initialized yet");
+        break;
+      }
+
+      const lines: import("./InfoPopup.js").InfoPopupLine[] = [
+        {
+          type: "entry",
+          label: "Language",
+          desc: healthResult.language,
+          descColor: "#8B5CF6",
+        },
+        {
+          type: "entry",
+          label: "Probe file",
+          desc: healthResult.probeFile.split("/").pop() ?? healthResult.probeFile,
+          descColor: "#666",
+        },
+        { type: "spacer" },
+      ];
+
+      for (const br of healthResult.backends) {
+        const statusIcon = !br.supports
+          ? "○"
+          : br.initError
+            ? "✗"
+            : br.probes.some((p) => p.status === "pass")
+              ? "●"
+              : "◐";
+        const statusColor = !br.supports
+          ? "#555"
+          : br.initError
+            ? "#FF0040"
+            : br.probes.some((p) => p.status === "pass")
+              ? "#2d5"
+              : "#FF8C00";
+
+        lines.push({
+          type: "header",
+          label: `${statusIcon} ${br.backend} (tier ${String(br.tier)})`,
+          color: statusColor,
+        });
+
+        if (!br.supports) {
+          lines.push({
+            type: "entry",
+            label: "",
+            desc: "does not support this language",
+            descColor: "#555",
+          });
+        } else if (br.initError) {
+          lines.push({
+            type: "entry",
+            label: "init",
+            desc: `✗ ${br.initError.slice(0, 50)}`,
+            descColor: "#FF0040",
+          });
+        } else {
+          for (const probe of br.probes) {
+            const probeIcon =
+              probe.status === "pass"
+                ? "✓"
+                : probe.status === "empty"
+                  ? "○"
+                  : probe.status === "unsupported"
+                    ? "—"
+                    : probe.status === "timeout"
+                      ? "⏱"
+                      : "✗";
+            const probeColor =
+              probe.status === "pass"
+                ? "#2d5"
+                : probe.status === "empty"
+                  ? "#FF8C00"
+                  : probe.status === "unsupported"
+                    ? "#555"
+                    : "#FF0040";
+            const timing = probe.ms !== undefined ? `${String(probe.ms)}ms` : "";
+            const desc =
+              probe.status === "error"
+                ? `${probeIcon} ${(probe.error ?? "").slice(0, 40)}`
+                : `${probeIcon} ${probe.status} ${timing}`;
+            lines.push({
+              type: "entry",
+              label: probe.operation,
+              desc,
+              descColor: probeColor,
+            });
+          }
+        }
+        lines.push({ type: "spacer" });
+      }
+
+      ctx.openInfoPopup({
+        title: "Intelligence Health Check",
+        icon: icon("brain"),
+        lines,
+        width: 60,
+        labelWidth: 18,
+      });
       break;
     }
     case "/storage": {

@@ -4,11 +4,13 @@ export {
   getIntelligenceChildPids,
   getIntelligenceRouter,
   getIntelligenceStatus,
+  runIntelligenceHealthCheck,
   warmupIntelligence,
 } from "./instance.js";
 export type { RepoMapOptions } from "./repo-map.js";
 export { RepoMap } from "./repo-map.js";
 export { CodeIntelligenceRouter } from "./router.js";
+export type { BackendProbeResult, HealthCheckResult, ProbeResult } from "./router.js";
 export type {
   BackendPreference,
   CallHierarchyItem,

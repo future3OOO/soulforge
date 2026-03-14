@@ -83,6 +83,12 @@ export function getIntelligenceChildPids(): number[] {
   return router.getChildPids();
 }
 
+/** Run intelligence health check — probes all backends */
+export async function runIntelligenceHealthCheck() {
+  if (!router) return null;
+  return router.runHealthCheck();
+}
+
 /** Dispose the singleton router and all backends */
 export function disposeIntelligenceRouter(): void {
   if (router) {

@@ -47,6 +47,7 @@ const CMD_DEFS: Array<{ cmd: string; ic: string; desc: string }> = [
   { cmd: "/log", ic: "git", desc: "Show recent commits" },
   { cmd: "/lsp", ic: "brain", desc: "Language server status & diagnostics" },
   { cmd: "/lsp-install", ic: "brain", desc: "Install & manage LSP servers (Mason registry)" },
+  { cmd: "/diagnose", ic: "brain", desc: "Intelligence health check — probe all backends" },
   { cmd: "/memory", ic: "memory", desc: "Manage memory scopes, view & clear" },
   { cmd: "/mode", ic: "cog", desc: "Switch forge mode" },
   { cmd: "/models", ic: "system", desc: "Switch LLM model (Ctrl+L)" },

@@ -8,6 +8,31 @@ import type {
   Language,
 } from "./types.js";
 
+// ─── Health Check Types ───
+
+export interface ProbeResult {
+  operation: string;
+  status: "pass" | "empty" | "error" | "timeout" | "unsupported";
+  ms?: number;
+  error?: string;
+}
+
+export interface BackendProbeResult {
+  backend: string;
+  tier: number;
+  supports: boolean;
+  initialized: boolean;
+  initMs?: number;
+  initError?: string;
+  probes: ProbeResult[];
+}
+
+export interface HealthCheckResult {
+  language: string;
+  probeFile: string;
+  backends: BackendProbeResult[];
+}
+
 const EXT_TO_LANGUAGE: Record<string, Language> = {
   ".ts": "typescript",
   ".tsx": "typescript",
@@ -336,6 +361,110 @@ export class CodeIntelligenceRouter {
     this.backends = [];
     this.initialized.clear();
     this.fileCache.clear();
+  }
+
+  /**
+   * Run a health check — probe every backend with key operations against a real file.
+   * Returns timing and pass/fail for each backend × operation combination.
+   */
+  async runHealthCheck(): Promise<HealthCheckResult> {
+    const language = this.detectLanguage();
+    const probeFile = this.findProbeFile(language);
+    const results: BackendProbeResult[] = [];
+
+    // Key operations to test, grouped by what they need
+    const fileOps: Array<{
+      op: keyof IntelligenceBackend;
+      label: string;
+      fn: (b: IntelligenceBackend, f: string) => Promise<unknown>;
+    }> = [
+      { op: "findSymbols", label: "findSymbols", fn: (b, f) => b.findSymbols!(f) },
+      { op: "findImports", label: "findImports", fn: (b, f) => b.findImports!(f) },
+      { op: "findExports", label: "findExports", fn: (b, f) => b.findExports!(f) },
+      { op: "getFileOutline", label: "getFileOutline", fn: (b, f) => b.getFileOutline!(f) },
+      { op: "getDiagnostics", label: "getDiagnostics", fn: (b, f) => b.getDiagnostics!(f) },
+      { op: "readSymbol", label: "readSymbol", fn: (b, f) => b.readSymbol!(f, "default") },
+    ];
+
+    for (const backend of this.backends) {
+      const supports = backend.supportsLanguage(language);
+      const probes: ProbeResult[] = [];
+
+      if (!supports) {
+        results.push({
+          backend: backend.name,
+          tier: backend.tier,
+          supports: false,
+          initialized: this.initialized.has(backend.name),
+          probes: [],
+        });
+        continue;
+      }
+
+      // Try to initialize
+      let initMs = 0;
+      let initError: string | undefined;
+      if (!this.initialized.has(backend.name)) {
+        const start = performance.now();
+        try {
+          await backend.initialize?.(this.cwd);
+          this.initialized.add(backend.name);
+          initMs = Math.round(performance.now() - start);
+        } catch (err) {
+          initMs = Math.round(performance.now() - start);
+          initError = err instanceof Error ? err.message : String(err);
+        }
+      }
+
+      // Probe each operation
+      if (probeFile) {
+        for (const { op, label, fn } of fileOps) {
+          if (typeof backend[op] !== "function") {
+            probes.push({ operation: label, status: "unsupported" });
+            continue;
+          }
+          const start = performance.now();
+          try {
+            const result = await Promise.race([
+              fn(backend, probeFile),
+              new Promise<"timeout">((r) => setTimeout(() => r("timeout"), 10_000)),
+            ]);
+            const ms = Math.round(performance.now() - start);
+            if (result === "timeout") {
+              probes.push({ operation: label, status: "timeout", ms: 10_000 });
+            } else if (result === null || result === undefined) {
+              probes.push({ operation: label, status: "empty", ms });
+            } else {
+              probes.push({ operation: label, status: "pass", ms });
+            }
+          } catch (err) {
+            const ms = Math.round(performance.now() - start);
+            probes.push({
+              operation: label,
+              status: "error",
+              ms,
+              error: err instanceof Error ? err.message : String(err),
+            });
+          }
+        }
+      }
+
+      results.push({
+        backend: backend.name,
+        tier: backend.tier,
+        supports: true,
+        initialized: this.initialized.has(backend.name),
+        initMs,
+        initError,
+        probes,
+      });
+    }
+
+    return {
+      language,
+      probeFile: probeFile ?? "(none)",
+      backends: results,
+    };
   }
 
   private async ensureInitialized(backend: IntelligenceBackend): Promise<void> {
