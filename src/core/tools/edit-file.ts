@@ -37,8 +37,9 @@ export function buildRichEditError(
     .slice(start, end)
     .map((l, i) => `${String(start + i + 1).padStart(4)} │ ${l}`)
     .join("\n");
+  const readHint = `read_file(path, startLine: ${String(start + 1)}, endLine: ${String(Math.min(end + 20, lines.length))})`;
   return {
-    output: `old_string not found in file (re-read performed — content below is current):\n${snippet}`,
+    output: `old_string not found in file (re-read performed — content below is current):\n${snippet}\n[Hint: ${readHint} to see more context]`,
   };
 }
 
