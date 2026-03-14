@@ -337,23 +337,41 @@ export function buildTools(
           "rename",
           "lsp_status",
           "format",
+          "select",
+          "goto_cursor",
+          "yank",
+          "open_file",
+          "highlight",
+          "cursor_context",
+          "buffers",
         ]),
-        startLine: z.number().optional().describe("For read/edit/format: start line (1-indexed)"),
-        endLine: z.number().optional().describe("For read/edit/format: end line (1-indexed)"),
+        startLine: z
+          .number()
+          .optional()
+          .describe("For read/edit/format/select/highlight: start line (1-indexed)"),
+        endLine: z
+          .number()
+          .optional()
+          .describe("For read/edit/format/select/highlight: end line (1-indexed)"),
         replacement: z.string().optional().describe("For edit: new content"),
-        file: z.string().optional().describe("For navigate: file path"),
+        file: z.string().optional().describe("For navigate/open_file: file path"),
         line: z
           .number()
           .optional()
-          .describe("For navigate/hover/references/definition/actions/rename: line"),
+          .describe("For navigate/hover/references/definition/actions/rename/goto_cursor: line"),
         col: z
           .number()
           .optional()
-          .describe("For navigate/hover/references/definition/actions/rename: column"),
+          .describe("For navigate/hover/references/definition/actions/rename/goto_cursor: column"),
         search: z.string().optional().describe("For navigate: search pattern"),
         newName: z.string().optional().describe("For rename: new symbol name"),
         apply: z.number().optional().describe("For actions: 0-indexed action to apply"),
         jump: z.boolean().optional().describe("For definition: jump to first result"),
+        text: z.string().optional().describe("For yank: text to put in register"),
+        register: z
+          .string()
+          .optional()
+          .describe('For yank: neovim register (default: "+", system clipboard)'),
       }),
       execute: deferExecute((args) => editorTool.execute(args)),
     }),

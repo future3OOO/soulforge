@@ -2,10 +2,15 @@
 // Used by: useNeovim (dimensions), useEditorInput (mouse offsets), EditorPanel (rendering)
 
 export const EDITOR_WIDTH_RATIO = 0.6;
-export const EDITOR_COL_OFFSET = 2; // border(1) + paddingX(1)
+
+// Border takes 1 char on each side = 2 total for width calculation
+const EDITOR_BORDER_WIDTH = 2; // left border(1) + right border(1)
+
+// Mouse click offset: only the left side matters (terminal col 1-based → nvim col 0-based)
+export const EDITOR_COL_OFFSET = 1; // left border(1)
 
 // Fixed rows consumed by app chrome around the editor content area:
-// Header(1) + footer(1) + footer-wrapper(1) + border-top(1) + border-bottom(1) + title(1) + sep-top(1) + sep-bottom(1) + status(1) = 9
+// Header(1) + footer(1) + border-top(1) + border-bottom(1) + title(1) + sep-top(1) + sep-bottom(1) + status(1) + extra(1) = 9
 const BASE_FIXED_ROWS = 9;
 const HINTS_ROWS = 2;
 // TabBar when visible: marginTop(1) + bar(1) = 2 rows
@@ -23,7 +28,7 @@ export function getEditorDimensions(
 ): { cols: number; rows: number } {
   const fixedRows = getEditorFixedRows(showHints) + (hasTabBar ? TAB_BAR_ROWS : 0);
   return {
-    cols: Math.max(20, Math.floor(termCols * EDITOR_WIDTH_RATIO) - EDITOR_COL_OFFSET),
+    cols: Math.max(20, Math.floor(termCols * EDITOR_WIDTH_RATIO) - EDITOR_BORDER_WIDTH),
     rows: Math.max(6, termRows - fixedRows),
   };
 }

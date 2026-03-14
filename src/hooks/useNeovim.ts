@@ -11,6 +11,7 @@ import {
   shutdownNeovim,
 } from "../core/editor/neovim.js";
 import type { ScreenSegment } from "../core/editor/screen.js";
+import { onFileEdited } from "../core/tools/file-events.js";
 import type { NvimConfigMode } from "../types/index.js";
 
 /** Combined screen state — single setState call instead of 3. */
@@ -29,6 +30,7 @@ export interface UseNeovimReturn {
   cursorLine: number;
   cursorCol: number;
   visualSelection: string | null;
+  clearSelection: () => void;
   openFile: (path: string) => Promise<void>;
   sendKeys: (keys: string) => Promise<void>;
   sendMouse: (button: string, action: string, row: number, col: number) => Promise<void>;
@@ -195,7 +197,10 @@ export function useNeovim(
           if (name) setFileName((prev) => (prev === name ? prev : name));
           setCursorLine((prev) => (prev === cursor.line ? prev : cursor.line));
           setCursorCol((prev) => (prev === cursor.col ? prev : cursor.col));
-          setVisualSelection((prev) => (prev === selection ? prev : selection));
+          setVisualSelection((prev) => {
+            if (selection) return selection;
+            return prev;
+          });
         })
         .catch(() => {});
     };
@@ -224,6 +229,15 @@ export function useNeovim(
     };
   }, []);
 
+  // Auto-reload buffers when AI edits files
+  useEffect(() => {
+    if (!ready || !active) return;
+    return onFileEdited(() => {
+      const nvim = nvimRef.current;
+      if (nvim) nvim.api.command("checktime").catch(() => {});
+    });
+  }, [ready, active]);
+
   const openFile = useCallback(async (path: string) => {
     const nvim = nvimRef.current;
     if (!nvim || !mountedRef.current) return;
@@ -247,6 +261,10 @@ export function useNeovim(
     } catch {}
   }, []);
 
+  const clearSelection = useCallback(() => {
+    setVisualSelection(null);
+  }, []);
+
   const sendMouse = useCallback(
     async (button: string, action: string, row: number, col: number) => {
       const nvim = nvimRef.current;
@@ -267,6 +285,7 @@ export function useNeovim(
     cursorLine,
     cursorCol,
     visualSelection,
+    clearSelection,
     openFile,
     sendKeys,
     sendMouse,

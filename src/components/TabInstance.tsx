@@ -64,6 +64,7 @@ export interface TabInstanceProps {
   editorCursorLine: number;
   editorCursorCol: number;
   editorVisualSelection: string | null;
+  clearEditorSelection: () => void;
 }
 
 const MAX_RENDERED = 60;
@@ -99,6 +100,7 @@ export function TabInstance({
   editorCursorLine,
   editorCursorCol,
   editorVisualSelection,
+  clearEditorSelection,
 }: TabInstanceProps) {
   const scrollRef = useRef<ScrollBoxRenderable>(null);
 
@@ -295,8 +297,9 @@ export function TabInstance({
         return;
       }
       chat.handleSubmit(input);
+      clearEditorSelection();
     },
-    [chat, onCommand],
+    [chat, onCommand, clearEditorSelection],
   );
 
   const isFocused = visible && focusMode === "chat" && !anyModalOpen;

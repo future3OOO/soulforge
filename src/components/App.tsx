@@ -258,6 +258,7 @@ export function App({
     cursorLine,
     cursorCol,
     visualSelection,
+    clearSelection: clearNvimSelection,
     openFile: nvimOpen,
     sendKeys,
     sendMouse,
@@ -1028,6 +1029,7 @@ export function App({
             editorCursorLine={cursorLine}
             editorCursorCol={cursorCol}
             editorVisualSelection={visualSelection}
+            clearEditorSelection={clearNvimSelection}
           />
         ))}
       </box>

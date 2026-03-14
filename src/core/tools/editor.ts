@@ -20,7 +20,14 @@ export type EditorAction =
   | "actions"
   | "rename"
   | "lsp_status"
-  | "format";
+  | "format"
+  | "select"
+  | "goto_cursor"
+  | "yank"
+  | "open_file"
+  | "highlight"
+  | "cursor_context"
+  | "buffers";
 
 export interface EditorArgs {
   action: EditorAction;
@@ -34,12 +41,14 @@ export interface EditorArgs {
   newName?: string;
   apply?: number;
   jump?: boolean;
+  text?: string;
+  register?: string;
 }
 
 export const editorTool = {
   name: "editor" as const,
   description:
-    "Neovim editor: read, edit, navigate, diagnostics, symbols, hover, references, definition, actions, rename, lsp_status, format.",
+    "Neovim editor integration. Actions: read, edit, navigate, diagnostics, symbols, hover, references, definition, actions, rename, lsp_status, format, select (visual select lines), goto_cursor (jump + center), yank (put text in register), open_file, highlight (ephemeral highlight), cursor_context (function/symbol at cursor), buffers (list open buffers).",
   execute: async (args: EditorArgs): Promise<ToolResult> => {
     switch (args.action) {
       case "read":
@@ -89,6 +98,26 @@ export const editorTool = {
         return editorLspStatusTool.execute();
       case "format":
         return editorFormatTool.execute({ startLine: args.startLine, endLine: args.endLine });
+      case "select":
+        return editorSelectTool.execute({
+          startLine: args.startLine ?? 1,
+          endLine: args.endLine ?? 1,
+        });
+      case "goto_cursor":
+        return editorGotoCursorTool.execute({ line: args.line ?? 1, col: args.col });
+      case "yank":
+        return editorYankTool.execute({ text: args.text ?? "", register: args.register });
+      case "open_file":
+        return editorOpenFileTool.execute({ file: args.file ?? "" });
+      case "highlight":
+        return editorHighlightTool.execute({
+          startLine: args.startLine ?? 1,
+          endLine: args.endLine ?? 1,
+        });
+      case "cursor_context":
+        return editorCursorContextTool.execute();
+      case "buffers":
+        return editorBuffersTool.execute();
       default:
         return {
           success: false,
@@ -858,6 +887,267 @@ export const editorHoverTool = {
         return { success: true, output: "No hover information available" };
       }
       return { success: true, output: text };
+    } catch (err: unknown) {
+      return { success: false, output: String(err), error: String(err) };
+    }
+  },
+};
+
+// ─── editor_select — visually select a line range ───
+
+const editorSelectTool = {
+  execute: async (args: { startLine: number; endLine: number }): Promise<ToolResult> => {
+    const nvim = await requireNvim();
+    if (!nvim) return NO_EDITOR;
+    try {
+      await nvim.api.executeLua(
+        `
+        local s, e = ...
+        vim.api.nvim_win_set_cursor(0, {s, 0})
+        vim.cmd('normal! V')
+        if e > s then vim.cmd('normal! ' .. tostring(e - s) .. 'j') end
+        `,
+        [args.startLine, args.endLine],
+      );
+      return {
+        success: true,
+        output: `Selected lines ${String(args.startLine)}-${String(args.endLine)}`,
+      };
+    } catch (err: unknown) {
+      return { success: false, output: String(err), error: String(err) };
+    }
+  },
+};
+
+// ─── editor_goto_cursor — jump to a specific line/col ───
+
+const editorGotoCursorTool = {
+  execute: async (args: { line: number; col?: number }): Promise<ToolResult> => {
+    const nvim = await requireNvim();
+    if (!nvim) return NO_EDITOR;
+    try {
+      const col = Math.max(0, (args.col ?? 1) - 1);
+      await nvim.api.executeLua(
+        "vim.api.nvim_win_set_cursor(0, {select(1, ...), select(2, ...)}); vim.cmd('normal! zz')",
+        [args.line, col],
+      );
+      return { success: true, output: `Cursor at line ${String(args.line)}` };
+    } catch (err: unknown) {
+      return { success: false, output: String(err), error: String(err) };
+    }
+  },
+};
+
+// ─── editor_yank — put text into a neovim register ───
+
+const editorYankTool = {
+  execute: async (args: { text: string; register?: string }): Promise<ToolResult> => {
+    const nvim = await requireNvim();
+    if (!nvim) return NO_EDITOR;
+    try {
+      const reg = args.register ?? "+";
+      await nvim.api.executeLua("vim.fn.setreg(select(1, ...), select(2, ...))", [reg, args.text]);
+      const lines = args.text.split("\n").length;
+      return {
+        success: true,
+        output: `${String(lines)} line(s) yanked to register "${reg}" — paste with "${reg}p"`,
+      };
+    } catch (err: unknown) {
+      return { success: false, output: String(err), error: String(err) };
+    }
+  },
+};
+
+// ─── editor_open_file — open a file in the editor and show it to the user ───
+
+const editorOpenFileTool = {
+  execute: async (args: { file: string }): Promise<ToolResult> => {
+    const nvim = await requireNvim();
+    if (!nvim) return NO_EDITOR;
+    try {
+      const blocked = isForbidden(args.file);
+      if (blocked) {
+        const msg = `Access denied: "${args.file}" matches forbidden pattern "${blocked}".`;
+        return { success: false, output: msg, error: msg };
+      }
+      await nvim.api.executeLua("vim.cmd.edit(vim.fn.fnameescape(...))", [args.file]);
+      return { success: true, output: `Opened ${args.file} in editor` };
+    } catch (err: unknown) {
+      return { success: false, output: String(err), error: String(err) };
+    }
+  },
+};
+
+// ─── editor_highlight — ephemeral highlight on a line range (auto-clears after 3s) ───
+
+const HIGHLIGHT_NS = "soulforge_highlight";
+
+const editorHighlightTool = {
+  execute: async (args: { startLine: number; endLine: number }): Promise<ToolResult> => {
+    const nvim = await requireNvim();
+    if (!nvim) return NO_EDITOR;
+    try {
+      await nvim.api.executeLua(
+        `
+        local s, e = ...
+        local ns = vim.api.nvim_create_namespace('${HIGHLIGHT_NS}')
+        vim.api.nvim_buf_clear_namespace(0, ns, 0, -1)
+
+        -- Create a visible highlight group if it doesn't exist
+        vim.api.nvim_set_hl(0, 'SoulForgeHL', { bg = '#3d2266', fg = '#e0d0ff', bold = true })
+
+        for line = s - 1, e - 1 do
+          vim.api.nvim_buf_add_highlight(0, ns, 'SoulForgeHL', line, 0, -1)
+        end
+        vim.api.nvim_win_set_cursor(0, {s, 0})
+        vim.cmd('normal! zz')
+        vim.cmd('redraw')
+        vim.defer_fn(function()
+          vim.api.nvim_buf_clear_namespace(0, ns, 0, -1)
+          vim.cmd('redraw')
+        end, 5000)
+        `,
+        [args.startLine, args.endLine],
+      );
+      return {
+        success: true,
+        output: `Highlighted lines ${String(args.startLine)}-${String(args.endLine)} (clears in 5s)`,
+      };
+    } catch (err: unknown) {
+      return { success: false, output: String(err), error: String(err) };
+    }
+  },
+};
+
+// ─── editor_cursor_context — get the symbol/function at cursor via tree-sitter ───
+
+const editorCursorContextTool = {
+  execute: async (): Promise<ToolResult> => {
+    const nvim = await requireNvim();
+    if (!nvim) return NO_EDITOR;
+    try {
+      const forbidden = await checkCurrentBufferForbidden(nvim);
+      if (forbidden) return forbidden;
+      const lua = `
+        local cursor = vim.api.nvim_win_get_cursor(0)
+        local row = cursor[1] - 1
+        local bufnr = vim.api.nvim_get_current_buf()
+        local fname = vim.api.nvim_buf_get_name(bufnr)
+
+        -- Try tree-sitter first
+        local ok, ts = pcall(function()
+          local node = vim.treesitter.get_node({ bufnr = bufnr, pos = { row, cursor[2] } })
+          if not node then return nil end
+
+          -- Walk up to find the enclosing function/method/class
+          local container_types = {
+            function_declaration = true, method_definition = true,
+            function_definition = true, arrow_function = true,
+            class_declaration = true, class_definition = true,
+            impl_item = true, fn_item = true,
+          }
+
+          local current = node
+          while current do
+            local type = current:type()
+            if container_types[type] then
+              local start_row, _, end_row, _ = current:range()
+              -- Get the name: usually the first named child or identifier child
+              local name_node = current:field('name')[1]
+              local name = name_node and vim.treesitter.get_node_text(name_node, bufnr) or type
+              return {
+                symbol = name,
+                kind = type,
+                startLine = start_row + 1,
+                endLine = end_row + 1,
+                file = fname,
+              }
+            end
+            current = current:parent()
+          end
+          return nil
+        end)
+
+        if ok and ts then
+          return vim.json.encode(ts)
+        end
+
+        -- Fallback: just return cursor position and file
+        return vim.json.encode({
+          file = fname,
+          cursorLine = cursor[1],
+          cursorCol = cursor[2] + 1,
+        })
+      `;
+      const result = await nvim.api.executeLua(lua, []);
+      const parsed = safeJsonParse<Record<string, unknown>>(result, {});
+      if (parsed.symbol) {
+        return {
+          success: true,
+          output: `Cursor is inside ${String(parsed.kind)} "${String(parsed.symbol)}" (lines ${String(parsed.startLine)}-${String(parsed.endLine)}) in ${String(parsed.file)}`,
+        };
+      }
+      return {
+        success: true,
+        output: `Cursor at ${String(parsed.file ?? "buffer")} line ${String(parsed.cursorLine)}:${String(parsed.cursorCol)}`,
+      };
+    } catch (err: unknown) {
+      return { success: false, output: String(err), error: String(err) };
+    }
+  },
+};
+
+// ─── editor_buffers — list all open buffers ───
+
+const editorBuffersTool = {
+  execute: async (): Promise<ToolResult> => {
+    const nvim = await requireNvim();
+    if (!nvim) return NO_EDITOR;
+    try {
+      const lua = `
+        local bufs = {}
+        local current = vim.api.nvim_get_current_buf()
+        for _, buf in ipairs(vim.api.nvim_list_bufs()) do
+          if vim.api.nvim_buf_is_loaded(buf) then
+            local name = vim.api.nvim_buf_get_name(buf)
+            if name ~= '' then
+              local modified = vim.bo[buf].modified
+              local buftype = vim.bo[buf].buftype
+              table.insert(bufs, {
+                id = buf,
+                name = name,
+                current = buf == current,
+                modified = modified,
+                type = buftype ~= '' and buftype or nil,
+              })
+            end
+          end
+        end
+        return vim.json.encode(bufs)
+      `;
+      const result = await nvim.api.executeLua(lua, []);
+      const parsed: unknown[] = safeJsonParse(result, []);
+      if (parsed.length === 0) {
+        return { success: true, output: "No buffers open" };
+      }
+      const lines = parsed.map((b: unknown) => {
+        const buf = b as {
+          id: number;
+          name: string;
+          current: boolean;
+          modified: boolean;
+          type?: string;
+        };
+        const flags = [
+          buf.current ? "active" : "",
+          buf.modified ? "modified" : "",
+          buf.type ? buf.type : "",
+        ]
+          .filter(Boolean)
+          .join(", ");
+        return `${buf.current ? ">" : " "} ${buf.name}${flags ? ` (${flags})` : ""}`;
+      });
+      return { success: true, output: `${String(parsed.length)} buffer(s):\n${lines.join("\n")}` };
     } catch (err: unknown) {
       return { success: false, output: String(err), error: String(err) };
     }
