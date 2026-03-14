@@ -60,7 +60,7 @@ export function GitCommitModal({ visible, cwd, coAuthor, onClose, onCommitted, o
     }
 
     const commitMsg = coAuthor
-      ? `${message.trim()}\n\nCo-Authored-By: SoulForge <noreply@soulforge.dev>`
+      ? `${message.trim()}\n\nCo-Authored-By: SoulForge <noreply@soulforge.com>`
       : message.trim();
     const result = await gitCommit(cwd, commitMsg);
     if (result.ok) {

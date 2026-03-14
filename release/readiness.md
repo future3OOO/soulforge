@@ -81,7 +81,7 @@ Audit date: 2026-03-14
 ## Batch 4: Competitive Moat
 
 - [ ] MCP protocol support
-- [ ] Plugin/skill system
+- [x] Skill system (search, install, load into system prompt, Ctrl+S UI, /skills command)
 - [ ] Tab autocomplete
 - [ ] Cloud/background agents
 - [ ] Orchestrated workflows (planner → TDD → implementer → reviewer)
