@@ -173,8 +173,10 @@ export class MemoryDB {
       params.push(opts.category);
     }
     if (opts?.tag) {
-      conditions.push("tags LIKE ?");
-      params.push(`%"${opts.tag}"%`);
+      const jsonTag = JSON.stringify(opts.tag);
+      const escaped = jsonTag.replace(/\\/g, "\\\\").replace(/%/g, "\\%").replace(/_/g, "\\_");
+      conditions.push("tags LIKE ? ESCAPE '\\'");
+      params.push(`%${escaped}%`);
     }
 
     if (conditions.length > 0) sql += ` WHERE ${conditions.join(" AND ")}`;

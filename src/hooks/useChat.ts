@@ -31,6 +31,7 @@ import { SessionManager } from "../core/sessions/manager.js";
 import { createThinkingParser } from "../core/thinking-parser.js";
 import { onFileEdited } from "../core/tools/file-events.js";
 import { planFileName } from "../core/tools/index.js";
+import { resetInProgressTasks } from "../core/tools/task-list.js";
 import { logCompaction } from "../stores/compaction-logs.js";
 import { logBackgroundError } from "../stores/errors.js";
 import { useStatusBarStore } from "../stores/statusbar.js";
@@ -374,6 +375,8 @@ export function useChat({
   const [sidebarPlan, setSidebarPlan] = useState<Plan | null>(initialState?.sidebarPlan ?? null);
   const [pendingQuestion, setPendingQuestion] = useState<PendingQuestion | null>(null);
   const [messageQueue, setMessageQueue] = useState<QueuedMessage[]>([]);
+  const messageQueueRef = useRef<QueuedMessage[]>([]);
+  messageQueueRef.current = messageQueue;
 
   // LLM state
   const [activeModel, setActiveModel] = useState(
@@ -1226,6 +1229,15 @@ export function useChat({
 
         await contextManager.ensureGitContext();
 
+        const drainSteering = (): string | null => {
+          const queue = messageQueueRef.current;
+          if (queue.length === 0) return null;
+          const [next, ...rest] = queue;
+          messageQueueRef.current = rest;
+          setMessageQueue(rest);
+          return next?.content ?? null;
+        };
+
         const agent = createForgeAgent({
           model,
           contextManager,
@@ -1245,6 +1257,7 @@ export function useChat({
           sharedCacheRef: sharedCacheRef.current,
           agentFeatures: effectiveConfig.agentFeatures,
           planExecution: planExecutionRef.current,
+          drainSteering,
         });
         let result!: StreamTextResult<ToolSet, never>;
         const MAX_TRANSIENT_RETRIES = 3;
@@ -1718,6 +1731,28 @@ export function useChat({
           ? `Provider returned a transient error (${rawMsg.slice(0, 120)}). Please retry.`
           : rawMsg;
         const errorStack = !isTransientStream && err instanceof Error ? err.stack : undefined;
+        // Mark in-flight tool calls as interrupted so they don't show stuck spinners
+        if (isAbort) {
+          const completedIds = new Set(completedCalls.map((c) => c.id));
+          const liveBuf = liveToolCallsBuffer.current;
+          for (const seg of finalSegments) {
+            if (seg.type === "tools") {
+              for (const id of seg.toolCallIds) {
+                if (!completedIds.has(id)) {
+                  const live = liveBuf.find((c: LiveToolCall) => c.id === id);
+                  const args = live?.args ? safeParseArgs(live.args) : {};
+                  completedCalls.push({
+                    id,
+                    name: live?.toolName ?? "unknown",
+                    args,
+                    result: { success: false, output: "", error: "Interrupted by user (Ctrl+X)" },
+                  });
+                }
+              }
+            }
+          }
+        }
+
         const hasPlanPostAction = !!planPostActionRef.current;
         if (!hasPlanPostAction && (fullText.trim().length > 0 || completedCalls.length > 0)) {
           const partialMsg: ChatMessage = {
@@ -1963,6 +1998,17 @@ export function useChat({
       abortRef.current.abort();
       abortRef.current = null;
       setIsLoading(false);
+      resetInProgressTasks();
+      setLiveToolCalls([]);
+      setStreamSegments([]);
+      setMessageQueue([]);
+      liveToolCallsBuffer.current = [];
+      streamSegmentsBuffer.current = [];
+      lastFlushedToolCalls.current = [];
+      streamingCharsRef.current = 0;
+      toolCharsRef.current = 0;
+      segmentsDirty.current = false;
+      toolCallsDirty.current = false;
     }
   }, [setActivePlan]);
 

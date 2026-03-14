@@ -157,7 +157,7 @@ function detectReadCommand(command: string): string | null {
 export const shellTool = {
   name: "shell",
   description: "Run a shell command.",
-  execute: async (args: ShellArgs): Promise<ToolResult> => {
+  execute: async (args: ShellArgs, abortSignal?: AbortSignal): Promise<ToolResult> => {
     const command = args.command;
     const cwd = args.cwd ?? process.cwd();
 
@@ -177,6 +177,15 @@ export const shellTool = {
         timeout,
         env: { ...process.env },
       });
+
+      if (abortSignal) {
+        const onAbort = () => {
+          try { proc.kill("SIGTERM"); } catch {}
+          setTimeout(() => { try { proc.kill("SIGKILL"); } catch {} }, 500);
+        };
+        if (abortSignal.aborted) { onAbort(); }
+        else { abortSignal.addEventListener("abort", onAbort, { once: true }); }
+      }
 
       proc.stdout.on("data", (data: Buffer) => chunks.push(data.toString()));
       proc.stderr.on("data", (data: Buffer) => errChunks.push(data.toString()));

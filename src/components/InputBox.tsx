@@ -1015,7 +1015,7 @@ export function InputBox({
 
         {/* ── Loading status bar ── */}
         {showBusy && (
-          <box paddingX={1} height={1} gap={1} flexDirection="row">
+          <box paddingX={1} height={1} gap={1} flexDirection="row" marginTop={1}>
             <text fg={isCompacting ? "#5af" : "#8B5CF6"}>{currentGhost}</text>
             <text fg={isCompacting ? "#3388cc" : "#6A0DAD"}>{busyStatus}</text>
             {elapsedLabel !== "" && <text fg="#555">{elapsedLabel}</text>}

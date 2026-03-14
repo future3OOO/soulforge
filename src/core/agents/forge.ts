@@ -38,7 +38,10 @@ function hasPlanToolCall(messages: ModelMessage[]): boolean {
   return false;
 }
 
-function buildForgePrepareStep(isPlanMode: boolean) {
+function buildForgePrepareStep(
+  isPlanMode: boolean,
+  drainSteering?: () => string | null,
+) {
   // biome-ignore lint/suspicious/noExplicitAny: PrepareStepFunction generic is invariant
   return ({ stepNumber, messages }: { stepNumber: number; messages: ModelMessage[] }): any => {
     const sanitized = sanitizeMessages(messages);
@@ -69,6 +72,16 @@ function buildForgePrepareStep(isPlanMode: boolean) {
       result.system = `${result.system ?? ""}\n\n${taskBlock}`.trim();
     }
 
+    // Inject steering message from queue (user typed while agent was running)
+    if (stepNumber > 0 && drainSteering) {
+      const steering = drainSteering();
+      if (steering) {
+        const msgs = result.messages ?? [...messages];
+        msgs.push({ role: "user", content: [{ type: "text", text: `[user steering] ${steering}` }] });
+        result.messages = msgs;
+      }
+    }
+
     return Object.keys(result).length > 0 ? result : undefined;
   };
 }
@@ -97,6 +110,7 @@ interface ForgeAgentOptions {
   sharedCacheRef?: SharedCacheRef;
   agentFeatures?: AgentFeatures;
   planExecution?: boolean;
+  drainSteering?: () => string | null;
 }
 
 /**
@@ -129,6 +143,7 @@ export function createForgeAgent({
   sharedCacheRef,
   agentFeatures,
   planExecution,
+  drainSteering,
 }: ForgeAgentOptions) {
   const isRestricted = RESTRICTED_MODES.has(forgeMode);
   const repoMap = contextManager.isRepoMapReady() ? contextManager.getRepoMap() : undefined;
@@ -219,7 +234,7 @@ export function createForgeAgent({
       };
     },
     stopWhen: stepCountIs(500),
-    prepareStep: buildForgePrepareStep(forgeMode === "plan"),
+    prepareStep: buildForgePrepareStep(forgeMode === "plan", drainSteering),
     experimental_repairToolCall: repairToolCall,
     ...(providerOptions && Object.keys(providerOptions).length > 0 ? { providerOptions } : {}),
     ...(headers ? { headers } : {}),

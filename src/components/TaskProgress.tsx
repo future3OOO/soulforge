@@ -4,11 +4,11 @@ import { icon } from "../core/icons.js";
 import { onTaskChange, type Task, type TaskStatus } from "../core/tools/task-list.js";
 import { Spinner } from "./shared.js";
 
-const STATUS_ICONS: Record<TaskStatus, () => string> = {
-  done: () => icon("check"),
-  "in-progress": () => "",
-  pending: () => icon("spinner"),
-  blocked: () => "✗",
+const STATUS_ICONS: Record<TaskStatus, string> = {
+  done: "✓",
+  "in-progress": "",
+  pending: "○",
+  blocked: "✗",
 };
 
 const STATUS_COLORS: Record<TaskStatus, string> = {
@@ -30,29 +30,31 @@ export function TaskList({ tasks, nested }: TaskListProps) {
 
   const done = tasks.filter((t) => t.status === "done").length;
 
+  const renderTask = (task: Task) => (
+    <box key={String(task.id)} height={1} flexDirection="row">
+      <text>
+        {task.status === "in-progress" ? (
+          <Spinner color={STATUS_COLORS["in-progress"]} />
+        ) : (
+          <span fg={STATUS_COLORS[task.status]}>{STATUS_ICONS[task.status]}</span>
+        )}
+        <span> </span>
+        <span
+          fg={task.status === "done" ? "#666" : task.status === "in-progress" ? "#eee" : STATUS_COLORS[task.status]}
+          attributes={task.status === "in-progress" ? TextAttributes.BOLD : undefined}
+        >
+          {task.title}
+        </span>
+      </text>
+    </box>
+  );
+
   if (nested) {
     return (
       <box flexDirection="column" paddingLeft={2}>
-        {tasks.slice(0, MAX_VISIBLE).map((task) => (
-          <box key={String(task.id)} gap={1} flexDirection="row">
-            {task.status === "in-progress" ? (
-              <Spinner />
-            ) : (
-              <text fg={STATUS_COLORS[task.status]}>{STATUS_ICONS[task.status]()}</text>
-            )}
-            <text
-              fg={task.status === "in-progress" ? "#ccc" : STATUS_COLORS[task.status]}
-              attributes={task.status === "in-progress" ? TextAttributes.BOLD : undefined}
-              truncate
-            >
-              {task.title}
-            </text>
-          </box>
-        ))}
+        {tasks.slice(0, MAX_VISIBLE).map(renderTask)}
         {tasks.length > MAX_VISIBLE && (
-          <text fg="#555" paddingLeft={2}>
-            +{String(tasks.length - MAX_VISIBLE)} more
-          </text>
+          <text fg="#555">  +{String(tasks.length - MAX_VISIBLE)} more</text>
         )}
       </box>
     );
@@ -67,7 +69,7 @@ export function TaskList({ tasks, nested }: TaskListProps) {
       paddingX={1}
       width="100%"
     >
-      <box gap={1} flexDirection="row">
+      <box gap={1} flexDirection="row" height={1}>
         <text fg="#336" attributes={TextAttributes.BOLD}>
           {icon("plan")} Tasks
         </text>
@@ -75,22 +77,7 @@ export function TaskList({ tasks, nested }: TaskListProps) {
           {String(done)}/{String(tasks.length)}
         </text>
       </box>
-      {tasks.slice(0, MAX_VISIBLE).map((task) => (
-        <box key={String(task.id)} gap={1} flexDirection="row">
-          {task.status === "in-progress" ? (
-            <Spinner />
-          ) : (
-            <text fg={STATUS_COLORS[task.status]}>{STATUS_ICONS[task.status]()}</text>
-          )}
-          <text
-            fg={task.status === "in-progress" ? "#eee" : STATUS_COLORS[task.status]}
-            attributes={task.status === "in-progress" ? TextAttributes.BOLD : undefined}
-            truncate
-          >
-            {task.title}
-          </text>
-        </box>
-      ))}
+      {tasks.slice(0, MAX_VISIBLE).map(renderTask)}
       {tasks.length > MAX_VISIBLE && (
         <text fg="#555">+{String(tasks.length - MAX_VISIBLE)} more</text>
       )}

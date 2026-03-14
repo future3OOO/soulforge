@@ -240,13 +240,14 @@ export function buildTools(
         cwd: z.string().optional().describe("Working directory"),
         timeout: z.number().optional().describe("Timeout in ms"),
       }),
-      execute: deferExecute(async (args) => {
+      execute: async (args, { abortSignal }) => {
+        await new Promise<void>((r) => setTimeout(r, 0));
         if (args.cwd) {
           const gate = await gateOutsideCwd("shell", resolve(args.cwd));
           if (gate.blocked) return gate.result;
         }
-        return shellTool.execute(args);
-      }),
+        return shellTool.execute(args, abortSignal);
+      },
     }),
 
     grep: tool({
@@ -1096,11 +1097,12 @@ export function buildSubagentCodeTools(opts?: {
         cwd: z.string().optional().describe("Working directory"),
         timeout: z.number().optional().describe("Timeout in ms"),
       }),
-      execute: deferExecute(async (args) => {
-        const result = await shellTool.execute(args);
+      execute: async (args, { abortSignal }) => {
+        await new Promise<void>((r) => setTimeout(r, 0));
+        const result = await shellTool.execute(args, abortSignal);
         if (!result.success) return result;
         return { ...result, output: truncateBytes(result.output) };
-      }),
+      },
     }),
   };
 }
