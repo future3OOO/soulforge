@@ -1832,7 +1832,6 @@ export function useChat({
         planExecutionRef.current = false;
         setPendingQuestion(null);
         setPendingPlanReview(null);
-        setActivePlan(null);
         contextManager.invalidateFileTree();
 
         const postAction = planPostActionRef.current;
@@ -1961,6 +1960,7 @@ export function useChat({
         }
 
         if (!willContinue) {
+          setActivePlan(null);
           setMessageQueue((queue) => {
             if (queue.length > 0) {
               const [next, ...rest] = queue;

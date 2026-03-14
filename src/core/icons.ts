@@ -248,7 +248,24 @@ function inferProviderId(idOrModel: string): string {
   return idOrModel;
 }
 
+const PROVIDER_ASCII: Record<string, string> = {
+  anthropic: "A",
+  openai: "O",
+  google: "G",
+  xai: "X",
+  ollama: "🦙",
+  proxy: "⛨",
+  openrouter: "⊕",
+  vercel_gateway: "☁",
+  llmgateway: "☁",
+  mistral: "M",
+  deepseek: "D",
+};
+
 export function providerIcon(providerId: string): string {
-  if (!hasNerdFont()) return "●";
-  return getProvider(inferProviderId(providerId))?.icon ?? "●";
+  const resolved = inferProviderId(providerId);
+  if (hasNerdFont()) {
+    return getProvider(resolved)?.icon ?? "●";
+  }
+  return PROVIDER_ASCII[resolved] ?? "●";
 }

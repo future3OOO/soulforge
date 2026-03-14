@@ -234,7 +234,7 @@ function cleanErrorForDisplay(error: string): string {
 
 function ToolCallRow({ tc }: { tc: ToolCall }) {
   const errorsExpanded = useUIStore((s) => s.reasoningExpanded);
-  const icon = TOOL_ICONS[tc.name] ?? "\uF0AD";
+  const icon = TOOL_ICONS[tc.name];
   const iconColor = TOOL_ICON_COLORS[tc.name] ?? "#888";
   const label = TOOL_LABELS[tc.name] ?? tc.name;
   const staticCategory = TOOL_CATEGORIES[tc.name];
