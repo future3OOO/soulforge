@@ -248,6 +248,8 @@ export interface AppConfig {
   webSearch?: boolean;
   /** Show vim keybinding hints in the editor panel. Default: true */
   vimHints?: boolean;
+  /** Editor/chat split percentage (editor width). Default: 60 */
+  editorSplit?: number;
   /** Show verbose tool output (plan updates, etc.) in chat. Default: false */
   verbose?: boolean;
   /** Diff display style: "default" | "sidebyside" | "compact". Default: "default" */

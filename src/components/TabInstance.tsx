@@ -225,6 +225,7 @@ export function TabInstance({
     useShallow((s) => ({ codeExpanded: s.codeExpanded, changesExpanded: s.changesExpanded })),
   );
   const chatStyle = useUIStore((s) => s.chatStyle);
+  const editorSplit = useUIStore((s) => s.editorSplit);
   const showReasoning = useUIStore((s) => s.showReasoning);
   const reasoningExpanded = useUIStore((s) => s.reasoningExpanded);
 
@@ -310,7 +311,7 @@ export function TabInstance({
       flexDirection="column"
       flexGrow={editorVisible ? 0 : 1}
       flexShrink={editorVisible ? 1 : 0}
-      width={editorVisible ? "40%" : "100%"}
+      width={editorVisible ? (`${String(100 - editorSplit)}%` as `${number}%`) : "100%"}
     >
       <SystemBanner messages={chat.messages} expanded={codeExpanded} />
 

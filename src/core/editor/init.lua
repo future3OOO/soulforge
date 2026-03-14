@@ -8,6 +8,10 @@ local opt = vim.opt
 local data_dir = vim.fn.stdpath("data") .. "/soulforge"
 local plugins_dir = data_dir .. "/plugins"
 
+-- ─── Leader key (must be set before plugins) ───
+vim.g.mapleader = " "
+vim.g.maplocalleader = " "
+
 -- ─── Display (IDE-like defaults) ───
 o.number = true
 o.relativenumber = false
@@ -15,7 +19,7 @@ o.cursorline = true
 o.signcolumn = "yes"
 o.termguicolors = true
 o.showmode = false
-o.laststatus = 0
+o.laststatus = 2
 o.scrolloff = 8
 o.sidescrolloff = 8
 o.wrap = true
@@ -91,6 +95,11 @@ pcall(function()
     flavour = "mocha",
     transparent_background = true,
     integrations = {
+      alpha = true,
+      gitsigns = true,
+      indent_blankline = { enabled = true },
+      mini = { enabled = true },
+      telescope = { enabled = true },
       nvimtree = true,
       treesitter = true,
       mason = true,
@@ -108,6 +117,56 @@ pcall(function()
   vim.cmd.colorscheme("catppuccin")
 end)
 
+-- ─── Dashboard (alpha-nvim) ───
+pcall(function()
+  ensure_plugin("alpha-nvim", "https://github.com/goolord/alpha-nvim")
+
+  local alpha = require("alpha")
+  local dashboard = require("alpha.themes.dashboard")
+
+  dashboard.section.header.val = {
+    "",
+    "  ███████╗ ██████╗ ██╗   ██╗██╗     ███████╗ ██████╗ ██████╗  ██████╗ ███████╗",
+    "  ██╔════╝██╔═══██╗██║   ██║██║     ██╔════╝██╔═══██╗██╔══██╗██╔════╝ ██╔════╝",
+    "  ███████╗██║   ██║██║   ██║██║     █████╗  ██║   ██║██████╔╝██║  ███╗█████╗  ",
+    "  ╚════██║██║   ██║██║   ██║██║     ██╔══╝  ██║   ██║██╔══██╗██║   ██║██╔══╝  ",
+    "  ███████║╚██████╔╝╚██████╔╝███████╗██║     ╚██████╔╝██║  ██║╚██████╔╝███████╗",
+    "  ╚══════╝ ╚═════╝  ╚═════╝ ╚══════╝╚═╝      ╚═════╝ ╚═╝  ╚═╝ ╚═════╝ ╚══════╝",
+    "",
+    "                        ⚡ AI-Powered Terminal IDE",
+    "",
+  }
+  dashboard.section.header.opts.hl = "AlphaHeader"
+
+  dashboard.section.buttons.val = {
+    dashboard.button("e",     "  New file",        "<cmd>ene<CR>"),
+    dashboard.button("f",     "  Find file",       "<cmd>Telescope find_files<CR>"),
+    dashboard.button("g",     "  Live grep",       "<cmd>Telescope live_grep<CR>"),
+    dashboard.button("r",     "  Recent files",    "<cmd>Telescope oldfiles<CR>"),
+    dashboard.button("SPC e", "  File explorer",   "<cmd>NvimTreeToggle<CR>"),
+    dashboard.button("q",     "  Quit",            "<cmd>qa<CR>"),
+  }
+
+  dashboard.section.footer.val = "ProxySoul.com"
+  dashboard.section.footer.opts.hl = "Comment"
+
+  -- Highlight groups
+  vim.api.nvim_set_hl(0, "AlphaHeader", { fg = "#cba6f7" }) -- mauve
+  vim.api.nvim_set_hl(0, "AlphaButtons", { fg = "#89b4fa" }) -- blue
+  vim.api.nvim_set_hl(0, "AlphaShortcut", { fg = "#f38ba8" }) -- red
+
+  alpha.setup(dashboard.opts)
+
+  -- Don't show statusline on dashboard
+  vim.api.nvim_create_autocmd("FileType", {
+    pattern = "alpha",
+    callback = function()
+      vim.opt_local.laststatus = 0
+      vim.opt_local.showtabline = 0
+    end,
+  })
+end)
+
 -- ─── Tree-sitter ───
 pcall(function()
   local ts_path = ensure_plugin("nvim-treesitter", "https://github.com/nvim-treesitter/nvim-treesitter")
@@ -116,10 +175,20 @@ pcall(function()
 
   require("nvim-treesitter.configs").setup({
     ensure_installed = {
-      "typescript", "tsx", "javascript", "json", "html", "css",
-      "lua", "python", "rust", "go", "c", "cpp", "bash",
-      "markdown", "markdown_inline", "yaml", "toml", "diff",
-      "vim", "vimdoc", "regex", "query",
+      -- Web
+      "typescript", "tsx", "javascript", "json", "json5", "jsonc",
+      "html", "css", "scss", "graphql", "svelte", "vue",
+      -- Systems
+      "rust", "go", "c", "cpp", "zig",
+      -- Scripting
+      "lua", "python", "ruby", "bash",
+      -- Config / Data
+      "markdown", "markdown_inline", "yaml", "toml", "dockerfile",
+      "sql", "prisma",
+      -- Neovim
+      "vim", "vimdoc", "regex", "query", "diff",
+      -- Git
+      "git_config", "gitcommit", "gitignore",
     },
     auto_install = true,
     highlight = {
@@ -140,7 +209,7 @@ pcall(function()
 end)
 
 -- ─── nvim-tree (file explorer) ───
-local tree_ok = pcall(function()
+pcall(function()
   ensure_plugin("nvim-web-devicons", "https://github.com/nvim-tree/nvim-web-devicons")
   ensure_plugin("nvim-tree.lua", "https://github.com/nvim-tree/nvim-tree.lua")
 
@@ -173,25 +242,137 @@ local tree_ok = pcall(function()
   })
 end)
 
--- Auto-open nvim-tree on VimEnter, rooted at cwd
-if tree_ok then
-  vim.api.nvim_create_autocmd("VimEnter", {
-    once = true,
-    callback = function()
-      vim.schedule(function()
-        require("nvim-tree.api").tree.open({ path = vim.fn.getcwd() })
-      end)
+-- ─── gitsigns (git diff in gutter) ───
+pcall(function()
+  ensure_plugin("gitsigns.nvim", "https://github.com/lewis6991/gitsigns.nvim")
+  require("gitsigns").setup({
+    signs = {
+      add          = { text = "▎" },
+      change       = { text = "▎" },
+      delete       = { text = "▁" },
+      topdelete    = { text = "▔" },
+      changedelete = { text = "▎" },
+    },
+    current_line_blame = false, -- toggle with <leader>gb
+    on_attach = function(bufnr)
+      local gs = package.loaded.gitsigns
+      local function map(mode, l, r, desc)
+        vim.keymap.set(mode, l, r, { buffer = bufnr, silent = true, desc = desc })
+      end
+      -- Navigation
+      map("n", "]c", function() gs.nav_hunk("next") end, "Next hunk")
+      map("n", "[c", function() gs.nav_hunk("prev") end, "Prev hunk")
+      -- Actions
+      map("n", "<leader>hs", gs.stage_hunk, "Stage hunk")
+      map("n", "<leader>hr", gs.reset_hunk, "Reset hunk")
+      map("n", "<leader>hp", gs.preview_hunk, "Preview hunk")
+      map("n", "<leader>gb", gs.toggle_current_line_blame, "Toggle line blame")
+      map("n", "<leader>hd", gs.diffthis, "Diff this")
     end,
   })
-end
+end)
 
--- ─── mini.nvim (pairs, surround, comment) ───
+-- ─── Telescope (fuzzy finder — VS Code Ctrl+P style) ───
+pcall(function()
+  ensure_plugin("plenary.nvim", "https://github.com/nvim-lua/plenary.nvim")
+  ensure_plugin("telescope.nvim", "https://github.com/nvim-telescope/telescope.nvim")
+
+  local telescope = require("telescope")
+  local actions = require("telescope.actions")
+
+  telescope.setup({
+    defaults = {
+      prompt_prefix = "   ",
+      selection_caret = "  ",
+      sorting_strategy = "ascending",
+      layout_config = {
+        horizontal = {
+          prompt_position = "top",
+          preview_width = 0.55,
+        },
+        width = 0.87,
+        height = 0.80,
+      },
+      file_ignore_patterns = {
+        "node_modules", ".git/", "dist/", "build/", "%.lock",
+        "__pycache__", "%.pyc", "target/", "%.o", "%.a",
+      },
+      mappings = {
+        i = {
+          ["<C-j>"] = actions.move_selection_next,
+          ["<C-k>"] = actions.move_selection_previous,
+          ["<C-q>"] = actions.send_selected_to_qflist + actions.open_qflist,
+          ["<Esc>"] = actions.close,
+        },
+      },
+    },
+    pickers = {
+      find_files = {
+        hidden = true,
+        follow = true,
+      },
+      live_grep = {
+        additional_args = function() return { "--hidden", "--glob", "!.git/" } end,
+      },
+    },
+  })
+end)
+
+-- ─── mini.nvim (pairs, surround, comment, indentscope, statusline, cursorword) ───
 pcall(function()
   ensure_plugin("mini.nvim", "https://github.com/echasnovski/mini.nvim")
 
   pcall(function() require("mini.pairs").setup() end)
   pcall(function() require("mini.surround").setup() end)
   pcall(function() require("mini.comment").setup() end)
+
+  -- Animated indent scope line
+  pcall(function()
+    require("mini.indentscope").setup({
+      symbol = "│",
+      options = { try_as_border = true },
+      draw = { animation = require("mini.indentscope").gen_animation.none() },
+    })
+    -- Disable on certain filetypes
+    vim.api.nvim_create_autocmd("FileType", {
+      pattern = { "help", "alpha", "NvimTree", "lazy", "mason" },
+      callback = function() vim.b.miniindentscope_disable = true end,
+    })
+  end)
+
+  -- Highlight word under cursor
+  pcall(function()
+    require("mini.cursorword").setup({ delay = 200 })
+  end)
+
+  -- Minimal statusline
+  pcall(function()
+    require("mini.statusline").setup({
+      use_icons = true,
+      set_vim_settings = false, -- we set laststatus ourselves
+    })
+  end)
+end)
+
+-- ─── which-key (keybinding discovery — press Space and see all options) ───
+pcall(function()
+  ensure_plugin("which-key.nvim", "https://github.com/folke/which-key.nvim")
+  require("which-key").setup({
+    delay = 300,
+    icons = {
+      breadcrumb = "»",
+      separator = "→",
+      group = "+ ",
+    },
+    spec = {
+      { "<leader>f", group = "Find (Telescope)" },
+      { "<leader>h", group = "Git hunks" },
+      { "<leader>b", group = "Buffer" },
+      { "<leader>c", group = "Code" },
+      { "<leader>r", group = "Refactor" },
+      { "<leader>g", group = "Git" },
+    },
+  })
 end)
 
 -- ─── Mason + LSP (v2 API — requires Neovim 0.11+) ───
@@ -227,12 +408,30 @@ end)
 
 -- ─── Keybindings ───
 
--- Leader key
-vim.g.mapleader = " "
+-- VS Code muscle memory: Ctrl+S to save
+vim.keymap.set({ "n", "i", "v" }, "<C-s>", "<cmd>write<CR><Esc>", { silent = true, desc = "Save file" })
+
+-- Ctrl+Z undo in insert mode (VS Code style)
+vim.keymap.set("i", "<C-z>", "<cmd>undo<CR>", { silent = true, desc = "Undo" })
+
+-- jk to exit insert mode (beginner escape hatch)
+vim.keymap.set("i", "jk", "<Esc>", { silent = true, desc = "Exit insert mode" })
 
 -- File explorer: <leader>e toggles, - finds current file
 vim.keymap.set("n", "<leader>e", "<cmd>NvimTreeToggle<CR>", { silent = true, desc = "Toggle file explorer" })
 vim.keymap.set("n", "-", "<cmd>NvimTreeFindFile<CR>", { silent = true, desc = "Find current file in explorer" })
+
+-- Telescope (VS Code-style keybindings)
+vim.keymap.set("n", "<C-p>", "<cmd>Telescope find_files<CR>", { silent = true, desc = "Find files" })
+vim.keymap.set("n", "<leader><leader>", "<cmd>Telescope find_files<CR>", { silent = true, desc = "Find files" })
+vim.keymap.set("n", "<leader>ff", "<cmd>Telescope find_files<CR>", { silent = true, desc = "Find files" })
+vim.keymap.set("n", "<leader>fg", "<cmd>Telescope live_grep<CR>", { silent = true, desc = "Live grep" })
+vim.keymap.set("n", "<leader>fb", "<cmd>Telescope buffers<CR>", { silent = true, desc = "Buffers" })
+vim.keymap.set("n", "<leader>fh", "<cmd>Telescope help_tags<CR>", { silent = true, desc = "Help tags" })
+vim.keymap.set("n", "<leader>fr", "<cmd>Telescope oldfiles<CR>", { silent = true, desc = "Recent files" })
+vim.keymap.set("n", "<leader>fd", "<cmd>Telescope diagnostics<CR>", { silent = true, desc = "Diagnostics" })
+vim.keymap.set("n", "<leader>fs", "<cmd>Telescope lsp_document_symbols<CR>", { silent = true, desc = "Document symbols" })
+vim.keymap.set("n", "<leader>fw", "<cmd>Telescope grep_string<CR>", { silent = true, desc = "Grep word under cursor" })
 
 -- Better window navigation
 vim.keymap.set("n", "<C-h>", "<C-w>h", { silent = true })
@@ -251,6 +450,16 @@ vim.keymap.set("v", ">", ">gv", { silent = true })
 vim.keymap.set("v", "J", ":m '>+1<CR>gv=gv", { silent = true })
 vim.keymap.set("v", "K", ":m '<-2<CR>gv=gv", { silent = true })
 
+-- Buffer navigation
+vim.keymap.set("n", "<S-h>", "<cmd>bprevious<CR>", { silent = true, desc = "Previous buffer" })
+vim.keymap.set("n", "<S-l>", "<cmd>bnext<CR>", { silent = true, desc = "Next buffer" })
+vim.keymap.set("n", "<leader>bd", "<cmd>bdelete<CR>", { silent = true, desc = "Delete buffer" })
+
+-- Quickfix navigation
+vim.keymap.set("n", "<leader>q", "<cmd>copen<CR>", { silent = true, desc = "Open quickfix" })
+vim.keymap.set("n", "]q", "<cmd>cnext<CR>", { silent = true, desc = "Next quickfix" })
+vim.keymap.set("n", "[q", "<cmd>cprev<CR>", { silent = true, desc = "Prev quickfix" })
+
 -- ─── LSP Keybindings ───
 vim.api.nvim_create_autocmd("LspAttach", {
   callback = function(ev)
@@ -260,13 +469,42 @@ vim.api.nvim_create_autocmd("LspAttach", {
     vim.keymap.set("n", "gi", vim.lsp.buf.implementation, bufopts)
     vim.keymap.set("n", "gy", vim.lsp.buf.type_definition, bufopts)
     vim.keymap.set("n", "K", vim.lsp.buf.hover, bufopts)
-    vim.keymap.set("n", "gr", vim.lsp.buf.references, bufopts)
+    vim.keymap.set("n", "gr", "<cmd>Telescope lsp_references<CR>", bufopts)
     vim.keymap.set("n", "[d", vim.diagnostic.goto_prev, bufopts)
     vim.keymap.set("n", "]d", vim.diagnostic.goto_next, bufopts)
     vim.keymap.set("n", "<leader>rn", vim.lsp.buf.rename, bufopts)
     vim.keymap.set("n", "<leader>ca", vim.lsp.buf.code_action, bufopts)
     vim.keymap.set("n", "<leader>f", function() vim.lsp.buf.format({ async = true }) end, bufopts)
     vim.keymap.set("i", "<C-k>", vim.lsp.buf.signature_help, bufopts)
+  end,
+})
+
+-- ─── Highlight on yank (visual feedback when copying) ───
+vim.api.nvim_create_autocmd("TextYankPost", {
+  callback = function()
+    pcall(vim.highlight.on_yank, { higroup = "IncSearch", timeout = 200 })
+  end,
+})
+
+-- ─── Restore cursor position when reopening files ───
+vim.api.nvim_create_autocmd("BufReadPost", {
+  callback = function()
+    local mark = vim.api.nvim_buf_get_mark(0, '"')
+    local lines = vim.api.nvim_buf_line_count(0)
+    if mark[1] > 0 and mark[1] <= lines then
+      pcall(vim.api.nvim_win_set_cursor, 0, mark)
+    end
+  end,
+})
+
+-- ─── Trim trailing whitespace on save ───
+vim.api.nvim_create_autocmd("BufWritePre", {
+  callback = function()
+    local ft = vim.bo.filetype
+    if ft == "diff" or ft == "mail" then return end -- skip for diffs/mail
+    local pos = vim.api.nvim_win_get_cursor(0)
+    vim.cmd([[silent! %s/\s\+$//e]])
+    pcall(vim.api.nvim_win_set_cursor, 0, pos)
   end,
 })
 

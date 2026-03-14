@@ -8,18 +8,32 @@ import {
   gitCreateBranch,
   gitPull,
   gitPush,
+  gitRestore,
+  gitShow,
   gitStash,
   gitStashDrop,
   gitStashList,
   gitStashPop,
   gitStashShow,
   gitSwitchBranch,
+  gitUnstage,
   run,
 } from "../git/status.js";
 
 const cwd = process.cwd();
 
-export type GitAction = "status" | "diff" | "log" | "commit" | "push" | "pull" | "stash" | "branch";
+export type GitAction =
+  | "status"
+  | "diff"
+  | "log"
+  | "commit"
+  | "push"
+  | "pull"
+  | "stash"
+  | "branch"
+  | "show"
+  | "unstage"
+  | "restore";
 
 export interface GitArgs {
   action: GitAction;
@@ -30,11 +44,14 @@ export interface GitArgs {
   sub_action?: string;
   name?: string;
   index?: number;
+  amend?: boolean;
+  ref?: string;
 }
 
 export const gitTool = {
   name: "git" as const,
-  description: "Git operations: status, diff, log, commit, push, pull, stash, branch.",
+  description:
+    "Git operations: status, diff, log, commit (with amend), push, pull, stash, branch, show (view commit), unstage, restore.",
   execute: async (args: GitArgs): Promise<ToolResult> => {
     switch (args.action) {
       case "status":
@@ -44,7 +61,7 @@ export const gitTool = {
       case "log":
         return execLog(args.count);
       case "commit":
-        return execCommit(args.message ?? "", args.files);
+        return execCommit(args.message ?? "", args.files, args.amend);
       case "push":
         return execPush();
       case "pull":
@@ -53,6 +70,12 @@ export const gitTool = {
         return execStash(args.sub_action, args.message, args.index);
       case "branch":
         return execBranch(args.sub_action, args.name);
+      case "show":
+        return execShow(args.ref);
+      case "unstage":
+        return execUnstage(args.files);
+      case "restore":
+        return execRestore(args.files);
       default:
         return {
           success: false,
@@ -95,28 +118,32 @@ async function execLog(count?: number): Promise<ToolResult> {
   };
 }
 
-async function execCommit(message: string, files?: string[]): Promise<ToolResult> {
+async function execCommit(message: string, files?: string[], amend?: boolean): Promise<ToolResult> {
   if (files && files.length > 0) {
     const ok = await gitAdd(cwd, files);
     if (!ok) return { success: false, output: "Failed to stage files", error: "staging failed" };
   }
-  const diff = await getGitDiff(cwd, true);
-  if (!diff) {
-    return {
-      success: false,
-      output: "Nothing staged to commit. Stage files first.",
-      error: "nothing staged",
-    };
+  if (!amend) {
+    const diff = await getGitDiff(cwd, true);
+    if (!diff) {
+      return {
+        success: false,
+        output: "Nothing staged to commit. Stage files first.",
+        error: "nothing staged",
+      };
+    }
   }
-  const result = await gitCommit(cwd, message);
+  const result = await gitCommit(cwd, message, amend);
   if (!result.ok) return { success: false, output: result.output, error: "commit failed" };
-  const diffLines = diff.split("\n");
+  const diff = await getGitDiff(cwd, true);
+  const diffLines = (diff || "").split("\n");
   const statLines = diffLines.filter((l) => l.startsWith("+++") || l.startsWith("---")).length;
   const additions = diffLines.filter((l) => l.startsWith("+") && !l.startsWith("+++")).length;
   const deletions = diffLines.filter((l) => l.startsWith("-") && !l.startsWith("---")).length;
+  const prefix = amend ? "Amended" : "Committed";
   return {
     success: true,
-    output: `${result.output}\n\nDiff summary: ~${String(statLines / 2)} files, +${String(additions)} -${String(deletions)} lines`,
+    output: `${prefix}: ${result.output}\n\nDiff summary: ~${String(statLines / 2)} files, +${String(additions)} -${String(deletions)} lines`,
   };
 }
 
@@ -187,4 +214,25 @@ async function execBranch(subAction?: string, name?: string): Promise<ToolResult
     default:
       return { success: false, output: `Unknown branch action: ${action}`, error: "bad action" };
   }
+}
+
+async function execShow(ref?: string): Promise<ToolResult> {
+  const result = await gitShow(cwd, ref ?? "HEAD");
+  return { success: result.ok, output: result.output };
+}
+
+async function execUnstage(files?: string[]): Promise<ToolResult> {
+  if (!files || files.length === 0) {
+    return { success: false, output: "Specify files to unstage", error: "missing files" };
+  }
+  const result = await gitUnstage(cwd, files);
+  return { success: result.ok, output: result.output };
+}
+
+async function execRestore(files?: string[]): Promise<ToolResult> {
+  if (!files || files.length === 0) {
+    return { success: false, output: "Specify files to restore", error: "missing files" };
+  }
+  const result = await gitRestore(cwd, files);
+  return { success: result.ok, output: result.output };
 }

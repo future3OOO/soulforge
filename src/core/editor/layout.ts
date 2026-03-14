@@ -1,8 +1,6 @@
 // Shared layout constants for the editor panel.
 // Used by: useNeovim (dimensions), useEditorInput (mouse offsets), EditorPanel (rendering)
 
-export const EDITOR_WIDTH_RATIO = 0.6;
-
 // Border takes 1 char on each side = 2 total for width calculation
 const EDITOR_BORDER_WIDTH = 2; // left border(1) + right border(1)
 
@@ -25,10 +23,12 @@ export function getEditorDimensions(
   termRows: number,
   showHints: boolean,
   hasTabBar: boolean,
+  splitPct = 60,
 ): { cols: number; rows: number } {
   const fixedRows = getEditorFixedRows(showHints) + (hasTabBar ? TAB_BAR_ROWS : 0);
+  const ratio = splitPct / 100;
   return {
-    cols: Math.max(20, Math.floor(termCols * EDITOR_WIDTH_RATIO) - EDITOR_BORDER_WIDTH),
+    cols: Math.max(20, Math.floor(termCols * ratio) - EDITOR_BORDER_WIDTH),
     rows: Math.max(6, termRows - fixedRows),
   };
 }
@@ -37,4 +37,8 @@ export function getEditorDimensions(
 // Header(1) + [TabBar margin(1) + TabBar(1)] + border(1) + title(1) + separator(1)
 export function getEditorRowOffset(hasTabBar: boolean): number {
   return hasTabBar ? 6 : 4;
+}
+
+export function getEditorWidthPx(termCols: number, splitPct = 60): number {
+  return Math.floor(termCols * (splitPct / 100));
 }

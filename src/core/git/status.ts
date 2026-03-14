@@ -224,10 +224,33 @@ export function setCoAuthorEnabled(enabled: boolean) {
 export async function gitCommit(
   cwd: string,
   message: string,
+  amend?: boolean,
 ): Promise<{ ok: boolean; output: string }> {
   const fullMessage = _coAuthorEnabled ? `${message}\n\n${CO_AUTHOR_LINE}` : message;
-  const { ok, stdout } = await run(["commit", "-m", fullMessage], cwd);
+  const args = amend ? ["commit", "--amend", "-m", fullMessage] : ["commit", "-m", fullMessage];
+  const { ok, stdout } = await run(args, cwd);
   return { ok, output: stdout };
+}
+
+export async function gitShow(cwd: string, ref: string): Promise<{ ok: boolean; output: string }> {
+  const { ok, stdout } = await run(["show", "--stat", "--format=%H %s%n%an <%ae>%n%ai", ref], cwd);
+  return { ok, output: stdout };
+}
+
+export async function gitUnstage(
+  cwd: string,
+  files: string[],
+): Promise<{ ok: boolean; output: string }> {
+  const { ok, stdout } = await run(["reset", "HEAD", ...files], cwd);
+  return { ok, output: stdout || `Unstaged ${String(files.length)} file(s)` };
+}
+
+export async function gitRestore(
+  cwd: string,
+  files: string[],
+): Promise<{ ok: boolean; output: string }> {
+  const { ok, stdout } = await run(["restore", ...files], cwd);
+  return { ok, output: stdout || `Restored ${String(files.length)} file(s)` };
 }
 
 export async function gitAdd(cwd: string, files: string[]): Promise<boolean> {

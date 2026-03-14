@@ -43,3 +43,9 @@ improvements
 # Benchmark artifacts
 bench/results-*.json
 benchmarks/results-*.json
+
+# Claude Code local settings
+.claude/
+
+# Installed agent skills (user-specific)
+.agents/

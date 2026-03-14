@@ -8,6 +8,7 @@ import {
   type InstalledSkill,
   installSkill,
   listInstalledSkills,
+  listPopularSkills,
   loadSkill,
   type SkillSearchResult,
   searchSkills,
@@ -41,6 +42,7 @@ export const SkillSearch = memo(function SkillSearch({
 }: Props) {
   const [tab, setTab] = useState<Tab>("search");
   const [query, setQuery] = useState("");
+  const [popular, setPopular] = useState<SkillSearchResult[]>([]);
   const [results, setResults] = useState<SkillSearchResult[]>([]);
   const [installed, setInstalled] = useState<InstalledSkill[]>([]);
   const [activeSkills, setActiveSkills] = useState<string[]>([]);
@@ -68,6 +70,9 @@ export const SkillSearch = memo(function SkillSearch({
     ? activeSkills.filter((s) => s.toLowerCase().includes(filterQuery))
     : activeSkills;
 
+  // Show popular skills when query is empty, search results when typing
+  const displayResults = query.trim() ? results : popular;
+
   const refreshInstalled = useCallback(() => {
     setInstalled(listInstalledSkills());
   }, []);
@@ -84,6 +89,10 @@ export const SkillSearch = memo(function SkillSearch({
       setCursor(0);
       refreshInstalled();
       refreshActive();
+      // Fetch popular skills for the default view
+      listPopularSkills()
+        .then((r) => setPopular(r))
+        .catch(() => {});
     }
   }, [visible, refreshInstalled, refreshActive]);
 
@@ -96,6 +105,9 @@ export const SkillSearch = memo(function SkillSearch({
       setSearching(false);
       return;
     }
+
+    // Clear popular once user starts typing — search results take over
+    if (popular.length > 0) setPopular([]);
 
     setSearching(true);
     debounceRef.current = setTimeout(() => {
@@ -113,7 +125,7 @@ export const SkillSearch = memo(function SkillSearch({
     return () => {
       if (debounceRef.current) clearTimeout(debounceRef.current);
     };
-  }, [query, visible, tab]);
+  }, [query, visible, tab, popular.length]);
 
   useEffect(() => {
     setQuery("");
@@ -125,7 +137,7 @@ export const SkillSearch = memo(function SkillSearch({
   }, [tab, refreshInstalled, refreshActive]);
 
   const currentList = (): number => {
-    if (tab === "search") return results.length;
+    if (tab === "search") return displayResults.length;
     if (tab === "installed") return filteredInstalled.length;
     return filteredActive.length;
   };
@@ -315,7 +327,7 @@ export const SkillSearch = memo(function SkillSearch({
               </text>
               <text fg="#555" bg={POPUP_BG}>
                 {tab === "search"
-                  ? "type to search skills.sh..."
+                  ? "type to filter / search skills.sh..."
                   : tab === "installed"
                     ? "type to filter installed..."
                     : "type to filter active..."}
@@ -331,7 +343,7 @@ export const SkillSearch = memo(function SkillSearch({
           <>
             <box
               flexDirection="column"
-              height={Math.min(results.length || 1, maxVisible)}
+              height={Math.min(displayResults.length || 1, maxVisible)}
               overflow="hidden"
             >
               {searching ? (
@@ -340,14 +352,14 @@ export const SkillSearch = memo(function SkillSearch({
                     searching...
                   </text>
                 </PopupRow>
-              ) : results.length === 0 && query ? (
+              ) : displayResults.length === 0 ? (
                 <PopupRow w={innerW}>
                   <text fg="#555" bg={POPUP_BG}>
-                    no results
+                    {query ? "no results" : "loading popular skills..."}
                   </text>
                 </PopupRow>
               ) : (
-                results.slice(scrollOffset, scrollOffset + maxVisible).map((skill, i) => {
+                displayResults.slice(scrollOffset, scrollOffset + maxVisible).map((skill, i) => {
                   const idx = scrollOffset + i;
                   const isActive = idx === cursor;
                   const bg = isActive ? POPUP_HL : POPUP_BG;
@@ -376,12 +388,12 @@ export const SkillSearch = memo(function SkillSearch({
                 })
               )}
             </box>
-            {results.length > maxVisible && (
+            {displayResults.length > maxVisible && (
               <PopupRow w={innerW}>
                 <text fg="#555" bg={POPUP_BG}>
                   {scrollOffset > 0 ? "↑ " : "  "}
-                  {cursor + 1}/{results.length}
-                  {scrollOffset + maxVisible < results.length ? " ↓" : ""}
+                  {cursor + 1}/{displayResults.length}
+                  {scrollOffset + maxVisible < displayResults.length ? " ↓" : ""}
                 </text>
               </PopupRow>
             )}

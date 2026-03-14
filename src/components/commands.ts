@@ -2167,6 +2167,22 @@ async function handleCommandInner(input: string, ctx: CommandContext): Promise<v
         });
         break;
       }
+      if (cmd === "/split") {
+        const { cycleEditorSplit } = useUIStore.getState();
+        cycleEditorSplit();
+        const newSplit = useUIStore.getState().editorSplit;
+        ctx.saveToScope({ editorSplit: newSplit }, "global");
+        ctx.chat.setMessages((prev) => [
+          ...prev,
+          {
+            id: crypto.randomUUID(),
+            role: "system" as const,
+            content: `Editor split: ${String(newSplit)}/${String(100 - newSplit)}`,
+            timestamp: Date.now(),
+          },
+        ]);
+        break;
+      }
       if (cmd === "/vim-hints") {
         const patch = (v: string) => ({ vimHints: v === "visible" });
         ctx.openCommandPicker({

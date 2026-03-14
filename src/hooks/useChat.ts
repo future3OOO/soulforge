@@ -1115,7 +1115,7 @@ export function useChat({
       lastFlushedStreamingChars.current = 0;
       setStreamSegments([]);
       setLiveToolCalls([]);
-      setActivePlan(null);
+      if (!planExecutionRef.current) setActivePlan(null);
       setPendingQuestion(null);
 
       // Capture pre-stream token baseline for live estimation

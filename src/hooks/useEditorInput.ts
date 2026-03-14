@@ -1,9 +1,5 @@
 import { useEffect, useRef } from "react";
-import {
-  EDITOR_COL_OFFSET,
-  EDITOR_WIDTH_RATIO,
-  getEditorRowOffset,
-} from "../core/editor/layout.js";
+import { EDITOR_COL_OFFSET, getEditorRowOffset, getEditorWidthPx } from "../core/editor/layout.js";
 
 /**
  * Raw stdin → neovim key translator + click-to-focus handler.
@@ -196,6 +192,7 @@ interface EditorInputOptions {
   onFocusChat: () => void;
   onFocusEditor: () => void;
   hasTabBar?: boolean;
+  editorSplit?: number;
 }
 
 /**
@@ -211,6 +208,7 @@ export function useEditorInput({
   onFocusChat,
   onFocusEditor,
   hasTabBar = true,
+  editorSplit = 60,
 }: EditorInputOptions): void {
   const sendKeysRef = useRef(sendKeys);
   sendKeysRef.current = sendKeys;
@@ -224,6 +222,8 @@ export function useEditorInput({
   onFocusEditorRef.current = onFocusEditor;
   const hasTabBarRef = useRef(hasTabBar);
   hasTabBarRef.current = hasTabBar;
+  const editorSplitRef = useRef(editorSplit);
+  editorSplitRef.current = editorSplit;
 
   useEffect(() => {
     if (!isEditorVisible) return;
@@ -240,7 +240,7 @@ export function useEditorInput({
         const termRow = Number(mouse[3]); // 1-based
         const isPress = mouse[4] === "M";
 
-        const editorWidth = Math.floor((process.stdout.columns ?? 120) * EDITOR_WIDTH_RATIO);
+        const editorWidth = getEditorWidthPx(process.stdout.columns ?? 120, editorSplitRef.current);
         const inEditor = termCol <= editorWidth;
 
         if (button === BTN_LEFT && isPress) {

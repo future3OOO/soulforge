@@ -79,6 +79,7 @@ const CMD_DEFS: Array<{ cmd: string; ic: string; desc: string }> = [
   { cmd: "/storage", ic: "system", desc: "View & manage storage usage" },
   { cmd: "/tabs", ic: "tabs", desc: "List open tabs" },
   { cmd: "/verbose", ic: "cog", desc: "Toggle verbose tool output" },
+  { cmd: "/split", ic: "pencil", desc: "Cycle editor/chat split (40/50/60/70)" },
   { cmd: "/vim-hints", ic: "pencil", desc: "Toggle vim keybinding hints" },
   { cmd: "/web-search", ic: "cog", desc: "Web search keys & settings" },
 ];

@@ -6,6 +6,11 @@
       "sourceType": "github",
       "computedHash": "2255043508a64062e44f6de2243dbcb06de97ceefa30357da77affac355c3eee"
     },
+    "opentui-design": {
+      "source": "akiojin/skills",
+      "sourceType": "github",
+      "computedHash": "7e4a4caa845a99656c05806a0fbbde91e6474f7a60e245da83f04f1ba1a0dc16"
+    },
     "opentui-react": {
       "source": "dimitrigilbert/ai-skills",
       "sourceType": "github",

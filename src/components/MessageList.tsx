@@ -515,9 +515,19 @@ function renderSegments(
     lastVisibleType = seg.type;
 
     if (seg.type === "text") {
+      const isLastSegment = i === segments.length - 1;
+      const hasToolsBefore = segments.some((s, j) => j < i && s.type === "tools");
+      const isFinalAnswer = isLastSegment && hasToolsBefore && seg.content.trim().length > 20;
       return (
         // biome-ignore lint/suspicious/noArrayIndexKey: stable segment order
         <box key={`text-${i}`} flexDirection="column" marginTop={needsGap ? 1 : 0}>
+          {isFinalAnswer && (
+            <box height={1} flexShrink={0} marginBottom={1}>
+              <text fg="#333" truncate>
+                {"─".repeat(60)}
+              </text>
+            </box>
+          )}
           <Markdown text={seg.content} />
         </box>
       );

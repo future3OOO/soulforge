@@ -15,6 +15,7 @@ interface Props {
   onClosed?: () => void;
   showHints?: boolean;
   error?: string | null;
+  split?: number;
 }
 
 type Direction = "opening" | "idle";
@@ -80,6 +81,7 @@ export const EditorPanel = memo(function EditorPanel({
   onClosed,
   showHints = true,
   error,
+  split = 60,
 }: Props) {
   const [animFrame, setAnimFrame] = useState(0);
   const [direction, setDirection] = useState<Direction>("idle");
@@ -121,7 +123,7 @@ export const EditorPanel = memo(function EditorPanel({
     return (
       <box
         flexDirection="column"
-        width="60%"
+        width={`${split}%` as `${number}%`}
         borderStyle="rounded"
         border={true}
         borderColor={borderColor}
@@ -140,7 +142,7 @@ export const EditorPanel = memo(function EditorPanel({
     return (
       <box
         flexDirection="column"
-        width="60%"
+        width={`${split}%` as `${number}%`}
         borderStyle="rounded"
         border={true}
         borderColor={borderColor}
@@ -176,14 +178,18 @@ export const EditorPanel = memo(function EditorPanel({
     );
   }
 
-  const displayName = fileName ? (fileName.split("/").pop() ?? fileName) : "no file";
+  const displayName = fileName
+    ? fileName.startsWith(process.cwd())
+      ? fileName.slice(process.cwd().length + 1)
+      : (fileName.split("/").pop() ?? fileName)
+    : "no file";
   const bg = defaultBg;
   const modeColor = MODE_COLORS[modeName] ?? "#6A0DAD";
 
   return (
     <box
       flexDirection="column"
-      width="60%"
+      width={`${split}%` as `${number}%`}
       borderStyle="rounded"
       border={true}
       borderColor={borderColor}

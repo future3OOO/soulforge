@@ -56,6 +56,7 @@ interface UIState {
   showReasoning: boolean;
   reasoningExpanded: boolean;
   suspended: boolean;
+  editorSplit: number;
 
   openModal: (name: ModalName) => void;
   closeModal: (name: ModalName) => void;
@@ -77,6 +78,7 @@ interface UIState {
   toggleShowReasoning: () => void;
   toggleReasoningExpanded: () => void;
   setSuspended: (v: boolean) => void;
+  cycleEditorSplit: () => void;
 }
 
 export const useUIStore = create<UIState>()((set) => ({
@@ -91,6 +93,7 @@ export const useUIStore = create<UIState>()((set) => ({
   showReasoning: true,
   reasoningExpanded: false,
   suspended: false,
+  editorSplit: 60,
 
   openModal: (name) => set((s) => ({ modals: { ...s.modals, [name]: true } })),
   closeModal: (name) => set((s) => ({ modals: { ...s.modals, [name]: false } })),
@@ -127,6 +130,12 @@ export const useUIStore = create<UIState>()((set) => ({
   toggleShowReasoning: () => set((s) => ({ showReasoning: !s.showReasoning })),
   toggleReasoningExpanded: () => set((s) => ({ reasoningExpanded: !s.reasoningExpanded })),
   setSuspended: (v) => set({ suspended: v }),
+  cycleEditorSplit: () =>
+    set((s) => {
+      const splits = [40, 50, 60, 70];
+      const idx = splits.indexOf(s.editorSplit);
+      return { editorSplit: splits[(idx + 1) % splits.length] ?? 60 };
+    }),
 }));
 
 export const selectIsAnyModalOpen = (s: UIState): boolean => Object.values(s.modals).some(Boolean);

@@ -574,17 +574,31 @@ export function buildTools(
     git: tool({
       description: gitTool.description,
       inputSchema: z.object({
-        action: z.enum(["status", "diff", "log", "commit", "push", "pull", "stash", "branch"]),
+        action: z.enum([
+          "status",
+          "diff",
+          "log",
+          "commit",
+          "push",
+          "pull",
+          "stash",
+          "branch",
+          "show",
+          "unstage",
+          "restore",
+        ]),
         staged: z.boolean().optional().describe("For diff: staged changes"),
         count: z.number().optional().describe("For log: number of commits"),
         message: z.string().optional().describe("For commit/stash: message"),
-        files: z.array(z.string()).optional().describe("For commit: files to stage"),
+        files: z.array(z.string()).optional().describe("For commit/unstage/restore: files"),
         sub_action: z
           .string()
           .optional()
           .describe("For stash: push|pop|list|show|drop. For branch: list|create|switch|delete"),
         name: z.string().optional().describe("For branch: branch name"),
         index: z.number().optional().describe("For stash: stash index"),
+        amend: z.boolean().optional().describe("For commit: amend the last commit"),
+        ref: z.string().optional().describe("For show: commit hash or ref (default: HEAD)"),
       }),
       execute: deferExecute((args) => gitTool.execute(args)),
     }),

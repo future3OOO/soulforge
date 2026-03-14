@@ -249,6 +249,7 @@ export function App({
     useEditorFocus();
   const [editorVisible, setEditorVisible] = useState(false);
   const hasTabBarRef = useRef(false);
+  const editorSplitRef = useRef(60);
   const {
     ready: nvimReady,
     screenLines,
@@ -270,6 +271,7 @@ export function App({
     closeEditor,
     effectiveConfig.vimHints !== false,
     hasTabBarRef.current,
+    editorSplitRef.current,
   );
 
   const pendingEditorFileRef = useRef<string | null>(null);
@@ -327,6 +329,7 @@ export function App({
     onFocusChat: focusChat,
     onFocusEditor: focusEditor,
     hasTabBar: hasTabBarRef.current,
+    editorSplit: editorSplitRef.current,
   });
 
   const { modals, routerSlotPicking, commandPickerConfig, infoPopupConfig, suspended } = useUIStore(
@@ -339,6 +342,7 @@ export function App({
     })),
   );
   const isModalOpen = useUIStore(selectIsAnyModalOpen);
+  const editorSplit = useUIStore((s) => s.editorSplit);
 
   // Stable close handlers — cached in ref so memo'd children see stable refs
   const closerCache = useRef<Partial<Record<ModalName, () => void>>>({});
@@ -459,6 +463,11 @@ export function App({
       useUIStore.getState().setShowReasoning(effectiveConfig.showReasoning);
   }, [effectiveConfig.showReasoning]);
 
+  useEffect(() => {
+    if (effectiveConfig.editorSplit !== undefined)
+      useUIStore.setState({ editorSplit: effectiveConfig.editorSplit });
+  }, [effectiveConfig.editorSplit]);
+
   // biome-ignore lint/correctness/useExhaustiveDependencies: contextManager is stable (useMemo on cwd)
   useEffect(() => {
     contextManager.refreshGitContext();
@@ -493,6 +502,7 @@ export function App({
   const tabMgrRef = useRef(tabMgr);
   tabMgrRef.current = tabMgr;
   hasTabBarRef.current = tabMgr.tabCount > 1;
+  editorSplitRef.current = editorSplit;
 
   const sharedResources = useMemo(() => contextManager.getSharedResources(), [contextManager]);
 
@@ -994,6 +1004,7 @@ export function App({
           onClosed={handleEditorClosed}
           showHints={effectiveConfig.vimHints !== false}
           error={nvimError}
+          split={editorSplit}
         />
 
         {tabMgr.tabs.map((tab) => (

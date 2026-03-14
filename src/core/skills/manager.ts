@@ -29,6 +29,11 @@ export async function searchSkills(query: string): Promise<SkillSearchResult[]> 
   return data.skills;
 }
 
+/** Fetch popular/trending skills (broad query sorted by installs) */
+export async function listPopularSkills(): Promise<SkillSearchResult[]> {
+  return searchSkills("ai");
+}
+
 /** Detect whether bunx is available, falling back to npx */
 async function detectRunner(): Promise<string> {
   try {
