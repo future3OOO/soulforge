@@ -46,7 +46,7 @@ const COLORS = {
   error: "#f44",
 } as const;
 
-const RENDER_DEBOUNCE = 32;
+const RENDER_DEBOUNCE = 80;
 
 function backendLabel(tag: string): string {
   return getBackendLabel(tag);
@@ -404,28 +404,15 @@ function useDispatchDisplay(
 
   const seedTasksRef = useRef(seedTasks);
   seedTasksRef.current = seedTasks;
+  const seededRef = useRef(false);
 
   useEffect(() => {
     if (!parentId) return;
     stepsRef.current = [];
     statsRef.current = new Map();
     dirtyRef.current = false;
-
-    const seeds = seedTasksRef.current;
-    if (seeds && seeds.length > 0) {
-      const agents = new Map<string, AgentInfo>();
-      for (const t of seeds) {
-        agents.set(t.agentId, {
-          role: t.role ?? "explore",
-          task: t.task ?? "",
-          state: "pending",
-          dependsOn: t.dependsOn,
-        });
-      }
-      progressRef.current = { totalAgents: seeds.length, agents, findingCount: 0 };
-    } else {
-      progressRef.current = null;
-    }
+    seededRef.current = false;
+    progressRef.current = null;
 
     let debounceTimer: ReturnType<typeof setTimeout> | null = null;
     const scheduleTick = () => {
@@ -481,6 +468,31 @@ function useDispatchDisplay(
       if (debounceTimer) clearTimeout(debounceTimer);
     };
   }, [parentId]);
+
+  // Seed pending agents when dispatch args are parsed (may arrive after effect above)
+  useEffect(() => {
+    if (!parentId || !seedTasks || seedTasks.length === 0 || seededRef.current) return;
+    seededRef.current = true;
+    const prev = progressRef.current;
+    const agents = new Map<string, AgentInfo>(prev?.agents);
+    for (const t of seedTasks) {
+      if (!agents.has(t.agentId)) {
+        agents.set(t.agentId, {
+          role: t.role ?? "explore",
+          task: t.task ?? "",
+          state: "pending",
+          dependsOn: t.dependsOn,
+        });
+      }
+    }
+    progressRef.current = {
+      totalAgents: Math.max(seedTasks.length, prev?.totalAgents ?? 0),
+      agents,
+      findingCount: prev?.findingCount ?? 0,
+    };
+    dirtyRef.current = true;
+    setTick((n) => n + 1);
+  }, [parentId, seedTasks]);
 
   if (!parentId) return EMPTY_DISPATCH;
   return {
@@ -726,8 +738,7 @@ const MultiAgentChildRow = memo(
     const isDone = info.state === "done" || info.state === "error";
     const isPending = info.state === "pending";
     const taskStr = info.task.length > 40 ? `${info.task.slice(0, 37)}...` : info.task;
-    const hasChildren = childSteps.length > 0 || info.state === "running";
-    const connector = isLast && !hasChildren ? "└ " : "├ ";
+    const connector = isLast ? "└ " : "├ ";
     const continuation = isLast ? "  " : "│ ";
 
     const toolUses = isDone ? info.toolUses : liveStats?.toolUses;
@@ -1136,12 +1147,14 @@ const ToolRow = memo(
           <box flexDirection="column" marginLeft={2}>
             {[...multiProgress.agents.entries()].map(([agentId, info], idx, arr) => {
               const agentSteps = allChildSteps.filter((s) => s.agentId === agentId);
+              const isLastVisible = idx === arr.length - 1;
+              const allAccountedFor = arr.length >= (multiProgress.totalAgents ?? arr.length);
               return (
                 <MultiAgentChildRow
                   key={agentId}
                   agentId={agentId}
                   info={info}
-                  isLast={idx === arr.length - 1}
+                  isLast={isLastVisible && allAccountedFor}
                   childSteps={agentSteps}
                   liveStats={liveStats.get(agentId)}
                 />
