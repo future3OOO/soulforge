@@ -12,13 +12,7 @@ interface SoulImpactArgs {
 
 export const soulImpactTool = {
   name: "soul_impact",
-  description:
-    "Dependency graph traversal and impact analysis. All data from the indexed repo map — zero token cost.\n" +
-    "Actions:\n" +
-    "- dependents: files that import from this file (who breaks if this changes?)\n" +
-    "- dependencies: files this file imports (what does it rely on?)\n" +
-    "- cochanges: files that historically change together in git commits (related by behavior, not imports)\n" +
-    "- blast_radius: combined view — dependents + cochanges + blast count. Use for 'what is affected if I change X?'",
+  description: "Dependency graph queries: dependents, dependencies, cochanges, blast_radius.",
 
   createExecute: (repoMap?: RepoMap) => {
     return async (args: SoulImpactArgs): Promise<ToolResult> => {

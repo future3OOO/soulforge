@@ -252,7 +252,6 @@ export function TabInstance({
 
   const handleInputSubmit = useCallback(
     async (input: string) => {
-      scrollRef.current?.scrollTo(Infinity);
       if (input.startsWith("/")) {
         onCommand(input, chat);
         return;

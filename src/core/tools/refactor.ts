@@ -86,8 +86,7 @@ function formatResult(result: RefactorResult, applied: boolean): string {
 
 export const refactorTool = {
   name: "refactor",
-  description:
-    "Extract functions/variables, format code, and organize imports. Compiler-guaranteed safety.",
+  description: "Extract functions/variables, format code, organize imports.",
   execute: async (args: RefactorArgs): Promise<ToolResult> => {
     try {
       const router = getIntelligenceRouter(process.cwd());

@@ -537,11 +537,7 @@ function findLastImportLine(lines: string[], language: Language): number {
 
 export const moveSymbolTool = {
   name: "move_symbol",
-  description:
-    "Move a symbol (type, interface, function, class, enum, struct, trait) from one file to another. " +
-    "Works across all languages via tree-sitter. Full import handling for TS/JS/Python/Rust. " +
-    "Extracts definition with doc comments, carries needed imports, removes from source, " +
-    "and updates ALL import statements across the codebase atomically.",
+  description: "Move a symbol from one file to another with import updates.",
   execute: async (args: MoveSymbolArgs): Promise<ToolResult> => {
     try {
       const from = resolve(args.from);

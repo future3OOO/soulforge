@@ -16,9 +16,7 @@ const ENRICHMENT_TIMEOUT_MS = 2000;
 
 export const grepTool = {
   name: "grep",
-  description:
-    "Search for text patterns across files using ripgrep. Best for string literals, log messages, error text, and non-code patterns. " +
-    "For finding where a symbol is defined or used, prefer navigate (semantic, not text-based).",
+  description: "Search file contents with ripgrep regex patterns.",
   execute: async (args: GrepArgs): Promise<ToolResult> => {
     const pattern = args.pattern;
     const searchPath = args.path ?? ".";

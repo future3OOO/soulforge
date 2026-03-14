@@ -1,11 +1,8 @@
-import type { ModelMessage, ProviderOptions } from "@ai-sdk/provider-utils";
+import type { ModelMessage } from "@ai-sdk/provider-utils";
 import type { PrepareStepFunction, StopCondition } from "ai";
+import { EPHEMERAL_CACHE } from "../llm/provider-options.js";
 import { renderTaskList } from "../tools/task-list.js";
 import type { AgentBus } from "./agent-bus.js";
-
-const ANTHROPIC_CACHE: ProviderOptions = {
-  anthropic: { cacheControl: { type: "ephemeral" } },
-};
 
 export type SymbolLookup = (
   absPath: string,
@@ -63,8 +60,7 @@ const SUMMARIZABLE_TOOLS = new Set([
   "soul_find",
   "soul_analyze",
   "soul_impact",
-  "memory_search",
-  "memory_list",
+  "memory",
 ]);
 
 const EDIT_TOOLS = new Set(["edit_file", "multi_edit", "write_file", "create_file"]);
@@ -121,7 +117,7 @@ function buildSummary(toolName: string, text: string, symbolHint?: string): stri
     const firstLine = text.split("\n")[0] ?? "";
     return `[pruned] ${firstLine.slice(0, 120)}`;
   }
-  if (toolName === "memory_search" || toolName === "memory_list") {
+  if (toolName === "memory") {
     const count = text.trim().split("\n").length;
     return `[pruned] ${String(count)} memories`;
   }
@@ -260,7 +256,7 @@ export function buildPrepareStep({
       }
       const target = msgs[msgs.length - 2];
       if (target) {
-        target.providerOptions = { ...target.providerOptions, ...ANTHROPIC_CACHE };
+        target.providerOptions = { ...target.providerOptions, ...EPHEMERAL_CACHE };
       }
     }
 

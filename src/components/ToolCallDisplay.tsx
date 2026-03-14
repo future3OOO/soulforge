@@ -66,9 +66,13 @@ function formatArgs(toolName: string, args?: string): string {
       const q = String(parsed.query);
       return q.length > 50 ? `${q.slice(0, 47)}...` : q;
     }
-    if (toolName === "memory_write" && parsed.summary) {
-      const s = String(parsed.summary);
+    if (toolName === "memory" && parsed.action === "write" && parsed.title) {
+      const s = String(parsed.title);
       return s.length > 50 ? `${s.slice(0, 47)}...` : s;
+    }
+    if (toolName === "memory" && parsed.action) {
+      if (parsed.action === "search" && parsed.query) return `search: ${String(parsed.query)}`;
+      return String(parsed.action);
     }
     if (toolName === "dispatch" && parsed.tasks) {
       const tasks = parsed.tasks as Array<{ task: string }>;
@@ -80,19 +84,18 @@ function formatArgs(toolName: string, args?: string): string {
       const label = parsed.objective ? `${String(tasks.length)} agents — ${obj}` : obj;
       return label.length > 60 ? `${label.slice(0, 57)}...` : label;
     }
-    if (toolName === "editor_read" && parsed.startLine) {
-      return `lines ${String(parsed.startLine)}-${String(parsed.endLine ?? "end")}`;
-    }
-    if (toolName === "editor_edit" && parsed.startLine) {
-      return `lines ${String(parsed.startLine)}-${String(parsed.endLine)}`;
-    }
-    if (toolName === "editor_navigate") {
-      if (parsed.file) return String(parsed.file);
-      if (parsed.search) return `/${String(parsed.search)}/`;
-      if (parsed.line) return `line ${String(parsed.line)}`;
-    }
-    if (toolName === "editor_hover" && parsed.line) {
-      return `line ${String(parsed.line)}:${String(parsed.col ?? "")}`;
+    if (toolName === "editor" && parsed.action) {
+      if (parsed.action === "read" && parsed.startLine)
+        return `read lines ${String(parsed.startLine)}-${String(parsed.endLine ?? "end")}`;
+      if (parsed.action === "edit" && parsed.startLine)
+        return `edit lines ${String(parsed.startLine)}-${String(parsed.endLine)}`;
+      if (parsed.action === "navigate") {
+        if (parsed.file) return String(parsed.file);
+        if (parsed.search) return `/${String(parsed.search)}/`;
+        if (parsed.line) return `line ${String(parsed.line)}`;
+      }
+      if (parsed.action === "rename" && parsed.newName) return `rename → ${String(parsed.newName)}`;
+      return String(parsed.action);
     }
     if (toolName === "update_plan_step" && parsed.stepId) {
       return `${String(parsed.stepId)} → ${String(parsed.status ?? "")}`;
@@ -145,13 +148,17 @@ function formatArgs(toolName: string, args?: string): string {
       if (parsed.title) return String(parsed.title);
       return "plan";
     }
-    if (toolName === "git_commit" && parsed.message) {
-      const m = String(parsed.message);
-      return m.length > 50 ? `${m.slice(0, 47)}...` : m;
+    if (toolName === "git" && parsed.action) {
+      if (parsed.action === "commit" && parsed.message) {
+        const m = String(parsed.message);
+        return m.length > 50 ? `${m.slice(0, 47)}...` : m;
+      }
+      if (parsed.action === "log" && parsed.count) return `log last ${String(parsed.count)}`;
+      if (parsed.action === "diff") return parsed.staged ? "diff staged" : "diff";
+      if (parsed.action === "stash") return `stash ${String(parsed.sub_action ?? "push")}`;
+      if (parsed.action === "branch") return `branch ${String(parsed.sub_action ?? "list")}`;
+      return String(parsed.action);
     }
-    if (toolName === "git_log" && parsed.count) return `last ${String(parsed.count)}`;
-    if (toolName === "git_diff") return parsed.staged ? "staged" : "unstaged";
-    if (toolName === "git_stash") return parsed.pop ? "pop" : "push";
     if (toolName === "code_execution") {
       if (parsed.code) {
         const code = String(parsed.code);
@@ -866,9 +873,9 @@ const ToolRow = memo(
         const parsed = JSON.parse(tc.args);
         if (Array.isArray(parsed.tasks) && parsed.tasks.length >= 1) {
           const tasks = (
-            parsed.tasks as Array<{ agentId?: string; role?: string; task?: string }>
+            parsed.tasks as Array<{ id?: string; agentId?: string; role?: string; task?: string }>
           ).map((t, i) => ({
-            agentId: t.agentId ?? `agent-${String(i)}`,
+            agentId: t.id ?? t.agentId ?? `agent-${String(i)}`,
             role: t.role,
             task: t.task,
           }));

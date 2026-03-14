@@ -42,9 +42,7 @@ export function clearFile(absPath: string): void {
 
 export const undoEditTool = {
   name: "undo_edit",
-  description:
-    "Undo the last edit_file change to a file. Restores the previous content from an in-memory stack. " +
-    "Keeps up to 20 edits per file. Only works within the current session.",
+  description: "Undo the last edit_file change to a file.",
   execute: async (args: { path: string; steps?: number }): Promise<ToolResult> => {
     try {
       const filePath = resolve(args.path);

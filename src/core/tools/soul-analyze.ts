@@ -3,7 +3,7 @@ import type { ToolResult } from "../../types";
 import type { RepoMap } from "../intelligence/repo-map.js";
 import { isForbidden } from "../security/forbidden.js";
 
-type AnalyzeAction = "identifier_frequency" | "unused_exports" | "file_profile";
+type AnalyzeAction = "identifier_frequency" | "unused_exports" | "file_profile" | "duplication";
 
 interface SoulAnalyzeArgs {
   action: AnalyzeAction;
@@ -20,7 +20,10 @@ export const soulAnalyzeTool = {
     "- identifier_frequency: top N most referenced identifiers across the codebase (which files use them). " +
     "Answers 'most reused variable' instantly. Optional name param to check a specific identifier.\n" +
     "- unused_exports: find exported symbols never imported by any other file. Dead code detection.\n" +
-    "- file_profile: dependencies, dependents, blast radius, cochanges, and top symbols for a file. Requires file param.",
+    "- file_profile: dependencies, dependents, blast radius, cochanges, and top symbols for a file. Requires file param.\n" +
+    "- duplication: find duplicated code across the codebase. Three tiers: exact structural clones (AST shape hash), " +
+    "near-duplicates (>70% token similarity via MinHash), and repeated code fragments (same token patterns across functions). " +
+    "Optional file param to check clones of a specific file. Catches patterns invisible to grep.",
 
   createExecute: (repoMap?: RepoMap) => {
     return async (args: SoulAnalyzeArgs): Promise<ToolResult> => {
@@ -41,6 +44,8 @@ export const soulAnalyzeTool = {
           return unusedExports(repoMap, cwd, args.limit);
         case "file_profile":
           return fileProfile(repoMap, cwd, args.file);
+        case "duplication":
+          return duplication(repoMap, cwd, args.file, args.limit);
         default:
           return {
             success: false,
@@ -202,5 +207,99 @@ function fileProfile(repoMap: RepoMap, cwd: string, file: string | undefined): T
     lines.push("");
   }
 
+  return { success: true, output: lines.join("\n") };
+}
+
+function duplication(
+  repoMap: RepoMap,
+  cwd: string,
+  file: string | undefined,
+  limit: number | undefined,
+): ToolResult {
+  if (file) {
+    if (isForbidden(file) !== null) {
+      return {
+        success: false,
+        output: `Access denied: "${file}" is blocked for security.`,
+        error: "forbidden",
+      };
+    }
+    const relPath = file.startsWith("/") ? relative(cwd, file) : file;
+    const fileDups = repoMap.getFileDuplicates(relPath);
+    if (fileDups.length === 0) {
+      return { success: true, output: `No structural clones found for functions in "${relPath}".` };
+    }
+
+    const lines = [`Structural clones for functions in ${relPath}:\n`];
+    for (const dup of fileDups) {
+      lines.push(
+        `  ${dup.name} (line ${String(dup.line)}) — ${String(dup.clones.length)} clone(s):`,
+      );
+      for (const c of dup.clones.slice(0, 10)) {
+        lines.push(`    ${c.path}:${String(c.line)} — ${c.name}`);
+      }
+      if (dup.clones.length > 10) {
+        lines.push(`    + ${String(dup.clones.length - 10)} more`);
+      }
+    }
+    return { success: true, output: lines.join("\n") };
+  }
+
+  const cap = limit ?? 15;
+  const lines: string[] = [];
+
+  const clusters = repoMap.getDuplicateStructures(cap);
+  if (clusters.length > 0) {
+    lines.push(`Exact structural clones (${String(clusters.length)} groups):\n`);
+    for (const cluster of clusters) {
+      const memberCount = cluster.members.length;
+      lines.push(
+        `  Cluster — ${String(memberCount)} ${cluster.kind}s, ${String(cluster.nodeCount)} AST nodes each:`,
+      );
+      for (const m of cluster.members.slice(0, 8)) {
+        lines.push(`    ${m.path}:${String(m.line)}-${String(m.endLine)} — ${m.name}`);
+      }
+      if (memberCount > 8) {
+        lines.push(`    + ${String(memberCount - 8)} more`);
+      }
+      lines.push("");
+    }
+  }
+
+  const nearDups = repoMap.getNearDuplicates(0.7, cap);
+  if (nearDups.length > 0) {
+    lines.push(`Near-duplicates (>70% token similarity, ${String(nearDups.length)} pairs):\n`);
+    for (const pair of nearDups) {
+      const pct = Math.round(pair.similarity * 100);
+      lines.push(
+        `  ${String(pct)}% — ${pair.a.path}:${String(pair.a.line)} ${pair.a.name}`,
+        `       ↔ ${pair.b.path}:${String(pair.b.line)} ${pair.b.name}`,
+        "",
+      );
+    }
+  }
+
+  const fragments = repoMap.getRepeatedFragments(cap);
+  if (fragments.length > 0) {
+    lines.push(
+      `Repeated code fragments (${String(fragments.length)} patterns across multiple functions):\n`,
+    );
+    for (const frag of fragments) {
+      lines.push(`  Pattern — ${String(frag.count)} occurrences:`);
+      for (const loc of frag.locations.slice(0, 6)) {
+        lines.push(`    ${loc.path}:${String(loc.line)} in ${loc.name}`);
+      }
+      if (frag.locations.length > 6) {
+        lines.push(`    + ${String(frag.locations.length - 6)} more`);
+      }
+      lines.push("");
+    }
+  }
+
+  if (lines.length === 0) {
+    return { success: true, output: "No duplication detected in the codebase." };
+  }
+
+  lines.push("Use read_code to inspect specific pairs and determine if they can be unified.");
   return { success: true, output: lines.join("\n") };
 }

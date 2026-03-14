@@ -453,11 +453,7 @@ interface RenameSymbolArgs {
 
 export const renameSymbolTool = {
   name: "rename_symbol",
-  description:
-    "Rename any symbol across ALL files atomically. Just give the name — it auto-finds the definition via workspace search. " +
-    "DO NOT grep, glob, or read files first — call this directly. " +
-    "Renames every reference via LSP, verifies zero remaining. " +
-    "After success: run `project test` once. Nothing else. No read_file, no grep, no analyze.",
+  description: "Rename a symbol across all files atomically via LSP.",
   execute: async (args: RenameSymbolArgs): Promise<ToolResult> => {
     try {
       const router = getIntelligenceRouter(process.cwd());

@@ -4,6 +4,12 @@ import { chmodSync, existsSync, mkdirSync, readdirSync, readFileSync, statSync }
 import { stat as statAsync } from "node:fs/promises";
 import { extname, join, relative } from "node:path";
 import { isForbidden } from "../security/forbidden.js";
+import {
+  computeFragmentHashes,
+  computeMinHash,
+  jaccardSimilarity,
+  tokenize,
+} from "./clone-detection.js";
 import type { Language, SymbolKind } from "./types.js";
 
 const INDEXABLE_EXTENSIONS: Record<string, Language> = {
@@ -354,6 +360,46 @@ export class RepoMap {
         PRIMARY KEY (symbol_id, source)
       );
     `);
+
+    this.db.run(`
+      CREATE TABLE IF NOT EXISTS shape_hashes (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        file_id INTEGER NOT NULL REFERENCES files(id) ON DELETE CASCADE,
+        name TEXT NOT NULL,
+        kind TEXT NOT NULL,
+        line INTEGER NOT NULL,
+        end_line INTEGER NOT NULL,
+        shape_hash TEXT NOT NULL,
+        node_count INTEGER NOT NULL
+      );
+      CREATE INDEX IF NOT EXISTS idx_shape_hashes_file ON shape_hashes(file_id);
+      CREATE INDEX IF NOT EXISTS idx_shape_hashes_hash ON shape_hashes(shape_hash);
+    `);
+
+    this.db.run(`
+      CREATE TABLE IF NOT EXISTS token_signatures (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        file_id INTEGER NOT NULL REFERENCES files(id) ON DELETE CASCADE,
+        name TEXT NOT NULL,
+        line INTEGER NOT NULL,
+        end_line INTEGER NOT NULL,
+        minhash BLOB NOT NULL
+      );
+      CREATE INDEX IF NOT EXISTS idx_token_sig_file ON token_signatures(file_id);
+    `);
+
+    this.db.run(`
+      CREATE TABLE IF NOT EXISTS token_fragments (
+        hash TEXT NOT NULL,
+        file_id INTEGER NOT NULL REFERENCES files(id) ON DELETE CASCADE,
+        name TEXT NOT NULL,
+        line INTEGER NOT NULL,
+        token_offset INTEGER NOT NULL
+      );
+      CREATE INDEX IF NOT EXISTS idx_fragments_hash ON token_fragments(hash);
+      CREATE INDEX IF NOT EXISTS idx_fragments_file ON token_fragments(file_id);
+    `);
+
     this.migrateSemanticSource();
 
     this.rebuildFts();
@@ -492,6 +538,9 @@ export class RepoMap {
       this.db.query("DELETE FROM symbols WHERE file_id = ?").run(existing.id);
       this.db.query("DELETE FROM refs WHERE file_id = ?").run(existing.id);
       this.db.query("DELETE FROM external_imports WHERE file_id = ?").run(existing.id);
+      this.db.query("DELETE FROM shape_hashes WHERE file_id = ?").run(existing.id);
+      this.db.query("DELETE FROM token_signatures WHERE file_id = ?").run(existing.id);
+      this.db.query("DELETE FROM token_fragments WHERE file_id = ?").run(existing.id);
       this.db
         .query("DELETE FROM edges WHERE source_file_id = ? OR target_file_id = ?")
         .run(existing.id, existing.id);
@@ -569,6 +618,27 @@ export class RepoMap {
       if (this.semanticMode === "ast") {
         this.extractAstSummaries(fileId, outline.symbols, exportedNames, lines, mtime);
       }
+
+      if (this.treeSitter) {
+        try {
+          const hashes = await this.treeSitter.getShapeHashes(absPath);
+          if (hashes && hashes.length > 0) {
+            const insertHash = this.db.prepare(
+              "INSERT INTO shape_hashes (file_id, name, kind, line, end_line, shape_hash, node_count) VALUES (?, ?, ?, ?, ?, ?, ?)",
+            );
+            const hashTx = this.db.transaction(() => {
+              for (const h of hashes) {
+                insertHash.run(fileId, h.name, h.kind, h.line, h.endLine, h.shapeHash, h.nodeCount);
+              }
+            });
+            hashTx();
+          }
+        } catch {
+          // skip shape hashing on parse error
+        }
+      }
+
+      this.extractTokenSignatures(fileId, outline.symbols, content);
     }
 
     const identifiers = this.extractIdentifiers(content, language);
@@ -1780,6 +1850,257 @@ export class RepoMap {
         )
         .get(fileRow.id)?.c ?? 0
     );
+  }
+
+  // ─── Token Signatures & Fragments (Phase 2 + 3) ───
+
+  private extractTokenSignatures(
+    fileId: number,
+    symbols: Array<{ name: string; kind: string; location: { line: number; endLine?: number } }>,
+    content: string,
+  ): void {
+    const lines = content.split("\n");
+    const insertSig = this.db.prepare(
+      "INSERT INTO token_signatures (file_id, name, line, end_line, minhash) VALUES (?, ?, ?, ?, ?)",
+    );
+    const insertFrag = this.db.prepare(
+      "INSERT INTO token_fragments (hash, file_id, name, line, token_offset) VALUES (?, ?, ?, ?, ?)",
+    );
+
+    const MAX_FRAGMENTS_PER_FILE = 500;
+    const MAX_TOKENS_FOR_FRAGMENTS = 300;
+
+    const tx = this.db.transaction(() => {
+      let fragCount = 0;
+      for (const sym of symbols) {
+        const endLine = sym.location.endLine ?? sym.location.line;
+        if (endLine - sym.location.line < 5) continue;
+
+        const body = lines.slice(sym.location.line - 1, endLine).join("\n");
+        const tokens = tokenize(body);
+        if (tokens.length < 8) continue;
+
+        const sig = computeMinHash(tokens);
+        if (sig) {
+          insertSig.run(fileId, sym.name, sym.location.line, endLine, Buffer.from(sig.buffer));
+        }
+
+        if (fragCount < MAX_FRAGMENTS_PER_FILE && tokens.length <= MAX_TOKENS_FOR_FRAGMENTS) {
+          const fragments = computeFragmentHashes(tokens);
+          for (const frag of fragments) {
+            insertFrag.run(frag.hash, fileId, sym.name, sym.location.line, frag.tokenOffset);
+            fragCount++;
+          }
+        }
+      }
+    });
+    tx();
+  }
+
+  getNearDuplicates(
+    threshold = 0.7,
+    limit = 20,
+  ): Array<{
+    similarity: number;
+    a: { name: string; path: string; line: number; endLine: number };
+    b: { name: string; path: string; line: number; endLine: number };
+  }> {
+    if (!this.ready) return [];
+
+    const rows = this.db
+      .query<{ name: string; path: string; line: number; end_line: number; minhash: Buffer }, []>(
+        `SELECT ts.name, f.path, ts.line, ts.end_line, ts.minhash
+         FROM token_signatures ts
+         JOIN files f ON f.id = ts.file_id
+         ORDER BY f.pagerank DESC
+         LIMIT 500`,
+      )
+      .all();
+
+    const pairs: Array<{
+      similarity: number;
+      a: { name: string; path: string; line: number; endLine: number };
+      b: { name: string; path: string; line: number; endLine: number };
+    }> = [];
+
+    const toSig = (buf: Buffer): Uint32Array => {
+      if (buf.byteOffset % 4 === 0) {
+        return new Uint32Array(buf.buffer, buf.byteOffset, 128);
+      }
+      const copy = new Uint32Array(128);
+      new Uint8Array(copy.buffer).set(new Uint8Array(buf.buffer, buf.byteOffset, 512));
+      return copy;
+    };
+
+    for (let i = 0; i < rows.length; i++) {
+      const a = rows[i] as (typeof rows)[0];
+      const sigA = toSig(a.minhash);
+
+      for (let j = i + 1; j < rows.length; j++) {
+        const b = rows[j] as (typeof rows)[0];
+        if (a.path === b.path && a.line === b.line) continue;
+
+        const sigB = toSig(b.minhash);
+        const sim = jaccardSimilarity(sigA, sigB);
+
+        if (sim >= threshold && sim < 1.0) {
+          pairs.push({
+            similarity: sim,
+            a: { name: a.name, path: a.path, line: a.line, endLine: a.end_line },
+            b: { name: b.name, path: b.path, line: b.line, endLine: b.end_line },
+          });
+        }
+      }
+    }
+
+    pairs.sort((x, y) => y.similarity - x.similarity);
+    return pairs.slice(0, limit);
+  }
+
+  getRepeatedFragments(limit = 20): Array<{
+    count: number;
+    locations: Array<{ name: string; path: string; line: number }>;
+  }> {
+    if (!this.ready) return [];
+
+    const clusters = this.db
+      .query<{ hash: string; cnt: number }, [number]>(
+        `SELECT hash, COUNT(*) as cnt
+         FROM token_fragments
+         GROUP BY hash
+         HAVING cnt > 2 AND cnt < 50
+         ORDER BY cnt DESC
+         LIMIT ?`,
+      )
+      .all(limit);
+
+    const results: Array<{
+      count: number;
+      locations: Array<{ name: string; path: string; line: number }>;
+    }> = [];
+
+    for (const cluster of clusters) {
+      const locs = this.db
+        .query<{ name: string; path: string; line: number }, [string]>(
+          `SELECT DISTINCT tf.name, f.path, tf.line
+           FROM token_fragments tf
+           JOIN files f ON f.id = tf.file_id
+           WHERE tf.hash = ?
+           ORDER BY f.path, tf.line
+           LIMIT 20`,
+        )
+        .all(cluster.hash);
+
+      const uniqueFiles = new Set(locs.map((l) => `${l.path}:${l.name}`));
+      if (uniqueFiles.size < 2) continue;
+
+      results.push({
+        count: cluster.cnt,
+        locations: locs.map((l) => ({ name: l.name, path: l.path, line: l.line })),
+      });
+    }
+
+    return results;
+  }
+
+  getDuplicateStructures(limit = 20): Array<{
+    shapeHash: string;
+    kind: string;
+    nodeCount: number;
+    members: Array<{ name: string; path: string; line: number; endLine: number }>;
+  }> {
+    if (!this.ready) return [];
+
+    const clusters = this.db
+      .query<
+        { shape_hash: string; kind: string; node_count: number; cnt: number },
+        [number, number]
+      >(
+        `SELECT shape_hash, kind, node_count, COUNT(*) as cnt
+         FROM shape_hashes
+         WHERE node_count >= ?
+         GROUP BY shape_hash
+         HAVING cnt > 1
+         ORDER BY node_count * cnt DESC
+         LIMIT ?`,
+      )
+      .all(10, limit);
+
+    const results: Array<{
+      shapeHash: string;
+      kind: string;
+      nodeCount: number;
+      members: Array<{ name: string; path: string; line: number; endLine: number }>;
+    }> = [];
+
+    for (const cluster of clusters) {
+      const members = this.db
+        .query<{ name: string; path: string; line: number; end_line: number }, [string]>(
+          `SELECT sh.name, f.path, sh.line, sh.end_line
+           FROM shape_hashes sh
+           JOIN files f ON f.id = sh.file_id
+           WHERE sh.shape_hash = ?
+           ORDER BY f.pagerank DESC`,
+        )
+        .all(cluster.shape_hash);
+
+      results.push({
+        shapeHash: cluster.shape_hash,
+        kind: cluster.kind,
+        nodeCount: cluster.node_count,
+        members: members.map((m) => ({
+          name: m.name,
+          path: m.path,
+          line: m.line,
+          endLine: m.end_line,
+        })),
+      });
+    }
+
+    return results;
+  }
+
+  getFileDuplicates(relPath: string): Array<{
+    name: string;
+    line: number;
+    clones: Array<{ name: string; path: string; line: number }>;
+  }> {
+    if (!this.ready) return [];
+
+    const fileRow = this.db
+      .query<{ id: number }, [string]>("SELECT id FROM files WHERE path = ?")
+      .get(relPath);
+    if (!fileRow) return [];
+
+    const hashes = this.db
+      .query<{ name: string; line: number; shape_hash: string }, [number]>(
+        "SELECT name, line, shape_hash FROM shape_hashes WHERE file_id = ?",
+      )
+      .all(fileRow.id);
+
+    const results: Array<{
+      name: string;
+      line: number;
+      clones: Array<{ name: string; path: string; line: number }>;
+    }> = [];
+
+    for (const h of hashes) {
+      const clones = this.db
+        .query<{ name: string; path: string; line: number }, [string, number]>(
+          `SELECT sh.name, f.path, sh.line
+           FROM shape_hashes sh
+           JOIN files f ON f.id = sh.file_id
+           WHERE sh.shape_hash = ? AND sh.file_id != ?
+           ORDER BY f.pagerank DESC`,
+        )
+        .all(h.shape_hash, fileRow.id);
+
+      if (clones.length > 0) {
+        results.push({ name: h.name, line: h.line, clones });
+      }
+    }
+
+    return results;
   }
 
   getStats(): { files: number; symbols: number; edges: number; summaries: number } {

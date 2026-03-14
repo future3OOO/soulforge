@@ -65,10 +65,7 @@ export function clearTasks(): void {
 
 export const taskListTool = {
   name: "task_list",
-  description:
-    "Session-scoped task scratchpad. Track work items that persist across compaction. " +
-    "Actions: add (title or titles[] for batch), update (id + status/title), remove (id), list, clear. " +
-    "Use titles[] to add multiple tasks in one call.",
+  description: "Session task scratchpad. Actions: add, update, remove, list, clear.",
   execute: async (args: TaskListArgs): Promise<ToolResult> => {
     try {
       switch (args.action) {

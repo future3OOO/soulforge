@@ -300,10 +300,7 @@ function detectJsLinter(cwd: string): string | null {
 
 export const projectTool = {
   name: "project",
-  description:
-    "Run project commands with auto-detected toolchain. " +
-    "Knows the correct test runner, build system, linter, and type checker for any project. " +
-    "Use this instead of shell for test/build/lint/typecheck — it always picks the right command.",
+  description: "Run project commands (test, build, lint, typecheck) with auto-detected toolchain.",
   execute: async (args: ProjectArgs): Promise<ToolResult> => {
     const cwd = args.cwd ? join(process.cwd(), args.cwd) : process.cwd();
     const profile = detectProfile(cwd);

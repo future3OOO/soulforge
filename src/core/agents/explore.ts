@@ -2,6 +2,7 @@ import type { ProviderOptions } from "@ai-sdk/provider-utils";
 import type { LanguageModel } from "ai";
 import { hasToolCall, stepCountIs, ToolLoopAgent, tool } from "ai";
 import { z } from "zod";
+import { EPHEMERAL_CACHE } from "../llm/provider-options.js";
 import { buildSubagentExploreTools, wrapWithBusCache } from "../tools/index.js";
 import type { AgentBus } from "./agent-bus.js";
 import { buildBusTools } from "./bus-tools.js";
@@ -18,10 +19,6 @@ function exploreBase(): string {
     'OUTPUT CONTRACT: The parent agent is BLIND to your tool results — it only sees your done call. Paste full function bodies, complete type definitions, and entire relevant code blocks into keyFindings[].detail. If the parent has to call read_file after you, your done call failed. Rule: if you read it and it matters, paste it. Descriptions like "it uses a map to track X" are worthless — paste the actual map code.',
   ].join("\n");
 }
-
-const ANTHROPIC_CACHE = {
-  anthropic: { cacheControl: { type: "ephemeral" } },
-} as const;
 
 const exploreDoneTool = tool({
   description:
@@ -91,7 +88,7 @@ export function createExploreAgent(model: LanguageModel, options?: ExploreAgentO
           ? `${base}\nCoordination: report_finding to share discoveries. Peer findings appear in tool results — check_findings for detail.`
           : base;
       })(),
-      providerOptions: ANTHROPIC_CACHE,
+      providerOptions: EPHEMERAL_CACHE,
     },
     stopWhen: [stepCountIs(15), tokenBudget(80_000), hasToolCall("done")],
     prepareStep: buildPrepareStep({

@@ -92,8 +92,7 @@ export function fuzzyWhitespaceMatch(
 export const editFileTool = {
   name: "edit_file",
   description:
-    "Edit a file by replacing an exact string match with new content. Also creates new files (empty oldString). " +
-    "For renaming a symbol across files, use rename_symbol instead (atomic, one call).",
+    "Edit a file by replacing an exact string match with new content. Also creates new files when oldString is empty.",
   execute: async (args: EditFileArgs): Promise<ToolResult> => {
     try {
       const filePath = resolve(args.path);

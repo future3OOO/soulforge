@@ -67,19 +67,30 @@ export class WorkingStateManager {
 
   // ─── Decisions / Failures / Discoveries ───
 
+  private static readonly MAX_LIST_SIZE = 25;
+
   addDecision(d: string): void {
     if (!this.state.decisions.includes(d)) {
       this.state.decisions.push(d);
+      if (this.state.decisions.length > WorkingStateManager.MAX_LIST_SIZE) {
+        this.state.decisions.shift();
+      }
     }
   }
 
   addFailure(f: string): void {
     this.state.failures.push(f);
+    if (this.state.failures.length > WorkingStateManager.MAX_LIST_SIZE) {
+      this.state.failures.shift();
+    }
   }
 
   addDiscovery(d: string): void {
     if (!this.state.discoveries.includes(d)) {
       this.state.discoveries.push(d);
+      if (this.state.discoveries.length > WorkingStateManager.MAX_LIST_SIZE) {
+        this.state.discoveries.shift();
+      }
     }
   }
 

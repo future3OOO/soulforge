@@ -229,8 +229,7 @@ function truncate(text: string, siteLinks: string[]): string {
 
 export const fetchPageTool = {
   name: "fetch_page",
-  description:
-    "Fetch a web page and extract its text content. FIRST choice when the user provides a URL — read it before dispatching web search. Also use after web_search to read full articles or documentation pages.",
+  description: "Fetch a web page and extract its text content.",
   execute: async (args: { url: string }): Promise<ToolResult> => {
     const urlError = validateUrl(args.url);
     if (urlError) return { success: false, output: urlError, error: urlError };

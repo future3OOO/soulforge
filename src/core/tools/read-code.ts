@@ -16,9 +16,7 @@ interface ReadCodeArgs {
 
 export const readCodeTool = {
   name: "read_code",
-  description:
-    "Read a specific function, class, type, or interface by name from a file. " +
-    "Returns ONLY that symbol's code. More precise and token-efficient than read_file for targeted reading.",
+  description: "Read a specific function, class, or type by name from a file.",
   execute: async (args: ReadCodeArgs): Promise<ToolResult> => {
     try {
       const router = getIntelligenceRouter(process.cwd());

@@ -56,19 +56,17 @@ const DISPATCH_GUIDANCE_BASE = [
   "## Dispatch — Parallel Agents",
   "Dispatch runs parallel agents with a shared read cache — instant dedup across agents.",
   "",
-  "**When dispatch earns its cost:** reading 7+ files, editing 4+ files (agents own distinct files), parallel code + web research.",
-  "**Faster to do yourself (system auto-rejects):** reading ≤6 files, editing ≤3 files, rename/move (already atomic), sequential work. Use read_code/read_file/edit_file directly.",
+  "**For broad codebase analysis** (audits, refactoring, finding patterns): dispatch immediately — agents explore in parallel.",
+  "**For targeted reads** of known files (≤3): use read_code/read_file directly.",
+  "**For edits** across 4+ files: dispatch with code agents owning distinct files.",
   "",
   "**Task quality — extraction, not investigation:**",
   "- Tasks are DATA EXTRACTION requests. Tell the agent exactly what to read and what to return.",
   "- Every task requires `targetFiles` — exact file paths. The system rejects tasks without them.",
   "- Split by file ownership, not by concept. Overlapping files = wasted cache.",
   "",
-  "**Information priority — exhaust each level before escalating:**",
-  "1. Context — previous dispatch results, tool returns, user-provided content already in conversation.",
-  "2. Codebase — existing patterns, similar implementations in the project.",
-  "3. User-provided URLs — if the user shared a link, `fetch_page` it before searching. The answer is likely there. fetch_page returns a 'Pages on this site' section — use those links to navigate docs instead of guessing URLs.",
-  "4. Web search — ONLY for specific gaps not covered above. One focused query per task.",
+  "Previous dispatch results and tool returns are already in your context — act on them.",
+  "If the user shared a URL, `fetch_page` it before searching. fetch_page returns a 'Pages on this site' section — use those links instead of guessing.",
   "",
   "**Web search tasks:** ONE focused query per task with `targetFiles: ['web']`.",
   "Multiple queries in one task dilute focus — dispatch separate agents for each query.",
@@ -702,8 +700,11 @@ export class ContextManager {
     return cleared;
   }
 
-  /** Build a system prompt with project context */
+  /** Build a system prompt with project context, scaled to context window */
   buildSystemPrompt(): string {
+    const ctxWindow = this.contextWindowTokens;
+    const isMinimal = ctxWindow <= 32_000;
+
     const projectInfo = this.getProjectInfo();
     let repoMapContent: string | null = null;
     if (this.repoMapEnabled && this.repoMapReady) {
@@ -711,22 +712,27 @@ export class ContextManager {
       if (rendered) {
         repoMapContent = rendered;
       }
-      // else: DB has 0 files — fall back to file tree silently
     }
 
     const hasRepoMap = repoMapContent !== null;
+    const mapText = repoMapContent ?? "";
     const codebaseSection = hasRepoMap
       ? [
           "## Repo Map",
-          "Live-updated after every edit. Ranked by PageRank + git co-change + conversation context.",
-          "`+` = exported. `(→N)` = blast radius (N files depend on this). `[NEW]` = new since last render.",
-          "This is the COMPLETE index of every file, symbol, and dependency in the project.",
-          "Scan it FIRST before any tool call — if a file or symbol is here, you already know its exact path.",
-          "```",
-          repoMapContent,
-          "```",
+          ...(isMinimal
+            ? ["Indexed codebase. Scan before tool calls.", "```", mapText, "```"]
+            : [
+                "Live-updated after every edit. Ranked by PageRank + git co-change + conversation context.",
+                "`+` = exported. `(→N)` = blast radius. `[NEW]` = new since last render.",
+                "Scan it FIRST before any tool call — if a file or symbol is here, you already know its exact path.",
+                "```",
+                mapText,
+                "```",
+              ]),
         ]
       : ["## Files", "```", this.getFileTree(3), "```"];
+
+    // ── STATIC sections first (stable prefix → maximizes cache hits) ──
 
     const parts = [
       "You are Forge, the AI inside SoulForge (terminal IDE). Always call yourself Forge.",
@@ -735,50 +741,68 @@ export class ContextManager {
       "## Project",
       `cwd: ${this.cwd}`,
       projectInfo ? `\n${projectInfo}` : "",
-      "",
-      ...codebaseSection,
-      "",
-      ...buildToolGuidance(hasRepoMap),
-      ...(this.repoMapReady && this.repoMap.getStats().symbols === 0
-        ? [
-            "",
-            "**⚠ Code intelligence limited**: No symbols indexed (tree-sitter may be unavailable). Intelligence tools will fall back to regex.",
-          ]
-        : []),
-      "",
-      ...buildDispatchGuidance(hasRepoMap),
-      "",
-      ...this.buildEditorToolsSection(),
-      "",
-      "## Planning",
-      "Plan when: 3+ steps, multi-file, or architectural. Skip for: simple edits, lookups, 'just do it'.",
-      "1. Research every file you'll touch using intelligence tools → 2. `plan` (self-contained) → 3. User confirms → 4. Execute with `update_plan_step`.",
-      "The plan tool renders a live checklist. Do NOT repeat plan steps in text.",
-      "**Plan must be SELF-CONTAINED — zero exploration during execution:**",
-      `- \`files[]\` — every file, exact paths${hasRepoMap ? " from the Repo Map" : ""}.`,
-      "- `files[].symbols[]` — every symbol to add/modify/remove, with current signatures and exact changes.",
-      "- `steps[].details` — full implementation instructions for each step.",
-      "- After confirm → execute DIRECTLY. No new plan, no dispatch, no exploration.",
-      "- If you can't fill in symbols and details, you haven't researched enough.",
+    ];
+
+    if (!isMinimal) {
+      parts.push("", ...buildToolGuidance(hasRepoMap));
+      if (this.repoMapReady && this.repoMap.getStats().symbols === 0) {
+        parts.push(
+          "",
+          "**Code intelligence limited**: No symbols indexed. Intelligence tools fall back to regex.",
+        );
+      }
+    }
+
+    if (!isMinimal) {
+      parts.push("", ...buildDispatchGuidance(hasRepoMap));
+    }
+
+    if (!isMinimal) {
+      parts.push(
+        "",
+        "## Planning",
+        "Plan when: 3+ steps, multi-file, or architectural. Skip for: simple edits, lookups, 'just do it'.",
+        "1. Research → 2. `plan` (self-contained) → 3. User confirms → 4. Execute with `update_plan_step`.",
+        "**Plan must be SELF-CONTAINED — zero exploration during execution.**",
+        `- \`files[]\` with exact paths${hasRepoMap ? " from the Repo Map" : ""}, \`symbols[]\` with signatures, \`steps[].details\` with full instructions.`,
+        "- If you can't fill in symbols and details, you haven't researched enough.",
+      );
+    }
+
+    parts.push(
       "",
       "## Style",
-      "- Direct, concise, no filler. Terminal UI — keep it short.",
-      "- Markdown code blocks with language hints. Never paste raw numbered lines.",
-      "- Don't touch code you weren't asked to change.",
+      "Direct, concise, no filler. Markdown code blocks with language hints.",
       "",
       "## Rules",
-      "- Compound tools (`rename_symbol`, `move_symbol`, `project`) do the complete job — no extra verification.",
-      "- The user sees only a one-line tool summary. Include file contents or results in your text when asked.",
-      "- On tool failure: read the error, adjust approach. Never retry the exact same call.",
-      "- User can abort with Ctrl+X, resume with `/continue`.",
-      ...(hasRepoMap
-        ? [
-            "",
-            "## IMPORTANT",
-            "The Repo Map is your index. If a symbol is indexed, `grep` and `workspace_symbols` will auto-redirect you to `read_code` with the exact path. Use the map paths directly — redundant searches are intercepted.",
-          ]
-        : []),
-    ];
+      ...(isMinimal
+        ? ["- On tool failure: read the error, adjust approach. Never retry the exact same call."]
+        : [
+            "- Compound tools (`rename_symbol`, `move_symbol`, `project`) do the complete job — no extra verification.",
+            "- The user sees only a one-line tool summary. Include file contents or results in your text when asked.",
+            "- On tool failure: read the error, adjust approach. Never retry the exact same call.",
+            "- User can abort with Ctrl+X, resume with `/continue`.",
+          ]),
+    );
+
+    const forbiddenCtx = buildForbiddenContext();
+    if (forbiddenCtx) {
+      parts.push("", forbiddenCtx);
+    }
+
+    // ── DYNAMIC sections last (change per turn → after cache breakpoint) ──
+
+    parts.push("", ...codebaseSection);
+
+    if (hasRepoMap && !isMinimal) {
+      parts.push(
+        "",
+        "## IMPORTANT",
+        "The Repo Map is your index. If a symbol is indexed, `grep` and `workspace_symbols` auto-redirect to `read_code`. Use map paths directly.",
+      );
+    }
+
+    parts.push("", ...this.buildEditorToolsSection());
 
     const showEditorContext = this.editorIntegration?.editorContext !== false;
     if (this.editorOpen && this.editorFile && showEditorContext) {
@@ -803,7 +827,7 @@ export class ContextManager {
           editorLines.push("Selection:", "```", truncated, "```");
         }
         editorLines.push(
-          "'the file'/'this file'/'what's open' = this file. `edit_file` for disk. `editor_read` for buffer.",
+          "'the file'/'this file'/'what's open' = this file. `edit_file` for disk. `editor(action: read)` for buffer.",
         );
         parts.push(...editorLines);
       }
@@ -813,11 +837,6 @@ export class ContextManager {
 
     if (this.gitContext) {
       parts.push("", "## Git Context", this.gitContext);
-    }
-
-    const forbiddenCtx = buildForbiddenContext();
-    if (forbiddenCtx) {
-      parts.push("", forbiddenCtx);
     }
 
     const memoryContext = this.memoryManager.buildMemoryIndex();
@@ -855,28 +874,28 @@ export class ContextManager {
     const lines: string[] = ["### Editor"];
 
     if (!this.editorOpen) {
-      lines.push("Editor panel is closed. `editor_*` tools will fail. Suggest Ctrl+E to open.");
+      lines.push("Editor panel is closed. The `editor` tool will fail. Suggest Ctrl+E to open.");
       return lines;
     }
 
     lines.push(
-      "Editor panel is open. Core: `editor_read` (buffer), `editor_edit` (buffer lines), `editor_navigate` (open/jump).",
+      "Editor panel is open. Use the `editor` tool with actions: read (buffer), edit (buffer lines), navigate (open/jump).",
     );
 
-    const lspTools: string[] = [];
-    if (!ei || ei.diagnostics) lspTools.push("`editor_diagnostics`");
-    if (!ei || ei.symbols) lspTools.push("`editor_symbols`");
-    if (!ei || ei.hover) lspTools.push("`editor_hover`");
-    if (!ei || ei.references) lspTools.push("`editor_references`");
-    if (!ei || ei.definition) lspTools.push("`editor_definition`");
-    if (!ei || ei.codeActions) lspTools.push("`editor_actions`");
-    if (!ei || ei.rename) lspTools.push("`editor_rename`");
-    if (!ei || ei.lspStatus) lspTools.push("`editor_lsp_status`");
-    if (!ei || ei.format) lspTools.push("`editor_format`");
-    if (lspTools.length > 0) lines.push(`LSP: ${lspTools.join(", ")}.`);
+    const lspActions: string[] = [];
+    if (!ei || ei.diagnostics) lspActions.push("diagnostics");
+    if (!ei || ei.symbols) lspActions.push("symbols");
+    if (!ei || ei.hover) lspActions.push("hover");
+    if (!ei || ei.references) lspActions.push("references");
+    if (!ei || ei.definition) lspActions.push("definition");
+    if (!ei || ei.codeActions) lspActions.push("actions");
+    if (!ei || ei.rename) lspActions.push("rename");
+    if (!ei || ei.lspStatus) lspActions.push("lsp_status");
+    if (!ei || ei.format) lspActions.push("format");
+    if (lspActions.length > 0) lines.push(`LSP actions: ${lspActions.join(", ")}.`);
 
     lines.push(
-      "`edit_file` for disk writes. `editor_edit` for buffer only. Check `editor_diagnostics` after changes. `editor_rename` for workspace renames.",
+      "`edit_file` for disk writes. `editor(action: edit)` for buffer only. Check diagnostics after changes.",
     );
 
     return lines;

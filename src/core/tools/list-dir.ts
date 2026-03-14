@@ -16,10 +16,7 @@ interface ListDirArgs {
  */
 export const listDirTool = {
   name: "list_dir",
-  description:
-    "List directory contents with metadata. When the repo map is available, shows language, line count, " +
-    "symbol count, and PageRank importance for each file. Directories are listed first. " +
-    "Defaults to current directory. Use for orientation — faster than glob for simple directory browsing.",
+  description: "List directory contents with file metadata.",
   execute: async (args: ListDirArgs, repoMap?: RepoMap): Promise<ToolResult> => {
     try {
       const cwd = process.cwd();

@@ -19,10 +19,7 @@ interface DiscoverPatternArgs {
 
 export const discoverPatternTool = {
   name: "discover_pattern",
-  description:
-    "Discover implementation patterns in the codebase. Given a concept (e.g. 'provider', 'router', 'tool'), " +
-    "finds interfaces, implementations, and related files. Use this to understand how to implement new features " +
-    "that follow existing patterns.",
+  description: "Find implementation patterns for a concept in the codebase.",
   execute: async (args: DiscoverPatternArgs): Promise<ToolResult> => {
     try {
       const router = getIntelligenceRouter(process.cwd());

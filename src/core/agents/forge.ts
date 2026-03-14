@@ -10,6 +10,7 @@ import type {
   InteractiveCallbacks,
 } from "../../types/index.js";
 import type { ContextManager } from "../context/manager.js";
+import { EPHEMERAL_CACHE } from "../llm/provider-options.js";
 import {
   buildInteractiveTools,
   buildTools,
@@ -200,7 +201,7 @@ export function createForgeAgent({
     instructions: {
       role: "system" as const,
       content: contextManager.buildSystemPrompt(),
-      providerOptions: { anthropic: { cacheControl: { type: "ephemeral" } } },
+      providerOptions: EPHEMERAL_CACHE,
     },
     prepareCall: ({ options: _options, ...settings }) => {
       return {

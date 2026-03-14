@@ -12,12 +12,7 @@ interface SoulFindArgs {
 
 export const soulFindTool = {
   name: "soul_find",
-  description:
-    "Fuzzy file and symbol discovery. Searches file names and symbol names simultaneously, " +
-    "ranked by relevance and importance (repo map PageRank). Returns compact results with top symbols per file. " +
-    "Use for: 'find files related to auth', 'where is the router defined', 'files about memory'. " +
-    "Supports multi-word queries ('auth middleware' matches files containing both words). " +
-    "For exact glob patterns use glob. For text search use grep/soul_grep.",
+  description: "Fuzzy file and symbol search ranked by importance. Supports multi-word queries.",
 
   createExecute: (repoMap?: RepoMap) => {
     return async (args: SoulFindArgs): Promise<ToolResult> => {

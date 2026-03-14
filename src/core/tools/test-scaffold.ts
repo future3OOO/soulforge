@@ -29,9 +29,7 @@ interface TestScaffoldArgs {
 
 export const testScaffoldTool = {
   name: "test_scaffold",
-  description:
-    "Generate a test file skeleton from a source file's exports. " +
-    "Analyzes the file outline and creates describe/it blocks for each exported function/class.",
+  description: "Generate a test skeleton from a source file's exports.",
   execute: async (args: TestScaffoldArgs): Promise<ToolResult> => {
     try {
       const router = getIntelligenceRouter(process.cwd());

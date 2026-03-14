@@ -706,6 +706,165 @@ export class TreeSitterBackend implements IntelligenceBackend {
     };
   }
 
+  // ─── Shape hashing for structural clone detection ───
+
+  private static readonly MIN_HASH_LINES = 5;
+
+  private static readonly HASHABLE_KEYWORDS = [
+    "function",
+    "method",
+    "class",
+    "impl",
+    "struct",
+    "trait",
+    "module",
+    "constructor",
+  ];
+
+  private static isHashableType(nodeType: string): boolean {
+    return TreeSitterBackend.HASHABLE_KEYWORDS.some((kw) => nodeType.includes(kw));
+  }
+
+  private serializeShape(node: TSNode, depth: number): string {
+    if (depth > 40) return node.type;
+    const childCount = node.namedChildCount;
+    if (childCount === 0) return node.type;
+    const children: string[] = [];
+    for (let i = 0; i < childCount; i++) {
+      const child = node.namedChild(i);
+      if (child) children.push(this.serializeShape(child, depth + 1));
+    }
+    return `${node.type}(${children.join(",")})`;
+  }
+
+  private countNodes(node: TSNode, depth: number): number {
+    if (depth > 40) return 1;
+    let count = 1;
+    const childCount = node.namedChildCount;
+    for (let i = 0; i < childCount; i++) {
+      const child = node.namedChild(i);
+      if (child) count += this.countNodes(child, depth + 1);
+    }
+    return count;
+  }
+
+  private extractNodeName(node: TSNode): string {
+    const nameNode = node.childForFieldName("name");
+    if (nameNode) return nameNode.text;
+
+    if (node.type === "arrow_function" || node.type === "function_expression") {
+      const parent = node.parent;
+      if (parent?.type === "variable_declarator") {
+        const varName = parent.childForFieldName("name");
+        if (varName) return varName.text;
+      }
+      if (parent?.type === "pair" || parent?.type === "property") {
+        const key = parent.childForFieldName("key");
+        if (key) return key.text;
+      }
+    }
+
+    if (node.type === "lexical_declaration" || node.type === "variable_declaration") {
+      const declarator = node.namedChildren.find(
+        (c: TSNode | null) => c != null && c.type === "variable_declarator",
+      );
+      if (declarator) {
+        const varName = declarator.childForFieldName("name");
+        if (varName) return varName.text;
+      }
+    }
+
+    return "(anonymous)";
+  }
+
+  private collectHashableNodes(
+    node: TSNode,
+    results: Array<{ node: TSNode; name: string; kind: string }>,
+    depth: number,
+  ): void {
+    if (depth > 10) return;
+
+    if (TreeSitterBackend.isHashableType(node.type)) {
+      const lines = node.endPosition.row - node.startPosition.row + 1;
+      if (lines >= TreeSitterBackend.MIN_HASH_LINES) {
+        const name = this.extractNodeName(node);
+        const kind = node.type
+          .replace(/_declaration|_definition|_item|_statement|_specifier/, "")
+          .replace(/^local_/, "");
+        results.push({ node, name, kind });
+      }
+    }
+
+    if (node.type === "lexical_declaration" || node.type === "variable_declaration") {
+      const lines = node.endPosition.row - node.startPosition.row + 1;
+      if (lines >= TreeSitterBackend.MIN_HASH_LINES) {
+        const hasArrow = node.namedChildren.some((c: TSNode | null) => {
+          if (!c || c.type !== "variable_declarator") return false;
+          return c.namedChildren.some(
+            (gc: TSNode | null) =>
+              gc != null && (gc.type === "arrow_function" || gc.type === "function_expression"),
+          );
+        });
+        if (hasArrow) {
+          const name = this.extractNodeName(node);
+          results.push({ node, name, kind: "function" });
+        }
+      }
+    }
+
+    const childCount = node.namedChildCount;
+    for (let i = 0; i < childCount; i++) {
+      const child = node.namedChild(i);
+      if (child) this.collectHashableNodes(child, results, depth + 1);
+    }
+  }
+
+  async getShapeHashes(file: string): Promise<Array<{
+    name: string;
+    kind: string;
+    line: number;
+    endLine: number;
+    shapeHash: string;
+    nodeCount: number;
+  }> | null> {
+    const tree = await this.parseFile(file);
+    if (!tree) return null;
+
+    try {
+      const nodes: Array<{ node: TSNode; name: string; kind: string }> = [];
+      this.collectHashableNodes(tree.rootNode, nodes, 0);
+
+      if (nodes.length === 0) return [];
+
+      const results: Array<{
+        name: string;
+        kind: string;
+        line: number;
+        endLine: number;
+        shapeHash: string;
+        nodeCount: number;
+      }> = [];
+
+      for (const { node, name, kind } of nodes) {
+        const serialized = this.serializeShape(node, 0);
+        const hash = Bun.hash(serialized).toString(16);
+        const nodeCount = this.countNodes(node, 0);
+        results.push({
+          name,
+          kind,
+          line: node.startPosition.row + 1,
+          endLine: node.endPosition.row + 1,
+          shapeHash: hash,
+          nodeCount,
+        });
+      }
+
+      return results;
+    } finally {
+      tree.delete();
+    }
+  }
+
   // ─── Private helpers ───
 
   private async doInit(): Promise<void> {

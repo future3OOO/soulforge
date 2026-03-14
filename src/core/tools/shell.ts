@@ -156,9 +156,7 @@ function detectReadCommand(command: string): string | null {
 
 export const shellTool = {
   name: "shell",
-  description:
-    "Run a shell command (build, install, git, process management). " +
-    "For reading files use read_file. For searching use grep/glob. For build/test/lint use project.",
+  description: "Run a shell command.",
   execute: async (args: ShellArgs): Promise<ToolResult> => {
     const command = args.command;
     const cwd = args.cwd ?? process.cwd();

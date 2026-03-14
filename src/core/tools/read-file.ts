@@ -44,9 +44,7 @@ interface ReadFileArgs {
 
 export const readFileTool = {
   name: "read_file",
-  description:
-    "Read raw file contents with line numbers. Best for config files, markdown, or when you need the full file. " +
-    "For reading a specific function/class/type, use read_code instead (more precise, saves tokens).",
+  description: "Read file contents with line numbers.",
   execute: async (args: ReadFileArgs): Promise<ToolResult> => {
     try {
       const filePath = resolve(args.path);
@@ -74,6 +72,8 @@ export const readFileTool = {
         };
       }
 
+      const MAX_READ_LINES = 500;
+
       const content = await readBufferContent(filePath);
       const lines = content.split("\n");
 
@@ -81,19 +81,26 @@ export const readFileTool = {
       const end = args.endLine ?? lines.length;
       const slice = lines.slice(start, end);
 
-      const numbered = slice
+      const isFullRead = args.startLine == null && args.endLine == null;
+      const wasCapped = isFullRead && slice.length > MAX_READ_LINES;
+      const displaySlice = wasCapped ? slice.slice(0, MAX_READ_LINES) : slice;
+
+      const numbered = displaySlice
         .map((line: string, i: number) => `${String(start + i + 1).padStart(4)}  ${line}`)
         .join("\n");
 
       emitFileRead(filePath);
 
-      const isFullRead = args.startLine == null && args.endLine == null;
+      const capNotice = wasCapped
+        ? `\n\n[File has ${String(lines.length)} lines — showing first ${String(MAX_READ_LINES)}. Use startLine/endLine to read specific sections.]`
+        : "";
+
       if (isFullRead && lines.length > 100 && CODE_EXTENSIONS.has(extname(filePath))) {
         const outline = await getCompactOutline(filePath);
-        if (outline) return { success: true, output: `${outline}\n${numbered}` };
+        if (outline) return { success: true, output: `${outline}\n${numbered}${capNotice}` };
       }
 
-      return { success: true, output: numbered };
+      return { success: true, output: `${numbered}${capNotice}` };
     } catch (err: unknown) {
       const msg = err instanceof Error ? err.message : String(err);
       return { success: false, output: msg, error: msg };

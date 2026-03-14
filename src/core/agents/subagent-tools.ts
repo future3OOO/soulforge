@@ -253,6 +253,8 @@ function buildFallbackResult(result: AgentResult): string {
   return parts.join("\n") || "(no output)";
 }
 
+const DONE_RESULT_CAP = 8000;
+
 function formatDoneResult(done: DoneToolResult): string {
   const parts: string[] = [done.summary];
 
@@ -275,7 +277,11 @@ function formatDoneResult(done: DoneToolResult): string {
     if (done.verificationOutput) parts.push(done.verificationOutput);
   }
 
-  return parts.join("\n");
+  const result = parts.join("\n");
+  if (result.length > DONE_RESULT_CAP) {
+    return `${result.slice(0, DONE_RESULT_CAP)}\n[truncated — ${String(result.length - DONE_RESULT_CAP)} chars omitted]`;
+  }
+  return result;
 }
 
 async function runEvaluator(
@@ -816,25 +822,28 @@ export function buildSubagentTools(models: SubagentModels) {
           }
 
           if (!args.force && cacheRef.current) {
-            const cache = cacheRef.current;
-            const allTargetFiles: string[] = [];
-            for (const t of args.tasks) {
-              const isWebTask =
-                t.targetFiles.length === 1 && t.targetFiles[0]?.toLowerCase() === WEB_MARKER;
-              if (!isWebTask) {
-                for (const f of t.targetFiles) allTargetFiles.push(normalizePath(f));
+            const hasCodeTask = args.tasks.some((t) => t.role === "code");
+            if (hasCodeTask) {
+              const cache = cacheRef.current;
+              const allTargetFiles: string[] = [];
+              for (const t of args.tasks) {
+                const isWebTask =
+                  t.targetFiles.length === 1 && t.targetFiles[0]?.toLowerCase() === WEB_MARKER;
+                if (!isWebTask) {
+                  for (const f of t.targetFiles) allTargetFiles.push(normalizePath(f));
+                }
               }
-            }
-            if (allTargetFiles.length > 0) {
-              const cached = allTargetFiles.filter((f) => cache.files.has(f));
-              if (cached.length > 0 && cached.length >= allTargetFiles.length * 0.5) {
-                const missing = allTargetFiles.filter((f) => !cache.files.has(f));
-                const cachedList = cached.map((f) => `\`${f}\``).join(", ");
-                const missingHint =
-                  missing.length > 0
-                    ? ` Files not yet read: ${missing.map((f) => `\`${f}\``).join(", ")}. Use read_file for these.`
-                    : "";
-                return `Dispatch rejected: ${String(cached.length)}/${String(allTargetFiles.length)} target files are already in your context (${cachedList}).${missingHint} Act on the data you have. Set force: true only if you need agents to EDIT these files or do work beyond reading.`;
+              if (allTargetFiles.length > 0) {
+                const cached = allTargetFiles.filter((f) => cache.files.has(f));
+                if (cached.length > 0 && cached.length >= allTargetFiles.length * 0.5) {
+                  const missing = allTargetFiles.filter((f) => !cache.files.has(f));
+                  const cachedList = cached.map((f) => `\`${f}\``).join(", ");
+                  const missingHint =
+                    missing.length > 0
+                      ? ` Files not yet read: ${missing.map((f) => `\`${f}\``).join(", ")}. Use read_file for these.`
+                      : "";
+                  return `Dispatch rejected: ${String(cached.length)}/${String(allTargetFiles.length)} target files are already in your context (${cachedList}).${missingHint} Act on the data you have. Set force: true only if you need agents to EDIT these files or do work beyond reading.`;
+                }
               }
             }
           }
@@ -859,10 +868,10 @@ export function buildSubagentTools(models: SubagentModels) {
               }
               const allExplore = nonWebTasks.every((t) => t.role === "explore");
               const hasCode = nonWebTasks.some((t) => t.role === "code");
-              const MAX_EXPLORE_FILES = 6;
+              const MAX_EXPLORE_FILES = 3;
               const MAX_CODE_FILES = 3;
 
-              if (allExplore && uniqueFiles.size <= MAX_EXPLORE_FILES) {
+              if (allExplore && uniqueFiles.size > 0 && uniqueFiles.size <= MAX_EXPLORE_FILES) {
                 const fileList = [...uniqueFiles].map((f) => `\`${f}\``).join(", ");
                 return (
                   `Dispatch rejected: ${String(uniqueFiles.size)} file${uniqueFiles.size === 1 ? "" : "s"} (${fileList}) — read them directly with read_code or read_file. ` +

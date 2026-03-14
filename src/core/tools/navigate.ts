@@ -157,11 +157,7 @@ async function autoResolveFile(
 
 export const navigateTool = {
   name: "navigate",
-  description:
-    "Find where a symbol is defined, who calls it, what it imports/exports, and its type hierarchy. " +
-    "Primary tool for code structure questions — faster and more precise than grep for symbol lookup. " +
-    "workspace_symbols finds exported symbols. For unexported entry points (boot.tsx, index.ts), use analyze outline. " +
-    "Static analysis — works without neovim.",
+  description: "Find symbol definitions, references, imports, exports, and type hierarchy.",
   execute: async (args: NavigateArgs, repoMap?: RepoMapLike): Promise<ToolResult> => {
     try {
       const router = getIntelligenceRouter(process.cwd());
@@ -288,9 +284,16 @@ export const navigateTool = {
             };
           }
 
+          const MAX_REFS = 50;
+          const refs = tracked.value;
+          const capped = refs.length > MAX_REFS ? refs.slice(0, MAX_REFS) : refs;
+          const overflow =
+            refs.length > MAX_REFS
+              ? `\n+ ${String(refs.length - MAX_REFS)} more — narrow your query`
+              : "";
           return {
             success: true,
-            output: `References to '${symbol}' (${String(tracked.value.length)}):\n${tracked.value.map(formatLocation).join("\n")}`,
+            output: `References to '${symbol}' (${String(refs.length)}):\n${capped.map(formatLocation).join("\n")}${overflow}`,
             backend: tracked.backend,
           };
         }
@@ -371,9 +374,17 @@ export const navigateTool = {
             return { success: true, output: `No workspace symbols matching '${query}'` };
           }
 
+          const MAX_WS_SYMBOLS = 50;
+          const wsSyms = tracked.value;
+          const cappedWs =
+            wsSyms.length > MAX_WS_SYMBOLS ? wsSyms.slice(0, MAX_WS_SYMBOLS) : wsSyms;
+          const wsOverflow =
+            wsSyms.length > MAX_WS_SYMBOLS
+              ? `\n+ ${String(wsSyms.length - MAX_WS_SYMBOLS)} more — narrow your query`
+              : "";
           return {
             success: true,
-            output: `Workspace symbols matching '${query}' (${String(tracked.value.length)}):\n${tracked.value.map(formatSymbol).join("\n")}`,
+            output: `Workspace symbols matching '${query}' (${String(wsSyms.length)}):\n${cappedWs.map(formatSymbol).join("\n")}${wsOverflow}`,
             backend: tracked.backend,
           };
         }
@@ -458,9 +469,16 @@ export const navigateTool = {
             };
           }
 
+          const MAX_IMPLS = 50;
+          const impls = tracked.value;
+          const cappedImpls = impls.length > MAX_IMPLS ? impls.slice(0, MAX_IMPLS) : impls;
+          const implOverflow =
+            impls.length > MAX_IMPLS
+              ? `\n+ ${String(impls.length - MAX_IMPLS)} more — narrow your query`
+              : "";
           return {
             success: true,
-            output: `Implementations of '${symbol}' (${String(tracked.value.length)}):\n${tracked.value.map(formatLocation).join("\n")}`,
+            output: `Implementations of '${symbol}' (${String(impls.length)}):\n${cappedImpls.map(formatLocation).join("\n")}${implOverflow}`,
             backend: tracked.backend,
           };
         }
@@ -535,9 +553,17 @@ export const navigateTool = {
             return { success: true, output: `No symbols matching '${query}'` };
           }
 
+          const MAX_SEARCH_SYMS = 50;
+          const searchSyms = tracked.value;
+          const cappedSearch =
+            searchSyms.length > MAX_SEARCH_SYMS ? searchSyms.slice(0, MAX_SEARCH_SYMS) : searchSyms;
+          const searchOverflow =
+            searchSyms.length > MAX_SEARCH_SYMS
+              ? `\n+ ${String(searchSyms.length - MAX_SEARCH_SYMS)} more — narrow your query`
+              : "";
           return {
             success: true,
-            output: `Symbols matching '${query}' (${String(tracked.value.length)}):\n${tracked.value.map(formatSymbol).join("\n")}`,
+            output: `Symbols matching '${query}' (${String(searchSyms.length)}):\n${cappedSearch.map(formatSymbol).join("\n")}${searchOverflow}`,
             backend: tracked.backend,
           };
         }

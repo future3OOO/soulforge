@@ -27,7 +27,6 @@ import { useEditorFocus } from "../hooks/useEditorFocus.js";
 import { useEditorInput } from "../hooks/useEditorInput.js";
 import { useForgeMode } from "../hooks/useForgeMode.js";
 import { useGitStatus } from "../hooks/useGitStatus.js";
-import { useLspStatus } from "../hooks/useLspStatus.js";
 import { useNeovim } from "../hooks/useNeovim.js";
 import { buildSessionMeta } from "../hooks/useSessionBuilder.js";
 import { useTabs } from "../hooks/useTabs.js";
@@ -51,9 +50,7 @@ import { HelpPopup } from "./HelpPopup.js";
 import { InfoPopup } from "./InfoPopup.js";
 import { LlmSelector } from "./LlmSelector.js";
 import { LspStatusPopup } from "./LspStatusPopup.js";
-import { MemoryIndicator } from "./MemoryIndicator.js";
 import { ProviderSettings } from "./ProviderSettings.js";
-import { RepoMapIndicator } from "./RepoMapIndicator.js";
 import { RepoMapStatusPopup } from "./RepoMapStatusPopup.js";
 import { RouterSettings } from "./RouterSettings.js";
 import { SessionPicker } from "./SessionPicker.js";
@@ -67,14 +64,6 @@ import { TokenDisplay } from "./TokenDisplay.js";
 import { WebSearchSettings } from "./WebSearchSettings.js";
 
 startMemoryPoll();
-
-const LSP_SHORT_NAMES: Record<string, string> = {
-  "typescript-language-server": "tsserver",
-  "pyright-langserver": "pyright",
-  pylsp: "pylsp",
-  gopls: "gopls",
-  "rust-analyzer": "rust-analyzer",
-};
 
 function truncate(str: string, max: number): string {
   return str.length > max ? `${str.slice(0, max - 1)}…` : str;
@@ -407,7 +396,6 @@ export function App({
     // Session-scoped memory was removed — memories are now always persisted to project/global
   }, []);
   const git = useGitStatus(cwd);
-  const lspServers = useLspStatus();
   const {
     mode: forgeMode,
     cycleMode,
@@ -936,52 +924,6 @@ export function App({
           </text>
         </box>
         <box gap={1} flexShrink={1} flexDirection="row" justifyContent="center" overflow="hidden">
-          {/* Context & tokens group */}
-          <ContextBar contextManager={contextManager} modelId={activeModelForHeader} />
-          <text fg="#222">·</text>
-          <TokenDisplay />
-          {termWidth >= 90 && (
-            <>
-              <text fg="#222">·</text>
-              <MemoryIndicator />
-            </>
-          )}
-
-          {/* System info group */}
-          {termWidth >= 100 && (
-            <>
-              <text fg="#333">│</text>
-              <RepoMapIndicator />
-            </>
-          )}
-          {termWidth >= 80 && (
-            <>
-              {termWidth < 100 && <text fg="#333">│</text>}
-              {termWidth >= 100 && <text fg="#222">·</text>}
-              {git.isRepo ? (
-                <text fg={git.isDirty ? "#b87333" : "#4a7"} truncate>
-                  {UI_ICONS.git} {truncate(git.branch ?? "HEAD", termWidth >= 120 ? 30 : 15)}
-                  {git.isDirty ? "*" : ""}
-                </text>
-              ) : (
-                <text fg="#333">{UI_ICONS.git} no repo</text>
-              )}
-            </>
-          )}
-          {termWidth >= 100 && lspServers.length > 0 && (
-            <>
-              <text fg="#222">·</text>
-              <text fg="#4a7" truncate>
-                {icon("brain")}{" "}
-                {LSP_SHORT_NAMES[lspServers[0]?.command.split("/").pop() ?? ""] ??
-                  lspServers[0]?.language}
-                {lspServers.length > 1 ? ` +${String(lspServers.length - 1)}` : ""}
-              </text>
-            </>
-          )}
-
-          {/* Model group */}
-          <text fg="#333">│</text>
           <text truncate>
             {isProxy && (
               <span fg="#8B5CF6">
@@ -996,14 +938,27 @@ export function App({
             <span fg="#666">{providerIcon(displayProvider)} </span>
             <span fg="#888">{truncate(displayModel, isProxy || isGateway ? 24 : 32)}</span>
           </text>
+          {git.isRepo && (
+            <>
+              <text fg="#333">·</text>
+              <text fg={git.isDirty ? "#b87333" : "#4a7"} truncate>
+                {UI_ICONS.git} {truncate(git.branch ?? "HEAD", termWidth >= 120 ? 30 : 15)}
+                {git.isDirty ? "*" : ""}
+              </text>
+            </>
+          )}
           {forgeMode !== "default" && (
             <>
-              <text fg="#222">·</text>
+              <text fg="#333">·</text>
               <text fg={modeColor} attributes={TextAttributes.BOLD}>
                 [{modeLabel}]
               </text>
             </>
           )}
+          <text fg="#333">│</text>
+          <ContextBar contextManager={contextManager} modelId={activeModelForHeader} />
+          <text fg="#222">·</text>
+          <TokenDisplay />
         </box>
         {termWidth >= 80 && <BrandTag />}
       </box>

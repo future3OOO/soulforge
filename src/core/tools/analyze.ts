@@ -26,9 +26,7 @@ interface AnalyzeArgs {
 
 export const analyzeTool = {
   name: "analyze",
-  description:
-    "Check for type errors, get type info for a symbol, list unused exports, or diff symbols before/after an edit. " +
-    "Use INSTEAD of 'shell tsc' for diagnostics. Works without neovim — uses static analysis.",
+  description: "Type errors, type info, unused exports, and symbol diffs via static analysis.",
   execute: async (args: AnalyzeArgs): Promise<ToolResult> => {
     try {
       const router = getIntelligenceRouter(process.cwd());
@@ -82,14 +80,20 @@ export const analyzeTool = {
           const warnings = diags.filter((d) => d.severity === "warning").length;
           const header = `${String(diags.length)} diagnostic(s): ${String(errors)} error(s), ${String(warnings)} warning(s)`;
 
-          const lines = diags.map((d) => {
+          const MAX_DIAGNOSTICS = 30;
+          const capped = diags.length > MAX_DIAGNOSTICS ? diags.slice(0, MAX_DIAGNOSTICS) : diags;
+          const lines = capped.map((d) => {
             const code = d.code ? ` [${String(d.code)}]` : "";
             return `${d.severity} ${d.file}:${String(d.line)}:${String(d.column)}${code} — ${d.message}`;
           });
+          const overflow =
+            diags.length > MAX_DIAGNOSTICS
+              ? `\n+ ${String(diags.length - MAX_DIAGNOSTICS)} more — fix these first`
+              : "";
 
           return {
             success: true,
-            output: `${header}\n${lines.join("\n")}`,
+            output: `${header}\n${lines.join("\n")}${overflow}`,
             backend: tracked.backend,
           };
         }

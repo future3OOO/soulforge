@@ -2,6 +2,7 @@ import type { ProviderOptions } from "@ai-sdk/provider-utils";
 import type { LanguageModel } from "ai";
 import { hasToolCall, stepCountIs, ToolLoopAgent, tool } from "ai";
 import { z } from "zod";
+import { EPHEMERAL_CACHE } from "../llm/provider-options.js";
 import { buildSubagentCodeTools, wrapWithBusCache } from "../tools/index.js";
 import type { AgentBus } from "./agent-bus.js";
 import { buildBusTools } from "./bus-tools.js";
@@ -20,10 +21,6 @@ function codeBase(): string {
     "OUTPUT CONTRACT: The parent agent is BLIND to your tool results — it only sees your done call. For edits: exact file paths, what changed, and the final signatures/types of key additions. For research: paste actual code, not descriptions. If the parent has to re-read your files, your done call failed.",
   ].join("\n");
 }
-
-const ANTHROPIC_CACHE = {
-  anthropic: { cacheControl: { type: "ephemeral" } },
-} as const;
 
 const codeDoneTool = tool({
   description:
@@ -93,7 +90,7 @@ export function createCodeAgent(model: LanguageModel, options?: CodeAgentOptions
           ? `${base}\nOwnership: you own files you edit first. check_edit_conflicts before touching another agent's file.\nIf another agent owns the file: report_finding with the exact edit instead.\nCoordination: report_finding after significant changes (paths, what changed, new exports). Peer findings appear in tool results.`
           : base;
       })(),
-      providerOptions: ANTHROPIC_CACHE,
+      providerOptions: EPHEMERAL_CACHE,
     },
     stopWhen: [stepCountIs(25), tokenBudget(150_000), hasToolCall("done")],
     prepareStep: buildPrepareStep({

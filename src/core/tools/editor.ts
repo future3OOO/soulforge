@@ -8,6 +8,97 @@ const NO_EDITOR: ToolResult = {
   error: "Editor is not open",
 };
 
+export type EditorAction =
+  | "read"
+  | "edit"
+  | "navigate"
+  | "diagnostics"
+  | "symbols"
+  | "hover"
+  | "references"
+  | "definition"
+  | "actions"
+  | "rename"
+  | "lsp_status"
+  | "format";
+
+export interface EditorArgs {
+  action: EditorAction;
+  startLine?: number;
+  endLine?: number;
+  replacement?: string;
+  file?: string;
+  line?: number;
+  col?: number;
+  search?: string;
+  newName?: string;
+  apply?: number;
+  jump?: boolean;
+}
+
+export const editorTool = {
+  name: "editor" as const,
+  description:
+    "Neovim editor: read, edit, navigate, diagnostics, symbols, hover, references, definition, actions, rename, lsp_status, format.",
+  execute: async (args: EditorArgs): Promise<ToolResult> => {
+    switch (args.action) {
+      case "read":
+        return editorReadTool.execute({ startLine: args.startLine, endLine: args.endLine });
+      case "edit":
+        if (args.startLine == null || args.endLine == null || args.replacement == null) {
+          return {
+            success: false,
+            output: "startLine, endLine, and replacement required for edit",
+            error: "missing params",
+          };
+        }
+        return editorEditTool.execute({
+          startLine: args.startLine,
+          endLine: args.endLine,
+          replacement: args.replacement,
+        });
+      case "navigate":
+        return editorNavigateTool.execute({
+          file: args.file,
+          line: args.line,
+          col: args.col,
+          search: args.search,
+        });
+      case "diagnostics":
+        return editorDiagnosticsTool.execute();
+      case "symbols":
+        return editorSymbolsTool.execute();
+      case "hover":
+        return editorHoverTool.execute({ line: args.line, col: args.col });
+      case "references":
+        return editorReferencesTool.execute({ line: args.line, col: args.col });
+      case "definition":
+        return editorDefinitionTool.execute({ line: args.line, col: args.col, jump: args.jump });
+      case "actions":
+        return editorActionsTool.execute({ line: args.line, col: args.col, apply: args.apply });
+      case "rename":
+        if (!args.newName) {
+          return {
+            success: false,
+            output: "newName required for rename",
+            error: "missing newName",
+          };
+        }
+        return editorRenameTool.execute({ newName: args.newName, line: args.line, col: args.col });
+      case "lsp_status":
+        return editorLspStatusTool.execute();
+      case "format":
+        return editorFormatTool.execute({ startLine: args.startLine, endLine: args.endLine });
+      default:
+        return {
+          success: false,
+          output: `Unknown action: ${String(args.action)}`,
+          error: "bad action",
+        };
+    }
+  },
+};
+
 async function checkCurrentBufferForbidden(
   nvim: Awaited<ReturnType<typeof requireNvim>>,
 ): Promise<ToolResult | null> {

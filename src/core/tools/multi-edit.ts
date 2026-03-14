@@ -25,10 +25,7 @@ interface MultiEditArgs {
  */
 export const multiEditTool = {
   name: "multi_edit",
-  description:
-    "Apply multiple edits to a single file atomically. All edits are validated before any are applied — " +
-    "if one fails, none are written. More efficient than sequential edit_file calls: one read, one write, " +
-    "one undo entry, one diagnostic pass. Each edit has oldString and newString (same semantics as edit_file).",
+  description: "Apply multiple edits to a single file atomically. All-or-nothing validation.",
   execute: async (args: MultiEditArgs): Promise<ToolResult> => {
     try {
       const filePath = resolve(args.path);

@@ -235,6 +235,23 @@ function buildContextEdits(
   return edits.length > 0 ? edits : null;
 }
 
+// ─── Cache Control ───
+//
+// Ephemeral cache breakpoints for prompt caching. Set on all provider keys
+// so caching works regardless of which provider routes to Anthropic/Claude.
+// The Vercel AI SDK silently ignores keys that don't match the active provider.
+
+const CACHE_EPHEMERAL = { cacheControl: { type: "ephemeral" } } as const;
+
+export const EPHEMERAL_CACHE: ProviderOptions = {
+  anthropic: CACHE_EPHEMERAL,
+  google: CACHE_EPHEMERAL,
+  proxy: CACHE_EPHEMERAL,
+  llmgateway: CACHE_EPHEMERAL,
+  openrouter: CACHE_EPHEMERAL,
+  vercel_gateway: CACHE_EPHEMERAL,
+} as ProviderOptions;
+
 // ─── Main Builder ───
 
 export interface ProviderOptionsResult {

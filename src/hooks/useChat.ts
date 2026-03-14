@@ -879,16 +879,21 @@ export function useChat({
   useEffect(() => {
     const systemChars = contextManager.getContextBreakdown().reduce((sum, s) => sum + s.chars, 0);
     const totalChars = systemChars + chatChars;
-    const contextBudgetChars = getModelContextWindow(activeModelRef.current) * 3;
+    const contextBudgetChars = getModelContextWindow(activeModelRef.current) * 3.5;
     const pct = totalChars / contextBudgetChars;
     const triggerAt = effectiveConfig.compaction?.triggerThreshold ?? 0.7;
     const resetAt = effectiveConfig.compaction?.resetThreshold ?? 0.4;
     if (pct > triggerAt && !autoSummarizedRef.current && coreMessagesRef.current.length >= 6) {
       autoSummarizedRef.current = true;
-      logCompaction("auto-trigger", `Context at ${Math.round(pct * 100)}%`, {
-        contextBefore: `${Math.round(pct * 100)}%`,
-        messagesBefore: coreMessagesRef.current.length,
-      });
+      const strategy = effectiveConfig.compaction?.strategy === "v2" ? "v2" : "v1";
+      logCompaction(
+        "auto-trigger",
+        `Context at ${Math.round(pct * 100)}% — strategy: ${strategy}`,
+        {
+          contextBefore: `${Math.round(pct * 100)}%`,
+          messagesBefore: coreMessagesRef.current.length,
+        },
+      );
       summarizeConversation();
     }
     if (pct < resetAt) {
@@ -900,6 +905,7 @@ export function useChat({
     summarizeConversation,
     effectiveConfig.compaction?.triggerThreshold,
     effectiveConfig.compaction?.resetThreshold,
+    effectiveConfig.compaction?.strategy,
   ]);
 
   const promptWebAccess = useCallback((label: string): Promise<boolean> => {
@@ -1419,7 +1425,13 @@ export function useChat({
             case "tool-input-delta": {
               toolCallArgs.set(part.id, (toolCallArgs.get(part.id) ?? "") + part.delta);
               const tc = tcBuf.find((c) => c.id === part.id);
-              if (tc) tc.args = toolCallArgs.get(part.id);
+              if (tc) {
+                tc.args = toolCallArgs.get(part.id);
+                if (tc.toolName === "dispatch") {
+                  toolCallsDirty.current = true;
+                  queueMicrotaskFlush();
+                }
+              }
               toolCharsRef.current += part.delta.length;
               break;
             }

@@ -19,12 +19,7 @@ interface SoulGrepArgs {
 export const soulGrepTool = {
   name: "soul_grep",
   description:
-    "Token-efficient search with counting and word-boundary modes. " +
-    "Use count mode for aggregate analysis (variable frequency, pattern prevalence) — returns compact counts, not raw matches. " +
-    "Use wordBoundary for precise identifier matching (avoids substring false positives). " +
-    "Non-count mode includes symbol context (enclosing function/class for each match). " +
-    "Respects .gitignore by default (node_modules excluded). To search node_modules, pass path: 'node_modules/pkg'. " +
-    "For finding symbol definitions, prefer navigate. For raw text search, use grep.",
+    "Token-efficient search with count mode and word-boundary matching. Count mode returns per-file counts. Non-count mode includes symbol context.",
   createExecute: (repoMap?: RepoMap) => {
     return async (args: SoulGrepArgs): Promise<ToolResult> => {
       const { pattern, count, wordBoundary } = args;
