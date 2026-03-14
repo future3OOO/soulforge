@@ -69,14 +69,25 @@ function buildForgePrepareStep(isPlanMode: boolean, drainSteering?: () => string
       result.system = `${result.system ?? ""}\n\n${taskBlock}`.trim();
     }
 
-    // Inject steering message from queue (user typed while agent was running)
+    // Inject steering messages from queue (user typed while agent was running)
     if (stepNumber > 0 && drainSteering) {
-      const steering = drainSteering();
-      if (steering) {
+      const allSteering: string[] = [];
+      let next = drainSteering();
+      while (next) {
+        allSteering.push(next);
+        next = drainSteering();
+      }
+      if (allSteering.length > 0) {
         const msgs = result.messages ?? [...messages];
+        const combined = allSteering.join("\n\n");
         msgs.push({
           role: "user",
-          content: [{ type: "text", text: `[user steering] ${steering}` }],
+          content: [
+            {
+              type: "text",
+              text: `IMPORTANT — the user just sent this while you were working. Prioritize this:\n\n${combined}`,
+            },
+          ],
         });
         result.messages = msgs;
       }
