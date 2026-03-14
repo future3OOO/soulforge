@@ -18,7 +18,7 @@ export const ollama: ProviderDefinition = {
       baseURL: "http://localhost:11434/v1",
       apiKey: "ollama",
     });
-    return client(modelId);
+    return client.chat(modelId);
   },
 
   async fetchModels(): Promise<ProviderModelInfo[] | null> {

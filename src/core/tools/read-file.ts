@@ -73,6 +73,34 @@ export const readFileTool = {
       }
 
       const MAX_READ_LINES = 500;
+      const MAX_FILE_SIZE = 50 * 1024 * 1024; // 50MB
+
+      if (stat.size > MAX_FILE_SIZE && args.startLine == null && args.endLine == null) {
+        const sizeStr = `${String(Math.round(stat.size / (1024 * 1024)))}MB`;
+        const preview = Bun.file(filePath).stream();
+        const decoder = new TextDecoder();
+        const previewLines: string[] = [];
+        let leftover = "";
+        for await (const chunk of preview) {
+          leftover += decoder.decode(chunk, { stream: true });
+          const parts = leftover.split("\n");
+          leftover = parts.pop() ?? "";
+          for (const line of parts) {
+            previewLines.push(line);
+            if (previewLines.length >= MAX_READ_LINES) break;
+          }
+          if (previewLines.length >= MAX_READ_LINES) break;
+        }
+        const numbered = previewLines
+          .map((line: string, i: number) => `${String(i + 1).padStart(4)}  ${line}`)
+          .join("\n");
+
+        emitFileRead(filePath);
+        return {
+          success: true,
+          output: `${numbered}\n\n[Truncated — file is ${sizeStr}, showing first ${String(previewLines.length)} lines. Use startLine/endLine to read specific sections.]`,
+        };
+      }
 
       const content = await readBufferContent(filePath);
       const lines = content.split("\n");

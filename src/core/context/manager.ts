@@ -111,7 +111,7 @@ function buildDispatchGuidance(hasRepoMap: boolean): string[] {
   return [...DISPATCH_GUIDANCE_BASE, "", ...DISPATCH_GUIDANCE_WITH_MAP];
 }
 
-export { buildToolGuidance, buildDispatchGuidance };
+export { buildDispatchGuidance, buildToolGuidance };
 
 const IGNORED_DIRS = new Set([
   "node_modules",

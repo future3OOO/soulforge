@@ -12,8 +12,8 @@ import type {
 import type { ConfigScope } from "./shared.js";
 import { CONFIG_SCOPES, Overlay, POPUP_BG, POPUP_HL, PopupRow } from "./shared.js";
 
-const MAX_POPUP_WIDTH = 60;
-const CHROME_ROWS = 9;
+const MAX_POPUP_WIDTH = 68;
+const CHROME_ROWS = 7;
 
 export type ProviderScope = ConfigScope;
 
@@ -24,80 +24,130 @@ interface SettingItem {
   label: string;
   desc: string;
   type: ItemType;
-  section?: string;
   options?: string[];
 }
 
-const ITEMS: SettingItem[] = [
+type ProviderTab = "claude" | "openai" | "general";
+const TABS: ProviderTab[] = ["claude", "openai", "general"];
+const TAB_LABELS: Record<ProviderTab, string> = {
+  claude: "Claude",
+  openai: "OpenAI",
+  general: "General",
+};
+const TAB_ICONS: Record<ProviderTab, string> = {
+  claude: "󱜙",
+  openai: "󰧑",
+  general: "󰒍",
+};
+
+const CLAUDE_ITEMS: SettingItem[] = [
   {
     key: "thinkingMode",
-    label: "Mode",
-    desc: "off = not sent to API",
+    label: "Thinking",
+    desc: "off | auto (adaptive) | enabled (fixed budget)",
     type: "cycle",
-    section: "THINKING",
     options: ["off", "disabled", "auto", "adaptive", "enabled"],
   },
   {
     key: "budgetTokens",
     label: "Budget Tokens",
-    desc: "enabled mode only",
+    desc: "Token budget for enabled thinking mode",
     type: "budget",
     options: ["1024", "2048", "5000", "10000", "20000"],
   },
   {
     key: "effort",
     label: "Effort",
-    desc: "off = not sent to API",
+    desc: "Reasoning depth — affects thinking, text, and tool calls",
     type: "cycle",
-    section: "PERFORMANCE",
     options: ["off", "low", "medium", "high", "max"],
   },
   {
     key: "speed",
     label: "Speed",
-    desc: "opus only • off = not sent",
+    desc: "Opus only — 2.5x faster output (requires SDK update)",
     type: "cycle",
     options: ["off", "standard", "fast"],
   },
   {
-    key: "codeExecution",
-    label: "Code Execution",
-    desc: "sandboxed code eval",
-    type: "toggle",
-    section: "TOOLS",
-  },
-  {
-    key: "webSearch",
-    label: "Web Search",
-    desc: "allow web search tool",
+    key: "sendReasoning",
+    label: "Send Reasoning",
+    desc: "Include reasoning content in multi-turn requests",
     type: "toggle",
   },
   {
     key: "compact",
-    label: "Prompt Cache",
-    desc: "API-level prompt caching (200K+ models)",
+    label: "Server Compaction",
+    desc: "API-level context compaction (200K+ models)",
     type: "toggle",
-    section: "CONTEXT MANAGEMENT",
   },
   {
     key: "clearToolUses",
     label: "Clear Tool Uses",
-    desc: "keep last 10",
+    desc: "Auto-clear old tool results, keep last 10",
     type: "toggle",
   },
   {
     key: "clearThinking",
     label: "Clear Thinking",
-    desc: "keep last 5 turns",
+    desc: "Auto-clear old thinking blocks, keep last 5",
     type: "toggle",
   },
 ];
+
+const OPENAI_ITEMS: SettingItem[] = [
+  {
+    key: "openaiReasoningEffort",
+    label: "Reasoning Effort",
+    desc: "For o3, o4, gpt-5 — controls reasoning depth",
+    type: "cycle",
+    options: ["off", "none", "minimal", "low", "medium", "high", "xhigh"],
+  },
+  {
+    key: "serviceTier",
+    label: "Service Tier",
+    desc: "flex = 50% cheaper | priority = fastest (Enterprise)",
+    type: "cycle",
+    options: ["off", "auto", "default", "flex", "priority"],
+  },
+];
+
+const GENERAL_ITEMS: SettingItem[] = [
+  {
+    key: "disableParallelToolUse",
+    label: "Sequential Tools",
+    desc: "One tool at a time instead of parallel (all providers)",
+    type: "toggle",
+  },
+  {
+    key: "codeExecution",
+    label: "Code Execution",
+    desc: "Sandboxed code evaluation",
+    type: "toggle",
+  },
+  {
+    key: "webSearch",
+    label: "Web Search",
+    desc: "Allow web search tool",
+    type: "toggle",
+  },
+];
+
+const TAB_ITEMS: Record<ProviderTab, SettingItem[]> = {
+  claude: CLAUDE_ITEMS,
+  openai: OPENAI_ITEMS,
+  general: GENERAL_ITEMS,
+};
 
 interface CurrentValues {
   thinkingMode: ThinkingMode;
   budgetTokens: number;
   effort: string;
   speed: "off" | "standard" | "fast";
+  sendReasoning: boolean;
+  disableParallelToolUse: boolean;
+  openaiReasoningEffort: string;
+  serviceTier: string;
   codeExecution: boolean;
   webSearch: boolean;
   compact: boolean;
@@ -110,6 +160,10 @@ const DEFAULTS: CurrentValues = {
   budgetTokens: 10000,
   effort: "off",
   speed: "off",
+  sendReasoning: true,
+  disableParallelToolUse: false,
+  openaiReasoningEffort: "off",
+  serviceTier: "off",
   codeExecution: false,
   webSearch: true,
   compact: false,
@@ -124,6 +178,13 @@ function readValuesFromLayer(layer: Partial<AppConfig> | null): Partial<CurrentV
   if (layer.thinking?.budgetTokens !== undefined) v.budgetTokens = layer.thinking.budgetTokens;
   if (layer.performance?.effort !== undefined) v.effort = layer.performance.effort;
   if (layer.performance?.speed !== undefined) v.speed = layer.performance.speed;
+  if (layer.performance?.sendReasoning !== undefined)
+    v.sendReasoning = layer.performance.sendReasoning;
+  if (layer.performance?.disableParallelToolUse !== undefined)
+    v.disableParallelToolUse = layer.performance.disableParallelToolUse;
+  if (layer.performance?.openaiReasoningEffort !== undefined)
+    v.openaiReasoningEffort = layer.performance.openaiReasoningEffort;
+  if (layer.performance?.serviceTier !== undefined) v.serviceTier = layer.performance.serviceTier;
   if (layer.codeExecution !== undefined) v.codeExecution = layer.codeExecution;
   if (layer.webSearch !== undefined) v.webSearch = layer.webSearch;
   if (layer.contextManagement?.compact !== undefined) v.compact = layer.contextManagement.compact;
@@ -150,6 +211,14 @@ function buildPatch(key: string, value: string | number | boolean): Partial<AppC
       return { performance: { effort: value as EffortLevel | "off" } as PerformanceConfig };
     case "speed":
       return { performance: { speed: value as "off" | "standard" | "fast" } as PerformanceConfig };
+    case "sendReasoning":
+      return { performance: { sendReasoning: value as boolean } as PerformanceConfig };
+    case "disableParallelToolUse":
+      return { performance: { disableParallelToolUse: value as boolean } as PerformanceConfig };
+    case "openaiReasoningEffort":
+      return { performance: { openaiReasoningEffort: value as string } as PerformanceConfig };
+    case "serviceTier":
+      return { performance: { serviceTier: value as string } as PerformanceConfig };
     case "codeExecution":
       return { codeExecution: value as boolean };
     case "webSearch":
@@ -194,17 +263,28 @@ export function ProviderSettings({
 }: Props) {
   const { width: termCols, height: termRows } = useTerminalDimensions();
   const containerRows = termRows - 2;
-  const popupWidth = Math.min(MAX_POPUP_WIDTH, Math.floor(termCols * 0.7));
+  const popupWidth = Math.min(MAX_POPUP_WIDTH, Math.floor(termCols * 0.8));
   const innerW = popupWidth - 2;
   const maxVisible = Math.max(4, Math.floor(containerRows * 0.7) - CHROME_ROWS);
+
+  const [tab, setTab] = useState<ProviderTab>("claude");
   const [cursor, setCursor] = useState(0);
   const [scrollOffset, setScrollOffset] = useState(0);
   const [scope, setScope] = useState<ConfigScope>(() => detectInitialScope(projectConfig));
   const vals = effectiveValues(globalConfig, projectConfig);
 
+  const items = TAB_ITEMS[tab];
+  const tabIdx = TABS.indexOf(tab);
+
   useEffect(() => {
     if (visible) setScope(detectInitialScope(projectConfig));
   }, [visible, projectConfig]);
+
+  // biome-ignore lint/correctness/useExhaustiveDependencies: reset scroll when tab changes
+  useEffect(() => {
+    setCursor(0);
+    setScrollOffset(0);
+  }, [tab]);
 
   const isBudgetDisabled = vals.thinkingMode !== "enabled";
 
@@ -222,7 +302,6 @@ export function ProviderSettings({
       onUpdate(buildPatch(item.key, !current), scope);
       return;
     }
-
     if (item.type === "budget") {
       if (isBudgetDisabled) return;
       const opts = item.options ?? [];
@@ -231,7 +310,6 @@ export function ProviderSettings({
       onUpdate(buildPatch(item.key, Number(opts[nextIdx])), scope);
       return;
     }
-
     if (item.type === "cycle" && item.options) {
       const current = String(vals[item.key as keyof CurrentValues]);
       const currentIdx = item.options.indexOf(current);
@@ -247,9 +325,15 @@ export function ProviderSettings({
       onClose();
       return;
     }
+    if (evt.name === "tab" || (evt.shift && evt.name === "tab")) {
+      const dir = evt.shift ? -1 : 1;
+      const next = (tabIdx + dir + TABS.length) % TABS.length;
+      setTab(TABS[next] as ProviderTab);
+      return;
+    }
     if (evt.name === "up") {
       setCursor((c) => {
-        const next = c > 0 ? c - 1 : ITEMS.length - 1;
+        const next = c > 0 ? c - 1 : items.length - 1;
         adjustScroll(next);
         return next;
       });
@@ -257,14 +341,14 @@ export function ProviderSettings({
     }
     if (evt.name === "down") {
       setCursor((c) => {
-        const next = c < ITEMS.length - 1 ? c + 1 : 0;
+        const next = c < items.length - 1 ? c + 1 : 0;
         adjustScroll(next);
         return next;
       });
       return;
     }
     if (evt.name === "return" || evt.name === " ") {
-      const item = ITEMS[cursor];
+      const item = items[cursor];
       if (item) cycleValue(item);
       return;
     }
@@ -294,7 +378,7 @@ export function ProviderSettings({
 
   if (!visible) return null;
 
-  const labelW = 18;
+  const labelW = 20;
   const valW = 10;
 
   return (
@@ -317,93 +401,90 @@ export function ProviderSettings({
         </PopupRow>
 
         <PopupRow w={innerW}>
-          <text bg={POPUP_BG} fg="#333">
+          {TABS.map((t, i) => (
+            <text key={t} bg={POPUP_BG}>
+              {i > 0 ? (
+                <span fg="#333" bg={POPUP_BG}>
+                  {" │ "}
+                </span>
+              ) : (
+                ""
+              )}
+              <span
+                fg={t === tab ? "#FF0040" : "#666"}
+                attributes={t === tab ? TextAttributes.BOLD : undefined}
+                bg={POPUP_BG}
+              >
+                {TAB_ICONS[t]} {TAB_LABELS[t]}
+              </span>
+            </text>
+          ))}
+        </PopupRow>
+
+        <PopupRow w={innerW}>
+          <text fg="#333" bg={POPUP_BG}>
             {"─".repeat(innerW - 2)}
           </text>
         </PopupRow>
 
-        <PopupRow w={innerW}>
-          <text bg={POPUP_BG} fg="#555">
-            {"  "}⚠ Claude-only — "off" = not sent to API
-          </text>
-        </PopupRow>
+        <box flexDirection="column" flexGrow={1} flexShrink={1} minHeight={0} overflow="hidden">
+          {items.slice(scrollOffset, scrollOffset + maxVisible).map((item, vi) => {
+            const i = vi + scrollOffset;
+            const isSelected = i === cursor;
+            const disabled = item.key === "budgetTokens" && isBudgetDisabled;
+            const bg = isSelected ? POPUP_HL : POPUP_BG;
+            const raw = vals[item.key as keyof CurrentValues];
 
-        <box
-          flexDirection="column"
-          height={Math.min(ITEMS.length + 3, maxVisible)}
-          overflow="hidden"
-        >
-          {(() => {
-            const rows: React.ReactNode[] = [];
-            let renderedSections = 0;
+            const valColor = disabled
+              ? "#333"
+              : item.type === "toggle"
+                ? raw
+                  ? "#2d5"
+                  : "#555"
+                : raw === "off"
+                  ? "#555"
+                  : "#8B5CF6";
 
-            for (let i = 0; i < ITEMS.length; i++) {
-              const item = ITEMS[i] as SettingItem;
+            const displayVal =
+              item.type === "toggle" ? (raw ? "x" : " ") : String(raw).padStart(valW - 2);
 
-              if (item.section) {
-                const sectionRow = renderedSections + i;
-                if (sectionRow >= scrollOffset && rows.length < maxVisible) {
-                  rows.push(
-                    <PopupRow key={`section-${item.section}`} w={innerW}>
-                      <text bg={POPUP_BG} fg="#555" attributes={TextAttributes.BOLD}>
-                        {item.section}
-                      </text>
-                    </PopupRow>,
-                  );
-                }
-                renderedSections++;
-              }
+            const srcScope = detectValueScope(item.key, projectConfig);
+            const srcTag = srcScope === "project" ? "proj" : "glob";
+            const srcColor = srcScope === "project" ? "#00BFFF" : "#555";
 
-              const itemRow = renderedSections + i;
-              if (itemRow < scrollOffset || rows.length >= maxVisible) {
-                continue;
-              }
-
-              const isSelected = i === cursor;
-              const disabled = item.key === "budgetTokens" && isBudgetDisabled;
-              const bg = isSelected ? POPUP_HL : POPUP_BG;
-              const raw = vals[item.key as keyof CurrentValues];
-
-              const valColor = disabled
-                ? "#333"
-                : item.type === "toggle"
-                  ? raw
-                    ? "#2d5"
-                    : "#555"
-                  : raw === "off"
-                    ? "#555"
-                    : "#8B5CF6";
-
-              const displayVal =
-                item.type === "toggle" ? (raw ? "x" : " ") : String(raw).padStart(valW - 2);
-
-              const srcScope = detectValueScope(item.key, projectConfig);
-              const srcTag = srcScope === "project" ? "[project]" : "[global]";
-              const srcColor = srcScope === "project" ? "#00BFFF" : "#666";
-
-              rows.push(
-                <PopupRow key={item.key} bg={bg} w={innerW}>
+            return (
+              <box key={item.key} flexDirection="column" flexShrink={0}>
+                <PopupRow bg={bg} w={innerW}>
                   <text bg={bg} fg={isSelected ? "#FF0040" : "#555"}>
                     {isSelected ? "› " : "  "}
                   </text>
-                  <text bg={bg} fg={disabled ? "#333" : "white"}>
+                  <text bg={bg} fg={disabled ? "#333" : "white"} attributes={TextAttributes.BOLD}>
                     {item.label.padEnd(labelW)}
                   </text>
                   <text bg={bg} fg={valColor}>
                     [{displayVal}]
                   </text>
                   <text bg={bg} fg={srcColor}>
-                    {` ${srcTag}`}
-                  </text>
-                  <text bg={bg} fg="#555" truncate>
                     {" "}
+                    {srcTag}
+                  </text>
+                </PopupRow>
+                <PopupRow bg={bg} w={innerW}>
+                  <text bg={bg} fg="#444">
+                    {"    "}
                     {item.desc}
                   </text>
-                </PopupRow>,
-              );
-            }
-            return rows;
-          })()}
+                </PopupRow>
+              </box>
+            );
+          })}
+          {items.length === 0 && (
+            <PopupRow w={innerW}>
+              <text bg={POPUP_BG} fg="#555">
+                {"  "}No options for this provider yet.
+              </text>
+            </PopupRow>
+          )}
         </box>
 
         <PopupRow w={innerW}>
@@ -431,7 +512,7 @@ export function ProviderSettings({
 
         <PopupRow w={innerW}>
           <text bg={POPUP_BG} fg="#555">
-            {"↑↓"} nav | {"⏎"} cycle | {"← →"} scope | esc close
+            tab switch | {"↑↓"} nav | {"⏎"} cycle | {"← →"} scope | esc close
           </text>
         </PopupRow>
       </box>

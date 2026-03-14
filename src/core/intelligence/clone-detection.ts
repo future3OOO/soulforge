@@ -163,4 +163,4 @@ export function computeFragmentHashes(tokens: string[]): FragmentHash[] {
   return results;
 }
 
-export { NUM_HASHES, FRAGMENT_WINDOW };
+export { FRAGMENT_WINDOW, NUM_HASHES };

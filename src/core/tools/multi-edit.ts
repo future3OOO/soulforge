@@ -53,7 +53,8 @@ export const multiEditTool = {
       // Each edit sees the result of all prior edits — overlapping edits fail explicitly.
 
       for (let i = 0; i < args.edits.length; i++) {
-        const edit = args.edits[i]!;
+        const edit = args.edits[i];
+        if (!edit) continue;
         let resolvedOld = edit.oldString;
         let resolvedNew = edit.newString;
 

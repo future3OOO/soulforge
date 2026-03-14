@@ -10,7 +10,7 @@ import type {
   InteractiveCallbacks,
 } from "../../types/index.js";
 import type { ContextManager } from "../context/manager.js";
-import { EPHEMERAL_CACHE } from "../llm/provider-options.js";
+import { EPHEMERAL_CACHE, isAnthropicNative } from "../llm/provider-options.js";
 import {
   buildInteractiveTools,
   buildTools,
@@ -88,6 +88,7 @@ interface ForgeAgentOptions {
   webSearchModel?: LanguageModel;
   onApproveWebSearch?: (query: string) => Promise<boolean>;
   onApproveFetchPage?: (url: string) => Promise<boolean>;
+  onApproveOutsideCwd?: (toolName: string, path: string) => Promise<boolean>;
   providerOptions?: ProviderOptions;
   headers?: Record<string, string>;
   codeExecution?: boolean;
@@ -119,6 +120,7 @@ export function createForgeAgent({
   webSearchModel,
   onApproveWebSearch,
   onApproveFetchPage,
+  onApproveOutsideCwd,
   providerOptions,
   headers,
   codeExecution,
@@ -131,11 +133,18 @@ export function createForgeAgent({
   const isRestricted = RESTRICTED_MODES.has(forgeMode);
   const repoMap = contextManager.isRepoMapReady() ? contextManager.getRepoMap() : undefined;
 
+  const modelId =
+    typeof model === "object" && model !== null && "modelId" in model
+      ? String((model as { modelId: string }).modelId)
+      : "";
+  const canUseCodeExecution = codeExecution && isAnthropicNative(modelId);
+
   const directTools = buildTools(undefined, editorIntegration, onApproveWebSearch, {
-    codeExecution,
+    codeExecution: canUseCodeExecution,
     webSearchModel,
     repoMap,
     onApproveFetchPage,
+    onApproveOutsideCwd,
   });
 
   const subagentTools = isRestricted

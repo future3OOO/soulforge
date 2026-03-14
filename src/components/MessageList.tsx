@@ -1,3 +1,5 @@
+import { readFileSync } from "node:fs";
+import { join } from "node:path";
 import { TextAttributes } from "@opentui/core";
 import { memo, useEffect, useMemo, useState } from "react";
 import { icon } from "../core/icons.js";
@@ -127,7 +129,6 @@ function SystemMessage({ msg, animate = true }: { msg: ChatMessage; animate?: bo
     text.startsWith("Error:") || text.startsWith("Request failed:") || text.startsWith("Failed");
   const retry = parseRetry(text);
   const isInterrupt = text === "Generation interrupted.";
-  const isPinned = msg.showInChat === true;
 
   const displayText = isError
     ? categorizeError(text).detail
@@ -135,8 +136,8 @@ function SystemMessage({ msg, animate = true }: { msg: ChatMessage; animate?: bo
       ? `${categorizeError(retry.reason).category.toLowerCase()} — waiting ~${retry.delay}s`
       : text;
 
-  const railColor = isPinned ? "#5af" : isError ? ERROR_COLOR : retry ? RETRY_COLOR : SYSTEM_COLOR;
-  const textColor = isPinned ? "#8ac" : isError ? "#e88" : retry ? "#777" : "#777";
+  const railColor = isError ? ERROR_COLOR : retry ? RETRY_COLOR : SYSTEM_COLOR;
+  const textColor = isError ? "#e88" : retry ? "#777" : "#777";
 
   const chunkSize = Math.max(1, Math.ceil(displayText.length / MAX_REVEAL_STEPS));
   const totalSteps = Math.ceil(displayText.length / chunkSize);
@@ -156,21 +157,27 @@ function SystemMessage({ msg, animate = true }: { msg: ChatMessage; animate?: bo
   const visibleText = done ? displayText : displayText.slice(0, step * chunkSize);
   const lines = visibleText.split("\n");
 
-  const headerLabel = isPinned
-    ? "System"
-    : isError
-      ? categorizeError(text).category
-      : retry
-        ? `Retry ${retry.attempt}`
-        : isInterrupt
-          ? "Interrupted"
-          : "System";
-  const headerIcon = isPinned ? "⚡" : isError ? "✗" : retry ? "↻" : isInterrupt ? "⊘" : "";
+  const headerLabel = isError
+    ? categorizeError(text).category
+    : retry
+      ? `Retry ${retry.attempt}`
+      : isInterrupt
+        ? "Interrupted"
+        : "System";
+  const headerIcon = isError ? "✗" : retry ? "↻" : isInterrupt ? "⊘" : "›";
 
   return (
-    <box flexDirection="column" marginBottom={1}>
+    <box
+      flexDirection="column"
+      marginBottom={1}
+      border={["left"]}
+      borderColor={railColor}
+      customBorderChars={RAIL_BORDER}
+      paddingLeft={2}
+      paddingRight={1}
+      paddingY={1}
+    >
       <box flexDirection="row">
-        <text fg={railColor}>{"▏  "}</text>
         {isError ? (
           <text fg={ERROR_COLOR} attributes={TextAttributes.BOLD}>
             {headerIcon} {headerLabel}
@@ -180,11 +187,8 @@ function SystemMessage({ msg, animate = true }: { msg: ChatMessage; animate?: bo
             {headerIcon} {headerLabel}
           </text>
         ) : (
-          <text
-            fg={isPinned ? "#5af" : SYSTEM_COLOR}
-            attributes={isPinned ? TextAttributes.BOLD : undefined}
-          >
-            {headerIcon ? `${headerIcon} ` : " "}
+          <text fg={SYSTEM_COLOR}>
+            {headerIcon ? `${headerIcon} ` : ""}
             {headerLabel}
           </text>
         )}
@@ -192,17 +196,11 @@ function SystemMessage({ msg, animate = true }: { msg: ChatMessage; animate?: bo
       </box>
       {lines.map((line, i) => (
         // biome-ignore lint/suspicious/noArrayIndexKey: stable line order
-        <box key={i} flexDirection="row">
-          <text fg={railColor}>{"▏  "}</text>
-          <text fg={textColor}>{line}</text>
-        </box>
+        <text key={i} fg={textColor}>
+          {line}
+        </text>
       ))}
-      {!done && (
-        <box flexDirection="row">
-          <text fg={railColor}>{"▏  "}</text>
-          <text fg={railColor}>{CURSOR_CHAR}</text>
-        </box>
-      )}
+      {!done && <text fg={railColor}>{CURSOR_CHAR}</text>}
     </box>
   );
 }
@@ -349,8 +347,8 @@ function EditToolCall({
 
 // ─── WritePlanCall (structured plan view) ───
 
-function parsePlanOutput(tc: ToolCall): PlanOutput | null {
-  if ((tc.name !== "write_plan" && tc.name !== "plan") || !tc.result?.success) return null;
+function parsePlanFromArgs(tc: ToolCall): PlanOutput | null {
+  if (tc.name !== "write_plan" && tc.name !== "plan") return null;
   const a = tc.args;
   if (typeof a.title === "string" && Array.isArray(a.files) && Array.isArray(a.steps)) {
     return a as unknown as PlanOutput;
@@ -358,21 +356,49 @@ function parsePlanOutput(tc: ToolCall): PlanOutput | null {
   return null;
 }
 
-function parsePlanFile(tc: ToolCall): string | undefined {
-  if (!tc.result?.output) return undefined;
+function parsePlanResult(tc: ToolCall): { file?: string; resultStr?: string } {
+  if (!tc.result?.output) return {};
   try {
     const parsed = JSON.parse(tc.result.output);
-    if (typeof parsed.file === "string") return parsed.file as string;
+    return {
+      file: typeof parsed.file === "string" ? (parsed.file as string) : undefined,
+      resultStr: typeof parsed.output === "string" ? (parsed.output as string) : tc.result.output,
+    };
   } catch {
-    // not JSON
+    return { resultStr: tc.result.output };
   }
-  return undefined;
 }
 
 function WritePlanCall({ tc }: { tc: ToolCall }) {
-  const plan = parsePlanOutput(tc);
+  const plan = parsePlanFromArgs(tc);
+  const { file: planFile, resultStr } = parsePlanResult(tc);
+  const markdown = useMemo(() => {
+    if (!planFile) return null;
+    try {
+      return readFileSync(join(process.cwd(), planFile), "utf-8");
+    } catch {
+      return null;
+    }
+  }, [planFile]);
   if (!plan) return <ToolCallRow tc={tc} />;
-  return <StructuredPlanView plan={plan} planFile={parsePlanFile(tc)} />;
+  return (
+    <>
+      <StructuredPlanView plan={plan} result={resultStr} planFile={planFile} />
+      {markdown && !resultStr?.includes("cancelled") && (
+        <box
+          flexDirection="column"
+          flexShrink={0}
+          border
+          borderStyle="rounded"
+          borderColor="#333"
+          marginTop={1}
+          paddingX={1}
+        >
+          <Markdown text={markdown} />
+        </box>
+      )}
+    </>
+  );
 }
 
 // ─── Plan execution detection ───

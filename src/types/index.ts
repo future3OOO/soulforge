@@ -170,11 +170,22 @@ export interface ThinkingConfig {
 
 export type EffortLevel = "low" | "medium" | "high" | "max";
 
+export type OpenAIReasoningEffort = "none" | "minimal" | "low" | "medium" | "high" | "xhigh";
+export type ServiceTier = "auto" | "flex" | "priority" | "default";
+
 export interface PerformanceConfig {
   /** Effort level for model reasoning. "off" = not sent to API. */
   effort?: EffortLevel | "off";
   /** Speed mode — "fast" enables 2.5x output for Opus 4.6. "off" = not sent to API. */
   speed?: "off" | "fast" | "standard";
+  /** Disable parallel tool calls — model calls one tool at a time. */
+  disableParallelToolUse?: boolean;
+  /** Send reasoning content in requests. Default: true. */
+  sendReasoning?: boolean;
+  /** OpenAI reasoning effort for o3/o4/gpt-5 models. "off" = not sent. */
+  openaiReasoningEffort?: OpenAIReasoningEffort | "off";
+  /** OpenAI service tier — "flex" saves 50% with latency trade-off. */
+  serviceTier?: ServiceTier | "off";
 }
 
 export interface ContextManagementConfig {

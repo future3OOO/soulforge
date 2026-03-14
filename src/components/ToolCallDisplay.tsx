@@ -1,3 +1,4 @@
+import { resolve } from "node:path";
 import { TextAttributes } from "@opentui/core";
 import { memo, useEffect, useMemo, useRef, useState } from "react";
 import {
@@ -8,6 +9,7 @@ import {
   onSubagentStep,
   type SubagentStep,
 } from "../core/agents/subagent-events.js";
+import { classifyPath, type OutsideKind } from "../core/security/outside-cwd.js";
 import {
   CATEGORY_COLORS,
   getBackendLabel,
@@ -174,6 +176,42 @@ function formatArgs(toolName: string, args?: string): string {
   }
   return "";
 }
+
+const CWD = process.cwd();
+
+const ABS_PATH_RE = /(?:^|\s)(\/[\w./-]+)/g;
+
+function detectOutsideCwd(toolName: string, args?: string): OutsideKind | null {
+  if (!args) return null;
+  try {
+    const parsed = JSON.parse(args);
+    for (const val of Object.values(parsed)) {
+      if (typeof val === "string" && (val.startsWith("/") || val.startsWith("~"))) {
+        const resolved = resolve(val);
+        const kind = classifyPath(resolved, CWD);
+        if (kind) return kind;
+      }
+    }
+    if (toolName === "shell" && typeof parsed.command === "string") {
+      for (const match of parsed.command.matchAll(ABS_PATH_RE)) {
+        const p = match[1];
+        if (p) {
+          const kind = classifyPath(p, CWD);
+          if (kind) return kind;
+        }
+      }
+    }
+  } catch {
+    // partial JSON
+  }
+  return null;
+}
+
+const OUTSIDE_BADGE: Record<OutsideKind, { label: string; color: string }> = {
+  outside: { label: "outside", color: "#e5c07b" },
+  config: { label: "config", color: "#888" },
+  tmp: { label: "tmp", color: "#888" },
+};
 
 function formatResult(toolName: string, result?: string): string {
   if (!result) return "";
@@ -344,6 +382,7 @@ interface ParsedTask {
   agentId: string;
   role?: string;
   task?: string;
+  dependsOn?: string[];
 }
 
 function useDispatchDisplay(
@@ -380,6 +419,7 @@ function useDispatchDisplay(
           role: t.role ?? "explore",
           task: t.task ?? "",
           state: "pending",
+          dependsOn: t.dependsOn,
         });
       }
       progressRef.current = { totalAgents: seeds.length, agents, findingCount: 0 };
@@ -524,6 +564,7 @@ interface AgentInfo {
   cacheHits?: number;
   modelId?: string;
   tier?: string;
+  dependsOn?: string[];
 }
 
 interface MultiAgentState {
@@ -568,7 +609,25 @@ function applyMultiAgentEvent(
   }
   if (event.type === "agent-start" && event.agentId) {
     const next = new Map(s.agents);
+    // Remove seed entry if it exists (seed IDs may differ from runtime IDs)
+    const existing = next.get(event.agentId);
+    if (!existing) {
+      // Try to find and replace a pending seed by matching agentId pattern
+      for (const [key, info] of next) {
+        if (info.state === "pending" && !next.has(event.agentId)) {
+          // Match seed to real agent: same task prefix or same position
+          const seedTask = info.task.slice(0, 30);
+          const eventTask = (event.task ?? "").slice(0, 30);
+          if (seedTask && eventTask && seedTask === eventTask) {
+            next.delete(key);
+            break;
+          }
+        }
+      }
+    }
+    const prev_info = existing ?? {};
     next.set(event.agentId, {
+      ...prev_info,
       role: event.role ?? "explore",
       task: event.task ?? "",
       state: "running",
@@ -665,8 +724,10 @@ const MultiAgentChildRow = memo(
     const roleIcon = info.role === "explore" ? "\uDB80\uDE29" : "\uDB80\uDD69";
     const roleColor = info.role === "code" ? "#FF6B2B" : "#9B30FF";
     const isDone = info.state === "done" || info.state === "error";
+    const isPending = info.state === "pending";
     const taskStr = info.task.length > 40 ? `${info.task.slice(0, 37)}...` : info.task;
-    const connector = isLast && childSteps.length === 0 ? "└ " : "├ ";
+    const hasChildren = childSteps.length > 0 || info.state === "running";
+    const connector = isLast && !hasChildren ? "└ " : "├ ";
     const continuation = isLast ? "  " : "│ ";
 
     const toolUses = isDone ? info.toolUses : liveStats?.toolUses;
@@ -709,7 +770,11 @@ const MultiAgentChildRow = memo(
               {" "}
               ({info.role}){tierLabel ? ` ${tierLabel}` : ""}
             </span>
-            <span fg={isDone ? "#333" : "#666"}> {taskStr}</span>
+            {isPending && info.dependsOn && info.dependsOn.length > 0 ? (
+              <span fg="#555"> waiting on {info.dependsOn.join(", ")}</span>
+            ) : (
+              <span fg={isDone ? "#333" : "#666"}> {taskStr}</span>
+            )}
             {statStr ? <span fg={isDone ? "#555" : "#666"}>{statStr}</span> : null}
           </text>
         </box>
@@ -873,11 +938,18 @@ const ToolRow = memo(
         const parsed = JSON.parse(tc.args);
         if (Array.isArray(parsed.tasks) && parsed.tasks.length >= 1) {
           const tasks = (
-            parsed.tasks as Array<{ id?: string; agentId?: string; role?: string; task?: string }>
+            parsed.tasks as Array<{
+              id?: string;
+              agentId?: string;
+              role?: string;
+              task?: string;
+              dependsOn?: string[];
+            }>
           ).map((t, i) => ({
-            agentId: t.id ?? t.agentId ?? `agent-${String(i)}`,
+            agentId: t.id ?? t.agentId ?? `agent-${String(i + 1)}`,
             role: t.role,
             task: t.task,
+            dependsOn: t.dependsOn,
           }));
           return { totalAgents: parsed.tasks.length as number, tasks };
         }
@@ -909,6 +981,10 @@ const ToolRow = memo(
     const icon = isRepoMapHit ? repoMapIcon : (TOOL_ICONS[tc.toolName] ?? "\uF0AD");
     const label = isRepoMapHit ? "Repo Map" : (TOOL_LABELS[tc.toolName] ?? tc.toolName);
     const argStr = formatArgs(tc.toolName, tc.args);
+    const outsideKind = useMemo(
+      () => detectOutsideCwd(tc.toolName, tc.args),
+      [tc.toolName, tc.args],
+    );
     const isDone = tc.state !== "running";
 
     const editDiff = useMemo(() => {
@@ -1024,6 +1100,11 @@ const ToolRow = memo(
               <span fg={isDone ? "#444" : backendColor}>[{backendLabel(backendTag)}] </span>
             ) : category ? (
               <span> </span>
+            ) : null}
+            {outsideKind ? (
+              <span fg={isDone ? "#444" : OUTSIDE_BADGE[outsideKind].color}>
+                [{OUTSIDE_BADGE[outsideKind].label}]{" "}
+              </span>
             ) : null}
             <span
               fg={isDone ? COLORS.textDone : COLORS.toolNameActive}
@@ -1154,13 +1235,21 @@ export const ToolCallDisplay = memo(function ToolCallDisplay({
         if ((tc.toolName === "write_plan" || tc.toolName === "plan") && tc.args) {
           try {
             const plan = JSON.parse(tc.args) as PlanOutput;
-            if (
-              plan.title &&
-              Array.isArray(plan.steps) &&
-              Array.isArray(plan.files) &&
-              Array.isArray(plan.verification)
-            ) {
-              return <StructuredPlanView key={tc.id} plan={plan} result={tc.result} />;
+            if (plan.title && Array.isArray(plan.steps) && Array.isArray(plan.files)) {
+              return (
+                <box key={tc.id} flexDirection="column">
+                  <StructuredPlanView plan={plan} result={tc.result} />
+                  {tc.state === "running" && (
+                    <box height={1} flexShrink={0} marginTop={1}>
+                      <text>
+                        <span fg="#555">◎ </span>
+                        <span fg="#b87333"> Awaiting review</span>
+                        <span fg="#555"> — select below</span>
+                      </text>
+                    </box>
+                  )}
+                </box>
+              );
             }
           } catch {
             // Fall through to normal row

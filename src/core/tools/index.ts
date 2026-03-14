@@ -7,6 +7,7 @@ import type { EditorIntegration } from "../../types/index.js";
 import { type AgentBus, normalizePath } from "../agents/agent-bus.js";
 import type { RepoMap } from "../intelligence/repo-map.js";
 import { MemoryManager } from "../memory/manager.js";
+import { needsOutsideConfirm } from "../security/outside-cwd.js";
 import { analyzeTool } from "./analyze.js";
 import { discoverPatternTool } from "./discover-pattern.js";
 import { editFileTool } from "./edit-file";
@@ -71,11 +72,27 @@ export function buildTools(
     webSearchModel?: import("ai").LanguageModel;
     repoMap?: RepoMap;
     onApproveFetchPage?: (url: string) => Promise<boolean>;
+    onApproveOutsideCwd?: (toolName: string, path: string) => Promise<boolean>;
   },
 ) {
   const effectiveCwd = cwd ?? process.cwd();
   const mm = opts?.memoryManager ?? new MemoryManager(effectiveCwd);
   const memoryTool = createMemoryTool(mm);
+
+  async function gateOutsideCwd(
+    toolName: string,
+    filePath: string,
+  ): Promise<
+    | { blocked: true; result: { success: false; output: string; error: string } }
+    | { blocked: false }
+  > {
+    if (!needsOutsideConfirm(toolName, filePath, effectiveCwd)) return { blocked: false };
+    if (!opts?.onApproveOutsideCwd) return { blocked: false };
+    const approved = await opts.onApproveOutsideCwd(toolName, filePath);
+    if (approved) return { blocked: false };
+    const msg = `Denied: ${toolName} outside project directory → ${filePath}`;
+    return { blocked: true, result: { success: false, output: msg, error: msg } };
+  }
 
   return {
     read_file: tool({
@@ -95,7 +112,11 @@ export function buildTools(
         oldString: z.string().describe("Exact string to replace (empty = create new file)"),
         newString: z.string().describe("Replacement string"),
       }),
-      execute: deferExecute((args) => editFileTool.execute(args)),
+      execute: deferExecute(async (args) => {
+        const gate = await gateOutsideCwd("edit_file", resolve(args.path));
+        if (gate.blocked) return gate.result;
+        return editFileTool.execute(args);
+      }),
     }),
 
     undo_edit: tool({
@@ -121,7 +142,11 @@ export function buildTools(
           )
           .describe("Array of edits to apply atomically"),
       }),
-      execute: deferExecute((args) => multiEditTool.execute(args)),
+      execute: deferExecute(async (args) => {
+        const gate = await gateOutsideCwd("multi_edit", resolve(args.path));
+        if (gate.blocked) return gate.result;
+        return multiEditTool.execute(args);
+      }),
     }),
 
     task_list: tool({
@@ -215,7 +240,13 @@ export function buildTools(
         cwd: z.string().optional().describe("Working directory"),
         timeout: z.number().optional().describe("Timeout in ms"),
       }),
-      execute: deferExecute((args) => shellTool.execute(args)),
+      execute: deferExecute(async (args) => {
+        if (args.cwd) {
+          const gate = await gateOutsideCwd("shell", resolve(args.cwd));
+          if (gate.blocked) return gate.result;
+        }
+        return shellTool.execute(args);
+      }),
     }),
 
     grep: tool({
@@ -389,7 +420,13 @@ export function buildTools(
             "File where the symbol is defined (optional — auto-detected via workspace search)",
           ),
       }),
-      execute: deferExecute((args) => renameSymbolTool.execute(args)),
+      execute: deferExecute(async (args) => {
+        if (args.file) {
+          const gate = await gateOutsideCwd("rename_symbol", resolve(args.file));
+          if (gate.blocked) return gate.result;
+        }
+        return renameSymbolTool.execute(args);
+      }),
     }),
 
     move_symbol: tool({
@@ -399,7 +436,11 @@ export function buildTools(
         from: z.string().describe("Source file path"),
         to: z.string().describe("Target file path (created if it doesn't exist)"),
       }),
-      execute: deferExecute((args) => moveSymbolTool.execute(args)),
+      execute: deferExecute(async (args) => {
+        const gate = await gateOutsideCwd("move_symbol", resolve(args.to));
+        if (gate.blocked) return gate.result;
+        return moveSymbolTool.execute(args);
+      }),
     }),
 
     refactor: tool({
@@ -420,7 +461,13 @@ export function buildTools(
         endLine: z.number().optional().describe("End line for extraction or range formatting"),
         apply: z.boolean().optional().describe("Apply changes to disk (default true)"),
       }),
-      execute: deferExecute((args) => refactorTool.execute(args)),
+      execute: deferExecute(async (args) => {
+        if (args.file) {
+          const gate = await gateOutsideCwd("refactor", resolve(args.file));
+          if (gate.blocked) return gate.result;
+        }
+        return refactorTool.execute(args);
+      }),
     }),
 
     analyze: tool({

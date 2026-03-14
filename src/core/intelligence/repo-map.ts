@@ -263,7 +263,7 @@ export class RepoMap {
     const dbPath = join(dbDir, "repomap.db");
     this.db = new Database(dbPath);
     this.db.run("PRAGMA journal_mode = WAL");
-    this.db.run("PRAGMA busy_timeout = 100");
+    this.db.run("PRAGMA busy_timeout = 5000");
     this.db.run("PRAGMA foreign_keys = ON");
     for (const suffix of ["", "-wal", "-shm"]) {
       try {
@@ -2134,7 +2134,7 @@ export class RepoMap {
     if (!this.ready) return null;
 
     // Normalize: ensure trailing slash for prefix matching, handle root
-    const prefix = dirPath === "." || dirPath === "" ? "" : dirPath.replace(/\/$/, "") + "/";
+    const prefix = dirPath === "." || dirPath === "" ? "" : `${dirPath.replace(/\/$/, "")}/`;
 
     // Query files directly in this directory (no deeper nesting)
     const files = this.db

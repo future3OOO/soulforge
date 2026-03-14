@@ -61,6 +61,10 @@ const SUMMARIZABLE_TOOLS = new Set([
   "soul_analyze",
   "soul_impact",
   "memory",
+  "plan",
+  "update_plan_step",
+  "ask_user",
+  "git",
 ]);
 
 const EDIT_TOOLS = new Set(["edit_file", "multi_edit", "write_file", "create_file"]);
@@ -121,6 +125,24 @@ function buildSummary(toolName: string, text: string, symbolHint?: string): stri
     const count = text.trim().split("\n").length;
     return `[pruned] ${String(count)} memories`;
   }
+  if (toolName === "plan") {
+    const titleMatch = text.match(/^# (.+)/m);
+    const stepCount = (text.match(/^### /gm) || []).length;
+    const title = titleMatch ? titleMatch[1]?.slice(0, 60) : "plan";
+    return `[pruned] plan "${title}" — ${String(stepCount)} steps`;
+  }
+  if (toolName === "update_plan_step") {
+    const firstLine = text.split("\n")[0] ?? "";
+    return `[pruned] ${firstLine.slice(0, 80)}`;
+  }
+  if (toolName === "ask_user") {
+    const firstLine = text.split("\n")[0] ?? "";
+    return `[pruned] user: ${firstLine.slice(0, 80)}`;
+  }
+  if (toolName === "git") {
+    const firstLine = text.split("\n")[0] ?? "";
+    return `[pruned] ${firstLine.slice(0, 100)}`;
+  }
   return `[pruned] ${String(lineCount)} lines, ${String(charCount)} chars`;
 }
 
@@ -148,6 +170,124 @@ function formatSymbolHint(symbols: Array<{ name: string; kind: string }>): strin
   const display = names.length > 8 ? [...names.slice(0, 8), `+${String(names.length - 8)}`] : names;
   return `exports: ${display.join(", ")}`;
 }
+
+// ─── Semantic pruning: runs on ALL messages regardless of age (step 1+) ───
+
+function semanticPrune(messages: ModelMessage[], pathMap?: Map<string, string>): ModelMessage[] {
+  // Build a map of file path → index of FIRST edit for that file
+  const firstEditIdx = new Map<string, number>();
+  for (let i = 0; i < messages.length; i++) {
+    const msg = messages[i];
+    if (!msg || msg.role !== "assistant" || typeof msg.content === "string") continue;
+    if (!Array.isArray(msg.content)) continue;
+    for (const part of msg.content) {
+      if (part.type !== "tool-call") continue;
+      if (!EDIT_TOOLS.has(part.toolName)) continue;
+      const input = part.input as Record<string, unknown>;
+      const path = input.path ?? input.file ?? input.filePath;
+      if (typeof path === "string" && !firstEditIdx.has(path)) firstEditIdx.set(path, i);
+      if (Array.isArray(input.edits)) {
+        for (const e of input.edits as Record<string, unknown>[]) {
+          const ep = e.file ?? e.path;
+          if (typeof ep === "string" && !firstEditIdx.has(ep)) firstEditIdx.set(ep, i);
+        }
+      }
+    }
+  }
+
+  if (firstEditIdx.size === 0 && !messages.some((m) => m.role === "tool")) return messages;
+
+  return messages.map((msg, idx) => {
+    if (msg.role !== "tool" || typeof msg.content === "string") return msg;
+    if (!Array.isArray(msg.content)) return msg;
+
+    let changed = false;
+    const newContent = msg.content.map((part) => {
+      if (part.type !== "tool-result") return part;
+
+      // 1. Prune read results for files that were LATER edited (read before edit only)
+      if (part.toolName === "read_file" || part.toolName === "read_code") {
+        const text = extractText(part.output);
+        if (text.length > 200 && pathMap) {
+          const filePath = pathMap.get(part.toolCallId);
+          if (filePath) {
+            const editIdx = firstEditIdx.get(filePath);
+            if (editIdx !== undefined && idx < editIdx) {
+              changed = true;
+              return {
+                ...part,
+                output: {
+                  type: "text" as const,
+                  value: "[pruned — file edited since this read]",
+                },
+              };
+            }
+          }
+        }
+      }
+
+      // 2. Prune canceled plan results immediately
+      if (part.toolName === "plan") {
+        const text = extractText(part.output);
+        if (text.includes("canceled") || text.includes("cancelled")) {
+          changed = true;
+          const titleMatch = text.match(/plan "([^"]+)"|^# (.+)/m);
+          const title = titleMatch?.[1] ?? titleMatch?.[2] ?? "plan";
+          return {
+            ...part,
+            output: { type: "text" as const, value: `[pruned] plan "${title}" — canceled` },
+          };
+        }
+      }
+
+      return part;
+    });
+
+    return changed ? { ...msg, content: newContent } : msg;
+  }) as ModelMessage[];
+}
+
+// 3. Edit arg stripping: runs on ALL old messages (step 1+)
+function stripOldEditArgs(messages: ModelMessage[], cutoff: number): ModelMessage[] {
+  if (cutoff <= 0) return messages;
+  return messages.map((msg, idx) => {
+    if (idx >= cutoff) return msg;
+    if (msg.role !== "assistant" || !Array.isArray(msg.content)) return msg;
+
+    let argsChanged = false;
+    const prunedContent = msg.content.map((part) => {
+      if (part.type !== "tool-call") return part;
+      if (!EDIT_TOOLS.has(part.toolName) && part.toolName !== "editor") return part;
+      const input = part.input as Record<string, unknown>;
+      if (!input.old_string && !input.new_string && !input.replacement) return part;
+      argsChanged = true;
+      const slim: Record<string, unknown> = { ...input };
+      if (typeof slim.old_string === "string") {
+        slim.old_string = `[${String((slim.old_string as string).length)} chars]`;
+      }
+      if (typeof slim.new_string === "string") {
+        slim.new_string = `[${String((slim.new_string as string).length)} chars]`;
+      }
+      if (typeof slim.replacement === "string") {
+        slim.replacement = `[${String((slim.replacement as string).length)} chars]`;
+      }
+      if (Array.isArray(slim.edits)) {
+        slim.edits = (slim.edits as Record<string, unknown>[]).map((e) => {
+          const s: Record<string, unknown> = { ...e };
+          if (typeof s.oldString === "string")
+            s.oldString = `[${String((s.oldString as string).length)} chars]`;
+          if (typeof s.newString === "string")
+            s.newString = `[${String((s.newString as string).length)} chars]`;
+          return s;
+        });
+      }
+      return { ...part, input: slim };
+    });
+    return argsChanged ? { ...msg, content: prunedContent } : msg;
+  }) as ModelMessage[];
+}
+
+// ─── Age-based tool result summarization (step 3+) ───
 
 function compactOldToolResults(
   messages: ModelMessage[],
@@ -260,7 +400,15 @@ export function buildPrepareStep({
       }
     }
 
-    // Compact old tool results before they accumulate
+    // Semantic pruning: stale reads + canceled plans (runs from step 1)
+    if (stepNumber >= 1) {
+      let msgs = result.messages ?? messages;
+      msgs = semanticPrune(msgs, pathMap);
+      msgs = stripOldEditArgs(msgs, msgs.length - KEEP_RECENT_MESSAGES);
+      result.messages = msgs;
+    }
+
+    // Age-based tool result summarization (runs from step 3)
     if (stepNumber >= 3) {
       result.messages = compactOldToolResults(result.messages ?? messages, symbolLookup, pathMap);
     }

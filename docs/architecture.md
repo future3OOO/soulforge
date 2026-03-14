@@ -166,7 +166,9 @@ Step 0: toolChoice = "required" (force immediate tool use, no wasted text)
      ↓
 Each step: capture path map → sanitize inputs → inject peer findings → check budget
      ↓
-Step 3+: compact old tool results (rolling window, last 6 messages full, older → one-line summaries)
+Step 1+: semantic pruning (stale reads for later-edited files, canceled plans, old edit args stripped)
+     ↓
+Step 3+: age-based tool result summarization (rolling window, last 4 messages full, older → one-line summaries)
   - read_file/read_code: "[pruned] 245 lines — exports: Foo, Bar" (symbols from repo map)
   - grep: "[pruned] 42 matches"  |  glob: "[pruned] 25 files"
   - edit_file/write_file/create_file: always preserved
@@ -360,6 +362,7 @@ Assembles the system prompt from multiple sources:
 4. **Repo map** — PageRank-ranked file/symbol view (see above)
 5. **Memory** — persistent project/global memory from SQLite
 6. **Forbidden files** — security patterns that block AI access
+7. **Outside-CWD gating** — write tools (edit_file, multi_edit, shell) require user confirmation for paths outside the project directory
 7. **Skills** — loaded skill instructions
 
 ### Conversation Tracking

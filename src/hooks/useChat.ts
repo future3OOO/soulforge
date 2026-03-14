@@ -354,6 +354,8 @@ export function useChat({
   const abortRef = useRef<AbortController | null>(null);
   const autoApproveWebAccessRef = useRef(false);
   const webAccessMutexRef = useRef<Promise<void>>(Promise.resolve());
+  const autoApproveOutsideCwdRef = useRef(false);
+  const outsideCwdMutexRef = useRef<Promise<void>>(Promise.resolve());
   const webSearchModelLabelRef = useRef<string | null>(null);
   const [activePlan, setActivePlanRaw] = useState<Plan | null>(initialState?.activePlan ?? null);
   const activePlanRef = useRef<Plan | null>(activePlan);
@@ -939,6 +941,37 @@ export function useChat({
     return result;
   }, []);
 
+  const promptOutsideCwd = useCallback((toolName: string, path: string): Promise<boolean> => {
+    if (autoApproveOutsideCwdRef.current) return Promise.resolve(true);
+    const result = outsideCwdMutexRef.current.then(() => {
+      if (autoApproveOutsideCwdRef.current) return true;
+      return new Promise<boolean>((resolve) => {
+        setPendingQuestion({
+          id: crypto.randomUUID(),
+          question: `Forge wants to ${toolName} outside project directory:\n\n${path}`,
+          options: [
+            { label: "Allow", value: "allow", description: "Allow this action" },
+            {
+              label: "Always Allow",
+              value: "always",
+              description: "Auto-approve all outside-cwd actions this session",
+            },
+            { label: "Deny", value: "deny", description: "Block this action" },
+          ],
+          allowSkip: false,
+          resolve: (answer: string) => {
+            setPendingQuestion(null);
+            const allowed = answer === "allow" || answer === "always";
+            if (answer === "always") autoApproveOutsideCwdRef.current = true;
+            resolve(allowed);
+          },
+        });
+      });
+    });
+    outsideCwdMutexRef.current = result.then(() => {});
+    return result;
+  }, []);
+
   // Interactive callbacks for plan/question tools
   const interactiveCallbacks = useMemo<InteractiveCallbacks>(
     () => ({
@@ -992,7 +1025,7 @@ export function useChat({
                   plan,
                 };
               } else if (action === "cancel") {
-                planPostActionRef.current = { action: "cancel", planContent: null };
+                planPostActionRef.current = { action: "cancel", planContent: null, plan };
               } else {
                 planPostActionRef.current = {
                   action: "revise",
@@ -1203,6 +1236,7 @@ export function useChat({
           webSearchModel: effectiveWebSearchModel,
           onApproveWebSearch: webSearchApproval,
           onApproveFetchPage: fetchPageApproval,
+          onApproveOutsideCwd: promptOutsideCwd,
           providerOptions,
           headers,
           codeExecution: effectiveConfig.codeExecution,
@@ -1237,6 +1271,7 @@ export function useChat({
                           subagentModels,
                           onApproveWebSearch: webSearchApproval,
                           onApproveFetchPage: fetchPageApproval,
+                          onApproveOutsideCwd: promptOutsideCwd,
                           providerOptions: degraded.providerOptions,
                           headers: degraded.headers,
                           codeExecution: effectiveConfig.codeExecution,
@@ -1427,7 +1462,11 @@ export function useChat({
               const tc = tcBuf.find((c) => c.id === part.id);
               if (tc) {
                 tc.args = toolCallArgs.get(part.id);
-                if (tc.toolName === "dispatch") {
+                if (
+                  tc.toolName === "dispatch" ||
+                  tc.toolName === "plan" ||
+                  tc.toolName === "write_plan"
+                ) {
                   toolCallsDirty.current = true;
                   queueMicrotaskFlush();
                 }
@@ -1559,9 +1598,11 @@ export function useChat({
                 JSON.stringify(err);
               const errStack = err instanceof Error ? err.stack : undefined;
               appendText(`\n\n_Error: ${errText}_`);
-              streamErrors.push(
-                errStack ? `Error: ${errText}\n\n${errStack}` : `Error: ${errText}`,
-              );
+              if (streamErrors.length < 50) {
+                streamErrors.push(
+                  errStack ? `Error: ${errText}\n\n${errStack}` : `Error: ${errText}`,
+                );
+              }
               break;
             }
           }
@@ -1804,8 +1845,9 @@ export function useChat({
                 {
                   id: crypto.randomUUID(),
                   role: "system",
-                  content: "Plan cancelled.",
+                  content: `Plan cancelled: ${postAction.plan?.title ?? ""}`,
                   timestamp: Date.now(),
+                  showInChat: true,
                 },
               ]);
             } else if (
@@ -1902,6 +1944,7 @@ export function useChat({
       setTokenUsage,
       setActivePlan,
       syncV2Slots,
+      promptOutsideCwd,
     ],
   );
   handleSubmitRef.current = handleSubmit;

@@ -305,6 +305,7 @@ export function buildMyTool(ctx: ToolContext) {
 - Confident output — state facts, never hedge
 - One call = complete job
 - Accept flexible input — symbol name over file path + line number
+- Large files (>50MB) auto-truncate with a helpful message — never refuse or hang
 
 ## Submitting a PR
 

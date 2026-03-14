@@ -13,16 +13,20 @@ import type { TaskType } from "./task-router.js";
 // New providers just add an entry to PROVIDER_CONSTRAINTS.
 
 interface ModelCapabilities {
+  provider: "anthropic" | "openai" | "google" | "other";
   thinking: boolean;
   adaptiveThinking: boolean;
   effort: boolean;
   speed: boolean;
   contextManagement: boolean;
   interleavedThinking: boolean;
+  openaiReasoning: boolean;
+  openaiServiceTier: boolean;
 }
 
 interface ProviderConstraints {
   anthropicOptions: boolean;
+  openaiOptions: boolean;
   effort: boolean;
   speed: boolean;
   contextManagement: boolean;
@@ -30,35 +34,49 @@ interface ProviderConstraints {
   interleavedThinking: boolean;
 }
 
+const ANTHROPIC_FULL: ProviderConstraints = {
+  anthropicOptions: true,
+  openaiOptions: false,
+  effort: true,
+  speed: true,
+  contextManagement: true,
+  adaptiveThinking: true,
+  interleavedThinking: true,
+};
+
+const OPENAI_FULL: ProviderConstraints = {
+  anthropicOptions: false,
+  openaiOptions: true,
+  effort: false,
+  speed: false,
+  contextManagement: false,
+  adaptiveThinking: false,
+  interleavedThinking: false,
+};
+
+const GATEWAY_FULL: ProviderConstraints = {
+  anthropicOptions: true,
+  openaiOptions: true,
+  effort: true,
+  speed: true,
+  contextManagement: true,
+  adaptiveThinking: true,
+  interleavedThinking: true,
+};
+
 const PROVIDER_CONSTRAINTS: Record<string, ProviderConstraints> = {
-  anthropic: {
-    anthropicOptions: true,
-    effort: true,
-    speed: true,
-    contextManagement: true,
-    adaptiveThinking: true,
-    interleavedThinking: true,
-  },
-  proxy: {
-    anthropicOptions: true,
-    effort: false,
-    speed: false,
-    contextManagement: false,
-    adaptiveThinking: false,
-    interleavedThinking: false,
-  },
-  vercel_gateway: {
-    anthropicOptions: true,
-    effort: true,
-    speed: true,
-    contextManagement: true,
-    adaptiveThinking: true,
-    interleavedThinking: true,
-  },
+  anthropic: ANTHROPIC_FULL,
+  proxy: ANTHROPIC_FULL,
+  openai: OPENAI_FULL,
+  xai: OPENAI_FULL,
+  vercel_gateway: GATEWAY_FULL,
+  llmgateway: GATEWAY_FULL,
+  openrouter: GATEWAY_FULL,
 };
 
 const NO_SUPPORT: ProviderConstraints = {
   anthropicOptions: false,
+  openaiOptions: false,
   effort: false,
   speed: false,
   contextManagement: false,
@@ -101,41 +119,136 @@ function getClaudeGen(model: string): ClaudeGen {
   return "4+";
 }
 
+// ─── Model Family Detection ───
+//
+// For direct providers (anthropic/, openai/), the provider prefix tells us everything.
+// For gateways (llmgateway/, openrouter/, vercel_gateway/), we inspect the model name
+// to determine the underlying provider family.
+
+type ModelFamily = "claude" | "openai" | "google" | "other";
+
+function detectModelFamily(modelId: string): ModelFamily {
+  const { provider } = parseModelId(modelId);
+
+  // Direct providers — no guessing needed
+  if (provider === "anthropic" || provider === "proxy") return "claude";
+  if (provider === "openai" || provider === "xai") return "openai";
+  if (provider === "google") return "google";
+
+  // Gateways — inspect model name for the underlying provider
+  const base = extractBaseModel(modelId);
+  if (base.startsWith("claude")) return "claude";
+  if (
+    base.startsWith("gpt-") ||
+    base.startsWith("o1") ||
+    base.startsWith("o3") ||
+    base.startsWith("o4")
+  )
+    return "openai";
+  if (base.startsWith("gemini")) return "google";
+
+  // OpenRouter nested paths like "anthropic/claude-*" or "openai/gpt-*"
+  const model = parseModelId(modelId).model;
+  if (model.startsWith("anthropic/")) return "claude";
+  if (model.startsWith("openai/")) return "openai";
+  if (model.startsWith("google/")) return "google";
+
+  return "other";
+}
+
 function getModelCapabilities(modelId: string): ModelCapabilities {
   const base = extractBaseModel(modelId);
-  const gen = getClaudeGen(base);
+  const family = detectModelFamily(modelId);
 
-  if (gen === "non-claude" || gen === "legacy") {
+  if (family === "openai") {
+    // Reasoning models: o1, o3, o4, gpt-5+
+    const isReasoning =
+      base.startsWith("o1") ||
+      base.startsWith("o3") ||
+      base.startsWith("o4") ||
+      base.startsWith("gpt-5");
     return {
+      provider: "openai",
       thinking: false,
       adaptiveThinking: false,
       effort: false,
       speed: false,
       contextManagement: false,
       interleavedThinking: false,
+      openaiReasoning: isReasoning,
+      openaiServiceTier: true,
+    };
+  }
+
+  if (family === "google") {
+    return {
+      provider: "google",
+      thinking: false,
+      adaptiveThinking: false,
+      effort: false,
+      speed: false,
+      contextManagement: false,
+      interleavedThinking: false,
+      openaiReasoning: false,
+      openaiServiceTier: false,
+    };
+  }
+
+  if (family !== "claude") {
+    return {
+      provider: "other",
+      thinking: false,
+      adaptiveThinking: false,
+      effort: false,
+      speed: false,
+      contextManagement: false,
+      interleavedThinking: false,
+      openaiReasoning: false,
+      openaiServiceTier: false,
+    };
+  }
+
+  // Claude models — generation-based capabilities
+  const gen = getClaudeGen(base);
+
+  if (gen === "legacy") {
+    return {
+      provider: "anthropic",
+      thinking: false,
+      adaptiveThinking: false,
+      effort: false,
+      speed: false,
+      contextManagement: false,
+      interleavedThinking: false,
+      openaiReasoning: false,
+      openaiServiceTier: false,
     };
   }
 
   if (gen === "3.5") {
     return {
+      provider: "anthropic",
       thinking: true,
       adaptiveThinking: false,
       effort: false,
       speed: false,
       contextManagement: false,
       interleavedThinking: false,
+      openaiReasoning: false,
+      openaiServiceTier: false,
     };
   }
 
-  const hasSpeed = base.includes("opus");
-
   return {
+    provider: "anthropic",
     thinking: true,
     adaptiveThinking: true,
     effort: true,
-    speed: hasSpeed,
+    speed: base.includes("opus"),
     contextManagement: true,
     interleavedThinking: true,
+    openaiReasoning: false,
+    openaiServiceTier: false,
   };
 }
 
@@ -151,17 +264,21 @@ function getProviderConstraints(providerId: string): ProviderConstraints {
   return NO_SUPPORT;
 }
 
-function getEffectiveCaps(modelId: string): ModelCapabilities & { anthropicOptions: boolean } {
+interface EffectiveCaps extends ModelCapabilities {
+  anthropicOptions: boolean;
+  openaiOptions: boolean;
+}
+
+function getEffectiveCaps(modelId: string): EffectiveCaps {
   const model = getModelCapabilities(modelId);
   const { provider } = parseModelId(modelId);
   const pc = getProviderConstraints(provider);
-
-  // Vercel Gateway only gets anthropic options if the underlying model is Claude
-  const isGatewayNonClaude = provider === "vercel_gateway" && !isClaudeModel(modelId);
+  const family = detectModelFamily(modelId);
 
   return {
-    anthropicOptions: pc.anthropicOptions && !isGatewayNonClaude,
-    thinking: model.thinking,
+    ...model,
+    anthropicOptions: pc.anthropicOptions && family === "claude",
+    openaiOptions: pc.openaiOptions && family === "openai",
     adaptiveThinking: model.adaptiveThinking && pc.adaptiveThinking,
     effort: model.effort && pc.effort,
     speed: model.speed && pc.speed,
@@ -178,7 +295,7 @@ export function isAnthropicNative(modelId: string): boolean {
 }
 
 export function isClaudeModel(modelId: string): boolean {
-  return extractBaseModel(modelId).startsWith("claude");
+  return detectModelFamily(modelId) === "claude";
 }
 
 export function supportsAnthropicOptions(modelId: string): boolean {
@@ -259,32 +376,26 @@ export interface ProviderOptionsResult {
   headers: Record<string, string> | undefined;
 }
 
-export function buildProviderOptions(
+function buildAnthropicOptions(
   modelId: string,
+  caps: EffectiveCaps,
   config: AppConfig,
   taskType?: TaskType,
-): ProviderOptionsResult {
-  const caps = getEffectiveCaps(modelId);
-
-  if (!caps.anthropicOptions) {
-    return { providerOptions: {}, headers: undefined };
-  }
-
+): { opts: Record<string, unknown>; headers: Record<string, string>; thinkingEnabled: boolean } {
   // biome-ignore lint/suspicious/noExplicitAny: ProviderOptions inner shape is parsed by Zod at runtime
-  const anthropic: Record<string, any> = {};
+  const opts: Record<string, any> = {};
+  const headers: Record<string, string> = {};
   let thinkingEnabled = false;
 
   if (caps.thinking) {
     const mode = config.thinking?.mode ?? "off";
-
     if (mode === "auto" || mode === "adaptive") {
       if (caps.adaptiveThinking) {
-        anthropic.thinking = { type: "adaptive" };
+        opts.thinking = { type: "adaptive" };
         thinkingEnabled = true;
       }
-      // When adaptive isn't available, skip — don't force a fixed budget
     } else if (mode === "enabled") {
-      anthropic.thinking = {
+      opts.thinking = {
         type: "enabled",
         ...(config.thinking?.budgetTokens ? { budgetTokens: config.thinking.budgetTokens } : {}),
       };
@@ -293,28 +404,91 @@ export function buildProviderOptions(
   }
 
   if (caps.effort && config.performance?.effort && config.performance.effort !== "off") {
-    anthropic.effort = resolveEffort(taskType ?? "default", config.performance.effort);
+    opts.effort = resolveEffort(taskType ?? "default", config.performance.effort);
   }
 
-  if (caps.speed && config.performance?.speed && config.performance.speed !== "off") {
-    anthropic.speed = config.performance.speed;
+  // `speed` requires @ai-sdk/anthropic >= 4.x (current 3.x rejects it as unknown field)
+  // if (caps.speed && config.performance?.speed && config.performance.speed !== "off") {
+  //   opts.speed = config.performance.speed;
+  // }
+
+  if (config.performance?.disableParallelToolUse) {
+    opts.disableParallelToolUse = true;
+  }
+
+  if (config.performance?.sendReasoning === false) {
+    opts.sendReasoning = false;
   }
 
   if (caps.contextManagement && config.contextManagement) {
     const contextWindow = getModelContextWindow(modelId);
     const edits = buildContextEdits(config.contextManagement, contextWindow, thinkingEnabled);
     if (edits) {
-      anthropic.contextManagement = { edits };
+      opts.contextManagement = { edits };
     }
   }
 
-  const headers: Record<string, string> = {};
   if (thinkingEnabled && caps.interleavedThinking) {
     headers["anthropic-beta"] = "interleaved-thinking-2025-05-14";
   }
 
+  return { opts, headers, thinkingEnabled };
+}
+
+function buildOpenAIOptions(
+  caps: EffectiveCaps,
+  config: AppConfig,
+): { opts: Record<string, unknown> } {
+  // biome-ignore lint/suspicious/noExplicitAny: ProviderOptions inner shape is parsed by Zod at runtime
+  const opts: Record<string, any> = {};
+
+  if (caps.openaiReasoning) {
+    const effort = config.performance?.openaiReasoningEffort;
+    if (effort && effort !== "off") {
+      opts.reasoningEffort = effort;
+    }
+  }
+
+  if (caps.openaiServiceTier) {
+    const tier = config.performance?.serviceTier;
+    if (tier && tier !== "off") {
+      opts.serviceTier = tier;
+    }
+  }
+
+  if (config.performance?.disableParallelToolUse) {
+    opts.parallelToolCalls = false;
+  }
+
+  return { opts };
+}
+
+export function buildProviderOptions(
+  modelId: string,
+  config: AppConfig,
+  taskType?: TaskType,
+): ProviderOptionsResult {
+  const caps = getEffectiveCaps(modelId);
+  const providerOptions: Record<string, unknown> = {};
+  let headers: Record<string, string> = {};
+
+  if (caps.anthropicOptions) {
+    const result = buildAnthropicOptions(modelId, caps, config, taskType);
+    if (Object.keys(result.opts).length > 0) {
+      providerOptions.anthropic = result.opts;
+    }
+    headers = result.headers;
+  }
+
+  if (caps.openaiOptions) {
+    const result = buildOpenAIOptions(caps, config);
+    if (Object.keys(result.opts).length > 0) {
+      providerOptions.openai = result.opts;
+    }
+  }
+
   return {
-    providerOptions: { anthropic } as ProviderOptions,
+    providerOptions: providerOptions as ProviderOptions,
     headers: Object.keys(headers).length > 0 ? headers : undefined,
   };
 }
@@ -328,14 +502,14 @@ export function degradeProviderOptions(modelId: string, level: number): Provider
 
   const caps = getModelCapabilities(modelId);
   // biome-ignore lint/suspicious/noExplicitAny: ProviderOptions inner shape is parsed by Zod at runtime
-  const anthropic: Record<string, any> = {};
+  const opts: Record<string, any> = {};
 
   if (caps.thinking) {
-    anthropic.thinking = { type: "enabled", budgetTokens: 5_000 };
+    opts.thinking = { type: "enabled", budgetTokens: 5_000 };
   }
 
   return {
-    providerOptions: { anthropic } as ProviderOptions,
+    providerOptions: { anthropic: opts } as ProviderOptions,
     headers: undefined,
   };
 }

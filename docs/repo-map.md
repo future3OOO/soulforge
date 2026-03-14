@@ -115,7 +115,7 @@ ContextManager.onFileChanged(absPath)
     ↓
 RepoMap.onFileChanged(absPath)
     ↓
-Mark file dirty → debounced re-index (500ms)
+Mark file dirty → debounced re-index (500ms, busy_timeout = 5000ms)
     ↓
 Re-extract symbols + edges → recompute PageRank
     ↓

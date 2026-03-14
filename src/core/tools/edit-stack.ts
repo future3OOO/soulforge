@@ -29,7 +29,8 @@ export function pushEdit(absPath: string, previousContent: string): void {
 export function popEdit(absPath: string): string | null {
   const stack = stacks.get(absPath);
   if (!stack || stack.length === 0) return null;
-  return stack.pop()!.content;
+  const entry = stack.pop();
+  return entry ? entry.content : null;
 }
 
 export function getEditCount(absPath: string): number {

@@ -258,6 +258,7 @@ export function buildInteractiveTools(
         return {
           success: true,
           file: planFile,
+          markdown: planContent,
           output:
             `User wants changes: "${action}". ` +
             "Research further if needed, then call `plan` again with the updated plan.",

@@ -3,6 +3,7 @@ import {
   mkdirSync,
   readdirSync,
   readFileSync,
+  renameSync,
   rmSync,
   statSync,
   writeFileSync,
@@ -69,14 +70,18 @@ export class SessionManager {
 
     const updatedMeta: SessionMeta = { ...meta, tabs: updatedTabs };
     const metaPath = join(sessionDir, "meta.json");
-    writeFileSync(metaPath, JSON.stringify(updatedMeta, null, 2), {
+    const jsonlPath = join(sessionDir, "messages.jsonl");
+    const lines = allMessages.map((m) => JSON.stringify(m)).join("\n");
+
+    const metaTmp = `${metaPath}.tmp`;
+    const jsonlTmp = `${jsonlPath}.tmp`;
+    writeFileSync(metaTmp, JSON.stringify(updatedMeta, null, 2), {
       encoding: "utf-8",
       mode: 0o600,
     });
-
-    const jsonlPath = join(sessionDir, "messages.jsonl");
-    const lines = allMessages.map((m) => JSON.stringify(m)).join("\n");
-    writeFileSync(jsonlPath, lines ? `${lines}\n` : "", { encoding: "utf-8", mode: 0o600 });
+    writeFileSync(jsonlTmp, lines ? `${lines}\n` : "", { encoding: "utf-8", mode: 0o600 });
+    renameSync(jsonlTmp, jsonlPath);
+    renameSync(metaTmp, metaPath);
   }
 
   loadSession(id: string): { meta: SessionMeta; tabMessages: Map<string, ChatMessage[]> } | null {

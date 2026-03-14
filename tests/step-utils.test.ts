@@ -156,7 +156,9 @@ describe("pruning rules", () => {
 			{ role: "explore", allTools: TOOLS },
 			{ stepNumber: 2, messages: msgs },
 		);
-		expect(result?.messages).toBeUndefined();
+		expect(result?.messages).toBeDefined();
+		const hasAnyPruned = JSON.stringify(result!.messages).includes("[pruned]");
+		expect(hasAnyPruned).toBe(false);
 	});
 
 	it("compacts at step 3 when messages exceed threshold", () => {
@@ -728,12 +730,12 @@ describe("buildPrepareStep — step gating", () => {
 		expect(result?.toolChoice).toBe("required");
 	});
 
-	it("returns undefined (no overrides) on step 1 with empty messages", () => {
+	it("returns messages on step 1 with empty messages (semantic prune runs)", () => {
 		const result = callPrepareStep(
 			{ role: "explore", allTools: TOOLS },
 			{ stepNumber: 1, messages: [] },
 		);
-		expect(result).toBeUndefined();
+		expect(result?.messages).toEqual([]);
 	});
 });
 
