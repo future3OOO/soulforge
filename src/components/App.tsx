@@ -248,6 +248,7 @@ export function App({
   const { focusMode, editorOpen, toggleEditor, openEditor, closeEditor, focusChat, focusEditor } =
     useEditorFocus();
   const [editorVisible, setEditorVisible] = useState(false);
+  const hasTabBarRef = useRef(false);
   const {
     ready: nvimReady,
     screenLines,
@@ -267,6 +268,7 @@ export function App({
     effectiveConfig.nvimConfig,
     closeEditor,
     effectiveConfig.vimHints !== false,
+    hasTabBarRef.current,
   );
 
   const pendingEditorFileRef = useRef<string | null>(null);
@@ -323,6 +325,7 @@ export function App({
     isEditorVisible: editorVisible,
     onFocusChat: focusChat,
     onFocusEditor: focusEditor,
+    hasTabBar: hasTabBarRef.current,
   });
 
   const { modals, routerSlotPicking, commandPickerConfig, infoPopupConfig, suspended } = useUIStore(
@@ -488,6 +491,7 @@ export function App({
   const tabMgr = useTabs();
   const tabMgrRef = useRef(tabMgr);
   tabMgrRef.current = tabMgr;
+  hasTabBarRef.current = tabMgr.tabCount > 1;
 
   const sharedResources = useMemo(() => contextManager.getSharedResources(), [contextManager]);
 
@@ -1018,6 +1022,12 @@ export function App({
             getWorkspaceSnapshot={getWorkspaceSnapshot}
             editorIntegration={effectiveConfig.editorIntegration}
             forgeMode={forgeMode}
+            editorOpen={editorOpen}
+            editorFile={editorFile}
+            editorModeName={nvimMode}
+            editorCursorLine={cursorLine}
+            editorCursorCol={cursorCol}
+            editorVisualSelection={visualSelection}
           />
         ))}
       </box>

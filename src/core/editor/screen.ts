@@ -22,13 +22,15 @@ interface HlAttr {
   strikethrough?: boolean;
 }
 
-// Cache hex conversions — avoids repeated string allocation
+// Cache hex conversions — avoids repeated string allocation (capped at 512)
 const hexCache = new Map<number, string>();
+const HEX_CACHE_MAX = 512;
 
 function rgbToHex(n: number): string {
   let hex = hexCache.get(n);
   if (hex === undefined) {
     hex = `#${n.toString(16).padStart(6, "0")}`;
+    if (hexCache.size >= HEX_CACHE_MAX) hexCache.clear();
     hexCache.set(n, hex);
   }
   return hex;
@@ -116,8 +118,10 @@ export class NvimScreen {
         // Always re-render cursor row to guarantee visibility —
         // grid_cursor_goto and grid_line can arrive in separate batches
         this.markRowDirty(this.cursorRow);
-        this.dirty = true;
-        this.onFlush?.();
+        if (this.dirtyRows.size > 0 || this.colorsChanged) {
+          this.dirty = true;
+          this.onFlush?.();
+        }
         break;
     }
   }
@@ -404,11 +408,15 @@ export class NvimScreen {
 
       const isCursor = isCursorRow && col === this.cursorCol;
       if (isCursor) {
-        const isBarMode = this.modeName === "insert" || this.modeName.startsWith("cmdline");
-        const isUnderlineMode = this.modeName === "replace";
-        if (isBarMode || isUnderlineMode) {
+        if (this.modeName === "insert" || this.modeName.startsWith("cmdline")) {
+          // Bar cursor: bright underline to simulate "|" in cell grid
+          underline = true;
+          fg = 0xffffff;
+        } else if (this.modeName === "replace") {
+          // Underline cursor for replace mode
           underline = true;
         } else {
+          // Block cursor (normal, visual)
           const tmp = fg;
           fg = bg;
           bg = tmp;

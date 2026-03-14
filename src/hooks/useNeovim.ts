@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { setNvimInstance } from "../core/editor/instance.js";
+import { getEditorDimensions } from "../core/editor/layout.js";
 import {
   getBufferName,
   getCursorPosition,
@@ -34,8 +35,8 @@ export interface UseNeovimReturn {
   error: string | null;
 }
 
-/** Throttle interval — 30fps cap. Fast enough to feel live, prevents flooding React. */
-const THROTTLE_MS = 33;
+/** Throttle interval — 60fps cap for smooth scrolling. */
+const THROTTLE_MS = 16;
 
 export function useNeovim(
   active: boolean,
@@ -43,6 +44,7 @@ export function useNeovim(
   nvimConfig?: NvimConfigMode,
   onExit?: () => void,
   showHints = true,
+  hasTabBar = true,
 ): UseNeovimReturn {
   const nvimRef = useRef<NvimInstance | null>(null);
   const mountedRef = useRef(true);
@@ -81,17 +83,11 @@ export function useNeovim(
       return;
     }
 
-    // Compute dimensions to match the actual editor panel:
-    // Horizontal: 60% width minus border (2 chars for left + right)
-    // Vertical fixed rows: app header(1) + app footer(1) + border top(1) + border bottom(1)
-    //   + title(1) + sep(1) + sep(1) + status bar(1) + hints(0 or 2) = 8 or 10
     const termCols = process.stdout.columns ?? 120;
     const termRows = process.stdout.rows ?? 40;
-    const panelCols = Math.max(20, Math.floor(termCols * 0.6) - 2);
-    const fixedRows = showHints ? 10 : 8;
-    const panelRows = Math.max(6, termRows - fixedRows);
+    const dims = getEditorDimensions(termCols, termRows, showHints, hasTabBar);
 
-    launchNeovim(nvimPath ?? "nvim", panelCols, panelRows, nvimConfig)
+    launchNeovim(nvimPath ?? "nvim", dims.cols, dims.rows, nvimConfig)
       .then((nvim) => {
         if (!mountedRef.current) {
           shutdownNeovim(nvim).catch(() => {});
@@ -163,7 +159,7 @@ export function useNeovim(
       .finally(() => {
         launchingRef.current = false;
       });
-  }, [active, nvimPath, nvimConfig, showHints]);
+  }, [active, nvimPath, nvimConfig, showHints, hasTabBar]);
 
   // Resize neovim when terminal dimensions change
   useEffect(() => {
@@ -172,12 +168,10 @@ export function useNeovim(
     const onResize = () => {
       const nvim = nvimRef.current;
       if (!nvim || !mountedRef.current) return;
-      const termCols = process.stdout.columns ?? 120;
-      const termRows = process.stdout.rows ?? 40;
-      const cols = Math.max(20, Math.floor(termCols * 0.6) - 2);
-      const fixed = showHints ? 10 : 8;
-      const rows = Math.max(6, termRows - fixed);
-      nvim.api.request("nvim_ui_try_resize", [cols, rows]).catch(() => {});
+      const tc = process.stdout.columns ?? 120;
+      const tr = process.stdout.rows ?? 40;
+      const d = getEditorDimensions(tc, tr, showHints, hasTabBar);
+      nvim.api.request("nvim_ui_try_resize", [d.cols, d.rows]).catch(() => {});
     };
 
     onResize();
@@ -185,13 +179,13 @@ export function useNeovim(
     return () => {
       process.stdout.removeListener("resize", onResize);
     };
-  }, [ready, active, showHints]);
+  }, [ready, active, showHints, hasTabBar]);
 
-  // Poll buffer name, cursor position, and visual selection (~2s) when ready
+  // Poll buffer name, cursor position, and visual selection when ready
   useEffect(() => {
     if (!ready || !active) return;
 
-    const interval = setInterval(() => {
+    const poll = () => {
       const nvim = nvimRef.current;
       if (!nvim || !mountedRef.current) return;
 
@@ -204,8 +198,10 @@ export function useNeovim(
           setVisualSelection((prev) => (prev === selection ? prev : selection));
         })
         .catch(() => {});
-    }, 2000);
+    };
 
+    poll();
+    const interval = setInterval(poll, 500);
     return () => clearInterval(interval);
   }, [ready, active]);
 

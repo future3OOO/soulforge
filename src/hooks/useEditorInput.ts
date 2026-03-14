@@ -1,4 +1,9 @@
 import { useEffect, useRef } from "react";
+import {
+  EDITOR_COL_OFFSET,
+  EDITOR_WIDTH_RATIO,
+  getEditorRowOffset,
+} from "../core/editor/layout.js";
 
 /**
  * Raw stdin → neovim key translator + click-to-focus handler.
@@ -183,11 +188,6 @@ const BTN_LEFT_DRAG = 32;
 const BTN_SCROLL_UP = 64;
 const BTN_SCROLL_DOWN = 65;
 
-// Vertical offset: Banner(1) + TabBar(1) + border(1) + title(1) + separator(1) = 5
-// Horizontal offset: border(1) + paddingX(1) = 2
-const NVIM_ROW_OFFSET = 5;
-const NVIM_COL_OFFSET = 2;
-
 interface EditorInputOptions {
   sendKeys: (keys: string) => Promise<void>;
   sendMouse: (button: string, action: string, row: number, col: number) => Promise<void>;
@@ -195,6 +195,7 @@ interface EditorInputOptions {
   isEditorVisible: boolean;
   onFocusChat: () => void;
   onFocusEditor: () => void;
+  hasTabBar?: boolean;
 }
 
 /**
@@ -209,6 +210,7 @@ export function useEditorInput({
   isEditorVisible,
   onFocusChat,
   onFocusEditor,
+  hasTabBar = true,
 }: EditorInputOptions): void {
   const sendKeysRef = useRef(sendKeys);
   sendKeysRef.current = sendKeys;
@@ -220,6 +222,8 @@ export function useEditorInput({
   onFocusChatRef.current = onFocusChat;
   const onFocusEditorRef = useRef(onFocusEditor);
   onFocusEditorRef.current = onFocusEditor;
+  const hasTabBarRef = useRef(hasTabBar);
+  hasTabBarRef.current = hasTabBar;
 
   useEffect(() => {
     if (!isEditorVisible) return;
@@ -236,19 +240,18 @@ export function useEditorInput({
         const termRow = Number(mouse[3]); // 1-based
         const isPress = mouse[4] === "M";
 
-        const editorWidth = Math.floor((process.stdout.columns ?? 120) * 0.6);
+        const editorWidth = Math.floor((process.stdout.columns ?? 120) * EDITOR_WIDTH_RATIO);
         const inEditor = termCol <= editorWidth;
 
-        // Left click press → focus the clicked panel
         if (button === BTN_LEFT && isPress) {
           if (inEditor && !focusedRef.current) onFocusEditorRef.current();
           if (!inEditor && focusedRef.current) onFocusChatRef.current();
         }
 
-        // Forward mouse to neovim when editor is focused and click is in editor
         if (focusedRef.current && inEditor) {
-          const nvimRow = termRow - NVIM_ROW_OFFSET - 1; // to 0-based
-          const nvimCol = termCol - NVIM_COL_OFFSET - 1;
+          const rowOffset = getEditorRowOffset(hasTabBarRef.current);
+          const nvimRow = termRow - rowOffset - 1;
+          const nvimCol = termCol - EDITOR_COL_OFFSET - 1;
           if (nvimRow >= 0 && nvimCol >= 0) {
             if (button === BTN_SCROLL_UP) {
               sendMouseRef.current("wheel", "up", nvimRow, nvimCol);

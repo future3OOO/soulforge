@@ -115,7 +115,7 @@ export const EditorPanel = memo(function EditorPanel({
     return null;
   }
 
-  const borderColor = focused ? "#FF0040" : "#6A0DAD";
+  const borderColor = focused ? "#FF0040" : "#333";
 
   if (direction === "opening") {
     return (

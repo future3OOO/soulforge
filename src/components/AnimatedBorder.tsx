@@ -4,7 +4,7 @@ interface AnimatedBorderProps {
   idleColor?: string;
 }
 
-const ACTIVE_COLOR = "#9B30FF";
+const ACTIVE_COLOR = "#FF0040";
 const IDLE_COLOR = "#222";
 
 export function AnimatedBorder({ active, children, idleColor = IDLE_COLOR }: AnimatedBorderProps) {

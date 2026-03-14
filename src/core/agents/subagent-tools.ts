@@ -783,7 +783,7 @@ export function buildSubagentTools(models: SubagentModels) {
           )
           .min(1)
           .max(8)
-          .describe("Agent tasks to dispatch (system auto-merges to ≤5 when possible)"),
+          .describe("Agent tasks to dispatch (system max 8, 3 concurrent when possible)"),
         objective: z
           .string()
           .optional()
@@ -814,7 +814,7 @@ export function buildSubagentTools(models: SubagentModels) {
           }
 
           let args = rawArgs;
-          const MAX_TASKS = 5;
+          const MAX_TASKS = 8;
           if (args.tasks.length > MAX_TASKS) {
             const mergeable = args.tasks.filter(
               (t) => t.role === "explore" && !t.dependsOn?.length,

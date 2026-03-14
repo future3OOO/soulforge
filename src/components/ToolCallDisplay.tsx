@@ -617,7 +617,15 @@ function applyMultiAgentEvent(
   const total = event.totalAgents ?? s.totalAgents;
 
   if (event.type === "dispatch-start") {
-    return { ...s, totalAgents: event.totalAgents ?? fallbackTotal };
+    const newTotal = event.totalAgents ?? fallbackTotal;
+    // Clear stale seeds — dispatch may have merged tasks (7 raw → 5 actual)
+    const agents = new Map(s.agents);
+    if (newTotal < agents.size) {
+      for (const [key, info] of agents) {
+        if (info.state === "pending") agents.delete(key);
+      }
+    }
+    return { ...s, totalAgents: newTotal, agents };
   }
   if (event.type === "agent-start" && event.agentId) {
     const next = new Map(s.agents);

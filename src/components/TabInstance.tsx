@@ -58,6 +58,12 @@ export interface TabInstanceProps {
   getWorkspaceSnapshot: () => WorkspaceSnapshot;
   editorIntegration?: EditorIntegration;
   forgeMode: import("../types/index.js").ForgeMode;
+  editorOpen: boolean;
+  editorFile: string | null;
+  editorModeName: string;
+  editorCursorLine: number;
+  editorCursorCol: number;
+  editorVisualSelection: string | null;
 }
 
 const MAX_RENDERED = 60;
@@ -87,6 +93,12 @@ export function TabInstance({
   getWorkspaceSnapshot,
   editorIntegration,
   forgeMode,
+  editorOpen,
+  editorFile,
+  editorModeName,
+  editorCursorLine,
+  editorCursorCol,
+  editorVisualSelection,
 }: TabInstanceProps) {
   const scrollRef = useRef<ScrollBoxRenderable>(null);
 
@@ -106,6 +118,25 @@ export function TabInstance({
   }, [editorIntegration, contextManager]);
 
   useEffect(() => {
+    contextManager.setEditorState(
+      editorOpen,
+      editorFile,
+      editorModeName,
+      editorCursorLine,
+      editorCursorCol,
+      editorVisualSelection,
+    );
+  }, [
+    editorOpen,
+    editorFile,
+    editorModeName,
+    editorCursorLine,
+    editorCursorCol,
+    editorVisualSelection,
+    contextManager,
+  ]);
+
+  useEffect(() => {
     if (effectiveConfig.repoMap !== undefined)
       contextManager.setRepoMapEnabled(effectiveConfig.repoMap);
   }, [effectiveConfig.repoMap, contextManager]);
@@ -113,6 +144,11 @@ export function TabInstance({
   useEffect(() => {
     contextManager.setTaskRouter(effectiveConfig.taskRouter);
   }, [effectiveConfig.taskRouter, contextManager]);
+
+  useEffect(() => {
+    if (effectiveConfig.semanticSummaries !== undefined)
+      contextManager.setSemanticSummaries(effectiveConfig.semanticSummaries);
+  }, [effectiveConfig.semanticSummaries, contextManager]);
 
   // Per-tab useChat instance
   const chat = useChat({
@@ -279,7 +315,7 @@ export function TabInstance({
         <LandingPage bootProviders={bootProviders} bootPrereqs={bootPrereqs} />
       ) : (
         <box flexGrow={1} flexShrink={1} minHeight={0} flexDirection="row">
-          <AnimatedBorder active={isStreaming}>
+          <AnimatedBorder active={chat.isLoading}>
             <scrollbox
               ref={scrollRef}
               stickyScroll={true}

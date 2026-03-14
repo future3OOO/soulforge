@@ -850,7 +850,7 @@ export function InputBox({
   // ── Rendering ──
 
   // Border color per state
-  const borderColor = fuzzyMode ? "#FF8C00" : showBusy ? "#8B5CF6" : focused ? "#FF0040" : "#333";
+  const borderColor = fuzzyMode ? "#FF8C00" : showBusy ? "#333" : focused ? "#FF0040" : "#333";
 
   return (
     <box flexDirection="column" width="100%" flexShrink={0}>

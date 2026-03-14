@@ -1,0 +1,35 @@
+// Shared layout constants for the editor panel.
+// Used by: useNeovim (dimensions), useEditorInput (mouse offsets), EditorPanel (rendering)
+
+export const EDITOR_WIDTH_RATIO = 0.6;
+export const EDITOR_COL_OFFSET = 2; // border(1) + paddingX(1)
+
+// Fixed rows consumed by app chrome around the editor content area:
+// Header(1) + footer(1) + footer-wrapper(1) + border-top(1) + border-bottom(1) + title(1) + sep-top(1) + sep-bottom(1) + status(1) = 9
+const BASE_FIXED_ROWS = 9;
+const HINTS_ROWS = 2;
+// TabBar when visible: marginTop(1) + bar(1) = 2 rows
+const TAB_BAR_ROWS = 2;
+
+export function getEditorFixedRows(showHints: boolean): number {
+  return showHints ? BASE_FIXED_ROWS + HINTS_ROWS : BASE_FIXED_ROWS;
+}
+
+export function getEditorDimensions(
+  termCols: number,
+  termRows: number,
+  showHints: boolean,
+  hasTabBar: boolean,
+): { cols: number; rows: number } {
+  const fixedRows = getEditorFixedRows(showHints) + (hasTabBar ? TAB_BAR_ROWS : 0);
+  return {
+    cols: Math.max(20, Math.floor(termCols * EDITOR_WIDTH_RATIO) - EDITOR_COL_OFFSET),
+    rows: Math.max(6, termRows - fixedRows),
+  };
+}
+
+// Mouse row offset: how many terminal rows sit above the editor content area
+// Header(1) + [TabBar margin(1) + TabBar(1)] + border(1) + title(1) + separator(1)
+export function getEditorRowOffset(hasTabBar: boolean): number {
+  return hasTabBar ? 6 : 4;
+}
