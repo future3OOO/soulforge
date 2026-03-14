@@ -180,11 +180,20 @@ export const shellTool = {
 
       if (abortSignal) {
         const onAbort = () => {
-          try { proc.kill("SIGTERM"); } catch {}
-          setTimeout(() => { try { proc.kill("SIGKILL"); } catch {} }, 500);
+          try {
+            proc.kill("SIGTERM");
+          } catch {}
+          setTimeout(() => {
+            try {
+              proc.kill("SIGKILL");
+            } catch {}
+          }, 500);
         };
-        if (abortSignal.aborted) { onAbort(); }
-        else { abortSignal.addEventListener("abort", onAbort, { once: true }); }
+        if (abortSignal.aborted) {
+          onAbort();
+        } else {
+          abortSignal.addEventListener("abort", onAbort, { once: true });
+        }
       }
 
       proc.stdout.on("data", (data: Buffer) => chunks.push(data.toString()));

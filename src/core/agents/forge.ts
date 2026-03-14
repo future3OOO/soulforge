@@ -38,10 +38,7 @@ function hasPlanToolCall(messages: ModelMessage[]): boolean {
   return false;
 }
 
-function buildForgePrepareStep(
-  isPlanMode: boolean,
-  drainSteering?: () => string | null,
-) {
+function buildForgePrepareStep(isPlanMode: boolean, drainSteering?: () => string | null) {
   // biome-ignore lint/suspicious/noExplicitAny: PrepareStepFunction generic is invariant
   return ({ stepNumber, messages }: { stepNumber: number; messages: ModelMessage[] }): any => {
     const sanitized = sanitizeMessages(messages);
@@ -77,7 +74,10 @@ function buildForgePrepareStep(
       const steering = drainSteering();
       if (steering) {
         const msgs = result.messages ?? [...messages];
-        msgs.push({ role: "user", content: [{ type: "text", text: `[user steering] ${steering}` }] });
+        msgs.push({
+          role: "user",
+          content: [{ type: "text", text: `[user steering] ${steering}` }],
+        });
         result.messages = msgs;
       }
     }

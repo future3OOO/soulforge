@@ -40,7 +40,13 @@ export function TaskList({ tasks, nested }: TaskListProps) {
         )}
         <span> </span>
         <span
-          fg={task.status === "done" ? "#666" : task.status === "in-progress" ? "#eee" : STATUS_COLORS[task.status]}
+          fg={
+            task.status === "done"
+              ? "#666"
+              : task.status === "in-progress"
+                ? "#eee"
+                : STATUS_COLORS[task.status]
+          }
           attributes={task.status === "in-progress" ? TextAttributes.BOLD : undefined}
         >
           {task.title}
@@ -54,7 +60,7 @@ export function TaskList({ tasks, nested }: TaskListProps) {
       <box flexDirection="column" paddingLeft={2}>
         {tasks.slice(0, MAX_VISIBLE).map(renderTask)}
         {tasks.length > MAX_VISIBLE && (
-          <text fg="#555">  +{String(tasks.length - MAX_VISIBLE)} more</text>
+          <text fg="#555"> +{String(tasks.length - MAX_VISIBLE)} more</text>
         )}
       </box>
     );
