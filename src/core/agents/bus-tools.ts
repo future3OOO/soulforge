@@ -11,7 +11,11 @@ import type { AgentBus } from "./agent-bus.js";
  * Build coordination tools for a specific agent on the bus.
  * @param role — "explore" agents skip edit-conflict tools, "code" agents skip files-read tools
  */
-export function buildBusTools(bus: AgentBus, agentId: string, role?: import("./agent-bus.js").AgentRole) {
+export function buildBusTools(
+  bus: AgentBus,
+  agentId: string,
+  role?: import("./agent-bus.js").AgentRole,
+) {
   return {
     report_finding: tool({
       description:

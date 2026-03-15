@@ -479,7 +479,8 @@ function detectTaskTier(task: AgentTask): "trivial" | "standard" {
 
 function selectModel(task: AgentTask, models: SubagentModels): { model: LanguageModel } {
   const tier = detectTaskTier(task);
-  const useExplore = task.role === "explore" || task.role === "investigate" || models.readOnly === true;
+  const useExplore =
+    task.role === "explore" || task.role === "investigate" || models.readOnly === true;
 
   if (tier === "trivial" && models.trivialModel && models.agentFeatures?.tierRouting !== false) {
     return { model: models.trivialModel };
@@ -513,7 +514,8 @@ function createAgent(
   bus: AgentBus,
   // biome-ignore lint/suspicious/noExplicitAny: explore/code agents have different tool generics
 ): { agent: any; modelId: string; tier: string } {
-  const useExplore = task.role === "explore" || task.role === "investigate" || models.readOnly === true;
+  const useExplore =
+    task.role === "explore" || task.role === "investigate" || models.readOnly === true;
   const { model } = selectModel(task, models);
   const tier = detectTaskTier(task);
   const subagentProviderOptions = stripContextManagement(models.providerOptions);
@@ -774,7 +776,9 @@ export function buildSubagentTools(models: SubagentModels) {
               role: z
                 .enum(["explore", "code", "investigate"])
                 .default("explore")
-                .describe("explore = targeted extraction, investigate = broad cross-cutting analysis (scans with soul_grep/soul_analyze/grep), code = edits"),
+                .describe(
+                  "explore = targeted extraction, investigate = broad cross-cutting analysis (scans with soul_grep/soul_analyze/grep), code = edits",
+                ),
               id: z.string().optional().describe("Unique ID (auto-generated if omitted)"),
               dependsOn: z
                 .array(z.string())
@@ -821,7 +825,9 @@ export function buildSubagentTools(models: SubagentModels) {
               (t) => (t.role === "explore" || t.role === "investigate") && !t.dependsOn?.length,
             );
             const pinned = args.tasks.filter(
-              (t) => (t.role !== "explore" && t.role !== "investigate") || (t.dependsOn?.length ?? 0) > 0,
+              (t) =>
+                (t.role !== "explore" && t.role !== "investigate") ||
+                (t.dependsOn?.length ?? 0) > 0,
             );
             if (pinned.length >= MAX_TASKS) {
               return `Dispatch rejected: ${String(args.tasks.length)} tasks (max ${String(MAX_TASKS)}). Merge related tasks — split by file ownership, not concept.`;
@@ -890,7 +896,12 @@ export function buildSubagentTools(models: SubagentModels) {
               const MAX_EXPLORE_FILES = 3;
               const MAX_CODE_FILES = 3;
 
-              if (allExplore && !hasInvestigate && uniqueFiles.size > 0 && uniqueFiles.size <= MAX_EXPLORE_FILES) {
+              if (
+                allExplore &&
+                !hasInvestigate &&
+                uniqueFiles.size > 0 &&
+                uniqueFiles.size <= MAX_EXPLORE_FILES
+              ) {
                 const fileList = [...uniqueFiles].map((f) => `\`${f}\``).join(", ");
                 return (
                   `Dispatch rejected: ${String(uniqueFiles.size)} file${uniqueFiles.size === 1 ? "" : "s"} (${fileList}) — read them directly with read_code or read_file. ` +

@@ -13,6 +13,7 @@ if (isCompiledBinary) {
     process.env.OTUI_TREE_SITTER_WORKER_PATH = bundledWorker;
   }
 }
+
 import { BRAND_SEGMENTS, garble, WISP_FRAMES, WORDMARK } from "./components/splash.js";
 import { logBackgroundError } from "./stores/errors.js";
 

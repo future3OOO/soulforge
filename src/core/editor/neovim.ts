@@ -36,7 +36,7 @@ export async function launchNeovim(
   const isBundled = import.meta.url.includes("$bunfs");
   const bundledInit = join(homedir(), ".soulforge", "init.lua");
   const devInit = join(import.meta.dir, "init.lua");
-  const shippedInit = isBundled ? bundledInit : (existsSync(devInit) ? devInit : bundledInit);
+  const shippedInit = isBundled ? bundledInit : existsSync(devInit) ? devInit : bundledInit;
 
   switch (configMode) {
     case "none":

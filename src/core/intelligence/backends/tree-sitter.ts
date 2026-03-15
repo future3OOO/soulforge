@@ -3,6 +3,7 @@ import { homedir } from "node:os";
 import { join, resolve } from "node:path";
 
 const BUNDLED_WASM_DIR = join(homedir(), ".soulforge", "wasm");
+
 import type { FileCache } from "../cache.js";
 import {
   type CodeBlock,

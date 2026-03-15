@@ -1,7 +1,6 @@
 import { resolve } from "node:path";
 import { TextAttributes } from "@opentui/core";
 import { memo, useEffect, useMemo, useRef, useState } from "react";
-import { icon } from "../core/icons.js";
 import {
   type AgentStatsEvent,
   type MultiAgentEvent,
@@ -10,6 +9,7 @@ import {
   onSubagentStep,
   type SubagentStep,
 } from "../core/agents/subagent-events.js";
+import { icon } from "../core/icons.js";
 import { classifyPath, type OutsideKind } from "../core/security/outside-cwd.js";
 import {
   CATEGORY_COLORS,
@@ -746,8 +746,14 @@ const MultiAgentChildRow = memo(
     childSteps: SubagentStep[];
     liveStats?: AgentStatsEvent;
   }) {
-    const roleIcon = info.role === "investigate" ? icon("investigate") : info.role === "explore" ? icon("explore") : icon("code");
-    const roleColor = info.role === "investigate" ? "#00CED1" : info.role === "code" ? "#FF6B2B" : "#9B30FF";
+    const roleIcon =
+      info.role === "investigate"
+        ? icon("investigate")
+        : info.role === "explore"
+          ? icon("explore")
+          : icon("code");
+    const roleColor =
+      info.role === "investigate" ? "#00CED1" : info.role === "code" ? "#FF6B2B" : "#9B30FF";
     const isDone = info.state === "done" || info.state === "error";
     const isPending = info.state === "pending";
     const taskStr = info.task.length > 40 ? `${info.task.slice(0, 37)}...` : info.task;
@@ -789,12 +795,30 @@ const MultiAgentChildRow = memo(
             </span>
             <span fg={isDone ? "#333" : roleColor}> [{info.role}]</span>
             {hasTier ? (
-              <span fg={isDone ? "#444" : tierColor}>[{tierIcon} {tierName}]</span>
+              <span fg={isDone ? "#444" : tierColor}>
+                [{tierIcon} {tierName}]
+              </span>
             ) : null}
-            {modelLabel ? <span fg={isDone ? "#444" : "#5a9"}>[{icon("model")} {modelLabel}]</span> : null}
-            {toolUses != null && toolUses > 0 ? <span fg={isDone ? "#444" : "#8a6"}>[{icon("gear")} {String(toolUses)}]</span> : null}
-            {tokenUsage && tokenUsage.total > 0 ? <span fg={isDone ? "#444" : "#7a8"}>[{icon("gauge")} {humanizeTokens(tokenUsage.total)}]</span> : null}
-            {cacheHits && cacheHits > 0 ? <span fg={isDone ? "#444" : "#d9a020"}>[{icon("cache")} {humanizeTokens(cacheHits)}]</span> : null}
+            {modelLabel ? (
+              <span fg={isDone ? "#444" : "#5a9"}>
+                [{icon("model")} {modelLabel}]
+              </span>
+            ) : null}
+            {toolUses != null && toolUses > 0 ? (
+              <span fg={isDone ? "#444" : "#8a6"}>
+                [{icon("gear")} {String(toolUses)}]
+              </span>
+            ) : null}
+            {tokenUsage && tokenUsage.total > 0 ? (
+              <span fg={isDone ? "#444" : "#7a8"}>
+                [{icon("gauge")} {humanizeTokens(tokenUsage.total)}]
+              </span>
+            ) : null}
+            {cacheHits && cacheHits > 0 ? (
+              <span fg={isDone ? "#444" : "#d9a020"}>
+                [{icon("cache")} {humanizeTokens(cacheHits)}]
+              </span>
+            ) : null}
             {isPending && info.dependsOn && info.dependsOn.length > 0 ? (
               <span fg="#555"> waiting on {info.dependsOn.join(", ")}</span>
             ) : (
@@ -990,7 +1014,12 @@ const ToolRow = memo(
       steps: allChildSteps,
       progress: multiProgress,
       stats: liveStats,
-    } = useDispatchDisplay(dispatchId, (multiAgentInfo?.totalAgents ?? 1) * 15, multiAgentInfo?.totalAgents ?? 0, multiAgentInfo?.tasks);
+    } = useDispatchDisplay(
+      dispatchId,
+      (multiAgentInfo?.totalAgents ?? 1) * 15,
+      multiAgentInfo?.totalAgents ?? 0,
+      multiAgentInfo?.tasks,
+    );
 
     const isRepoMapHit = useMemo(() => {
       if (!tc.result) return false;

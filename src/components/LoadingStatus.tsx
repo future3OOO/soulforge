@@ -1,4 +1,5 @@
-import { useEffect, useRef, useState } from "react";
+import { fg as fgStyle, StyledText, type TextRenderable } from "@opentui/core";
+import { useEffect, useRef } from "react";
 import { icon } from "../core/icons.js";
 
 const FORGE_STATUSES = [
@@ -28,6 +29,34 @@ function formatElapsed(sec: number): string {
   return `${String(s)}s`;
 }
 
+function buildBusyContent(
+  ghostTick: number,
+  isCompacting: boolean,
+  forgeStatus: string,
+  elapsedSec: number,
+  isLoading: boolean,
+  queueCount: number | undefined,
+): StyledText {
+  const ghostFrameFn = GHOST_FRAMES[ghostTick % GHOST_FRAMES.length];
+  const currentGhost = ghostFrameFn ? ghostFrameFn() : " ";
+  const busyStatus = isCompacting ? "Compacting context…" : forgeStatus;
+  const ghostColor = isCompacting ? "#5af" : "#8B5CF6";
+  const statusColor = isCompacting ? "#3388cc" : "#6A0DAD";
+
+  const chunks = [fgStyle(ghostColor)(` ${currentGhost} `), fgStyle(statusColor)(busyStatus)];
+  if (isLoading && elapsedSec > 0) {
+    chunks.push(fgStyle("#555")(` ${formatElapsed(elapsedSec)}`));
+  }
+  if (queueCount != null && queueCount > 0) {
+    chunks.push(fgStyle("#555")(` (${String(queueCount)} queued)`));
+  }
+  return new StyledText(chunks);
+}
+
+function buildCompletedContent(time: string): StyledText {
+  return new StyledText([fgStyle("#2a5")(" ✓ "), fgStyle("#555")(`Completed in ${time}`)]);
+}
+
 interface LoadingStatusProps {
   isLoading: boolean;
   isCompacting: boolean;
@@ -35,14 +64,17 @@ interface LoadingStatusProps {
 }
 
 export function LoadingStatus({ isLoading, isCompacting, queueCount }: LoadingStatusProps) {
-  const showBusy = isLoading || isCompacting;
-  const [ghostTick, setGhostTick] = useState(0);
+  const textRef = useRef<TextRenderable>(null);
+  const ghostTickRef = useRef(0);
   const forgeStatusRef = useRef("");
   const wasLoadingRef = useRef(false);
   const loadingStartRef = useRef(0);
-  const [elapsedSec, setElapsedSec] = useState(0);
-  const [completedTime, setCompletedTime] = useState<string | null>(null);
+  const completedTimeRef = useRef<string | null>(null);
   const completedTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const propsRef = useRef({ isLoading, isCompacting, queueCount });
+  propsRef.current = { isLoading, isCompacting, queueCount };
+
+  const showBusy = isLoading || isCompacting;
 
   if (isLoading && !wasLoadingRef.current) {
     forgeStatusRef.current = FORGE_STATUSES[
@@ -53,17 +85,20 @@ export function LoadingStatus({ isLoading, isCompacting, queueCount }: LoadingSt
       clearTimeout(completedTimerRef.current);
       completedTimerRef.current = null;
     }
-    setCompletedTime(null);
+    completedTimeRef.current = null;
   }
 
   if (!isLoading && wasLoadingRef.current && loadingStartRef.current > 0) {
     const finalSec = Math.floor((Date.now() - loadingStartRef.current) / 1000);
     if (finalSec > 0) {
-      setCompletedTime(formatElapsed(finalSec));
+      completedTimeRef.current = formatElapsed(finalSec);
       if (completedTimerRef.current) clearTimeout(completedTimerRef.current);
       completedTimerRef.current = setTimeout(() => {
-        setCompletedTime(null);
+        completedTimeRef.current = null;
         completedTimerRef.current = null;
+        try {
+          if (textRef.current) textRef.current.content = new StyledText([]);
+        } catch {}
       }, COMPLETED_DISPLAY_MS);
     }
   }
@@ -71,17 +106,32 @@ export function LoadingStatus({ isLoading, isCompacting, queueCount }: LoadingSt
 
   useEffect(() => {
     if (!showBusy) {
-      setElapsedSec(0);
+      if (completedTimeRef.current && textRef.current) {
+        try {
+          textRef.current.content = buildCompletedContent(completedTimeRef.current);
+        } catch {}
+      }
       return;
     }
     const timer = setInterval(() => {
-      setGhostTick((t) => t + 1);
-      if (isLoading) {
-        setElapsedSec(Math.floor((Date.now() - loadingStartRef.current) / 1000));
-      }
+      ghostTickRef.current++;
+      const { isLoading: ld, isCompacting: cp, queueCount: qc } = propsRef.current;
+      const elapsed = ld ? Math.floor((Date.now() - loadingStartRef.current) / 1000) : 0;
+      try {
+        if (textRef.current) {
+          textRef.current.content = buildBusyContent(
+            ghostTickRef.current,
+            cp,
+            forgeStatusRef.current,
+            elapsed,
+            ld,
+            qc,
+          );
+        }
+      } catch {}
     }, GHOST_SPEED);
     return () => clearInterval(timer);
-  }, [showBusy, isLoading]);
+  }, [showBusy]);
 
   useEffect(() => {
     return () => {
@@ -89,29 +139,15 @@ export function LoadingStatus({ isLoading, isCompacting, queueCount }: LoadingSt
     };
   }, []);
 
-  if (!showBusy && !completedTime) return null;
-
-  if (!showBusy && completedTime) {
-    return (
-      <box paddingX={1} height={1} gap={1} flexDirection="row" flexShrink={0}>
-        <text fg="#2a5">✓</text>
-        <text fg="#555">Completed in {completedTime}</text>
-      </box>
-    );
-  }
-
-  const ghostFrameFn = GHOST_FRAMES[ghostTick % GHOST_FRAMES.length];
-  const currentGhost = ghostFrameFn ? ghostFrameFn() : " ";
-  const busyStatus = isCompacting ? "Compacting context…" : forgeStatusRef.current;
-
-  const elapsedLabel = isLoading && elapsedSec > 0 ? formatElapsed(elapsedSec) : "";
+  const initial = showBusy
+    ? buildBusyContent(0, isCompacting, forgeStatusRef.current, 0, isLoading, queueCount)
+    : completedTimeRef.current
+      ? buildCompletedContent(completedTimeRef.current)
+      : new StyledText([]);
 
   return (
-    <box paddingX={1} height={1} gap={1} flexDirection="row" flexShrink={0}>
-      <text fg={isCompacting ? "#5af" : "#8B5CF6"}>{currentGhost}</text>
-      <text fg={isCompacting ? "#3388cc" : "#6A0DAD"}>{busyStatus}</text>
-      {elapsedLabel !== "" && <text fg="#555">{elapsedLabel}</text>}
-      {queueCount != null && queueCount > 0 && <text fg="#555">({String(queueCount)} queued)</text>}
+    <box paddingX={0} height={1} flexDirection="row" flexShrink={0}>
+      <text ref={textRef} truncate content={initial} />
     </box>
   );
 }

@@ -26,6 +26,21 @@ interface RepoMapState {
   setSemanticModel: (model: string) => void;
 }
 
+let _pendingScanProgress = "";
+let _pendingStats: { files: number; symbols: number; edges: number; dbSizeBytes: number } | null =
+  null;
+let _scanThrottleTimer: ReturnType<typeof setTimeout> | null = null;
+
+function flushScanThrottle(set: (partial: Partial<RepoMapState>) => void) {
+  _scanThrottleTimer = null;
+  const patch: Partial<RepoMapState> = { scanProgress: _pendingScanProgress };
+  if (_pendingStats) {
+    Object.assign(patch, _pendingStats);
+    _pendingStats = null;
+  }
+  set(patch);
+}
+
 export const useRepoMapStore = create<RepoMapState>()((set) => ({
   status: "off",
   files: 0,
@@ -39,9 +54,25 @@ export const useRepoMapStore = create<RepoMapState>()((set) => ({
   semanticProgress: "",
   semanticModel: "",
 
-  setStatus: (status) => set({ status }),
-  setStats: (files, symbols, edges, dbSizeBytes) => set({ files, symbols, edges, dbSizeBytes }),
-  setScanProgress: (scanProgress) => set({ scanProgress }),
+  setStatus: (status) => {
+    if (_scanThrottleTimer) {
+      clearTimeout(_scanThrottleTimer);
+      flushScanThrottle(set);
+    }
+    set({ status });
+  },
+  setStats: (files, symbols, edges, dbSizeBytes) => {
+    _pendingStats = { files, symbols, edges, dbSizeBytes };
+    if (!_scanThrottleTimer) {
+      _scanThrottleTimer = setTimeout(() => flushScanThrottle(set), 200);
+    }
+  },
+  setScanProgress: (scanProgress) => {
+    _pendingScanProgress = scanProgress;
+    if (!_scanThrottleTimer) {
+      _scanThrottleTimer = setTimeout(() => flushScanThrottle(set), 200);
+    }
+  },
   setScanError: (scanError) => set({ scanError }),
   setSemanticStatus: (semanticStatus) => set({ semanticStatus }),
   setSemanticCount: (semanticCount) => set({ semanticCount }),

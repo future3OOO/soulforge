@@ -97,7 +97,7 @@ export const useUIStore = create<UIState>()((set) => ({
   suspended: false,
   editorSplit: 60,
 
-  openModal: (name) => set((s) => ({ modals: { ...s.modals, [name]: true } })),
+  openModal: (name) => set(() => ({ modals: { ...INITIAL_MODALS, [name]: true } })),
   closeModal: (name) => set((s) => ({ modals: { ...s.modals, [name]: false } })),
   toggleModal: (name) => set((s) => ({ modals: { ...s.modals, [name]: !s.modals[name] } })),
 

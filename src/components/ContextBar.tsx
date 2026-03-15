@@ -107,7 +107,12 @@ export function ContextBar({ contextManager }: Props) {
   const prevV2SlotsRef = useRef(0);
 
   const computeTarget = useCallback(
-    (state: { contextTokens: number; contextWindow: number; chatChars: number; subagentChars: number }) => {
+    (state: {
+      contextTokens: number;
+      contextWindow: number;
+      chatChars: number;
+      subagentChars: number;
+    }) => {
       const ctxWindow = state.contextWindow || 200_000;
       const isApi = state.contextTokens > 0;
       const breakdown = contextManager.getContextBreakdown();
@@ -184,5 +189,11 @@ export function ContextBar({ contextManager }: Props) {
     return () => clearInterval(timer);
   }, []);
 
-  return <text ref={textRef} truncate content={buildContent(0, "0.0", formatWindow(200_000), false, false)} />;
+  return (
+    <text
+      ref={textRef}
+      truncate
+      content={buildContent(0, "0.0", formatWindow(200_000), false, false)}
+    />
+  );
 }

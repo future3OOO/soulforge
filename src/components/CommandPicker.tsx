@@ -114,7 +114,7 @@ export function CommandPicker({ visible, config, onClose }: Props) {
         const val = option.value;
         const s = config.scopeEnabled ? scope : undefined;
         if (!config.keepOpen) onClose();
-        setTimeout(() => cb(val, s), 0);
+        cb(val, s);
       }
       return;
     }

@@ -38,13 +38,27 @@ export function RepoMapStatusPopup({ visible, onClose }: Props) {
   const innerW = popupWidth - 2;
 
   const stateRef = useRef(useRepoMapStore.getState());
-  const [, forceRender] = useState(0);
+  const [, setRenderTick] = useState(0);
   const spinnerRef = useRef(0);
 
   useEffect(
     () =>
       useRepoMapStore.subscribe((s) => {
+        const prev = stateRef.current;
         stateRef.current = s;
+        if (
+          s.status !== prev.status ||
+          s.files !== prev.files ||
+          s.symbols !== prev.symbols ||
+          s.edges !== prev.edges ||
+          s.dbSizeBytes !== prev.dbSizeBytes ||
+          s.scanError !== prev.scanError ||
+          s.semanticStatus !== prev.semanticStatus ||
+          s.semanticCount !== prev.semanticCount ||
+          s.semanticModel !== prev.semanticModel
+        ) {
+          setRenderTick((n) => n + 1);
+        }
       }),
     [],
   );
@@ -52,9 +66,12 @@ export function RepoMapStatusPopup({ visible, onClose }: Props) {
   useEffect(() => {
     if (!visible) return;
     const timer = setInterval(() => {
-      spinnerRef.current++;
-      forceRender((n) => n + 1);
-    }, 80);
+      const { status, semanticStatus } = stateRef.current;
+      if (status === "scanning" || semanticStatus === "generating") {
+        spinnerRef.current++;
+        setRenderTick((n) => n + 1);
+      }
+    }, 150);
     return () => clearInterval(timer);
   }, [visible]);
 

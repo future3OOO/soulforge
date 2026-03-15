@@ -245,7 +245,11 @@ export class ContextManager {
   private wireRepoMapCallbacks(): void {
     this.repoMap.onProgress = (indexed, total) => {
       const store = useRepoMapStore.getState();
-      const phaseLabels: Record<number, string> = { [-1]: "building edges", [-2]: "computing pagerank", [-3]: "analyzing git history" };
+      const phaseLabels: Record<number, string> = {
+        [-1]: "building edges",
+        [-2]: "computing pagerank",
+        [-3]: "analyzing git history",
+      };
       const label = phaseLabels[indexed] ?? `${String(indexed)}/${String(total)}`;
       store.setScanProgress(label);
       const stats = this.repoMap.getStats();

@@ -865,46 +865,57 @@ export function App({
     }
     if (evt.ctrl && evt.name === "l") {
       useUIStore.getState().toggleModal("llmSelector");
+      return;
     }
     if (evt.ctrl && evt.name === "s") {
       useUIStore.getState().toggleModal("skillSearch");
+      return;
     }
-
     if (evt.ctrl && evt.name === "t") {
       useUIStore.getState().toggleReasoningExpanded();
       return;
     }
     if (evt.ctrl && evt.name === "d") {
       cycleMode();
+      return;
     }
     if (evt.ctrl && evt.name === "g") {
       useUIStore.getState().toggleModal("gitMenu");
+      return;
     }
     if (evt.ctrl && evt.name === "h") {
       useUIStore.getState().toggleModal("helpPopup");
+      return;
     }
     if (evt.ctrl && evt.name === "p") {
       useUIStore.getState().toggleModal("sessionPicker");
+      return;
     }
     if (evt.meta && evt.name === "r") {
       useUIStore.getState().toggleModal("errorLog");
+      return;
     }
     if (evt.meta && evt.name === "t") {
       tabMgr.createTab();
+      return;
     }
     if (evt.meta && evt.name === "w") {
       if (tabMgr.tabCount > 1) {
         tabMgr.closeTab(tabMgr.activeTabId);
       }
+      return;
     }
     if ((evt.meta || evt.ctrl) && evt.name >= "1" && evt.name <= "9") {
       tabMgr.switchToIndex(Number(evt.name) - 1);
+      return;
     }
     if (evt.meta && evt.name === "[") {
       tabMgr.prevTab();
+      return;
     }
     if (evt.meta && evt.name === "]") {
       tabMgr.nextTab();
+      return;
     }
     // PageUp/PageDown are now handled by TabInstance's own scrollRef
   });
