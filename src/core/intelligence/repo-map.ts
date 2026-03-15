@@ -438,6 +438,7 @@ export class RepoMap {
   }
 
   private async doScan(): Promise<void> {
+    const tick = () => new Promise<void>((r) => setTimeout(r, 0));
     try {
       const files = collectFiles(this.cwd);
 
@@ -484,21 +485,28 @@ export class RepoMap {
               // skip files that fail to index
             }
           }
-          if (this.onProgress && i % 10 === 0) this.onProgress(i + 1, toIndex.length);
+          if (i % 10 === 0) {
+            this.onProgress?.(i + 1, toIndex.length);
+            await tick();
+          }
         }
         this.onProgress?.(toIndex.length, toIndex.length);
       }
 
       if (toIndex.length > 0 || stale.length > 0) {
         this.onProgress?.(-1, -1);
+        await tick();
         this.buildEdges();
         this.onProgress?.(-2, -2);
+        await tick();
         this.computePageRank();
       }
 
       this.onProgress?.(-3, -3);
-      this.buildCoChanges();
+      await tick();
+      await this.buildCoChanges();
 
+      await tick();
       this.compactIfNeeded();
       this.ready = true;
       this.onScanComplete?.(true);
@@ -879,17 +887,22 @@ export class RepoMap {
     return this.hasGit;
   }
 
-  private buildCoChanges(): void {
+  private async buildCoChanges(): Promise<void> {
     if (!this.detectGit()) return;
 
     this.db.run("DELETE FROM cochanges");
 
     let logOutput: string;
     try {
-      logOutput = execSync(
-        `git log --format="---COMMIT---" --name-only -n ${String(GIT_LOG_COMMITS)}`,
-        { cwd: this.cwd, stdio: "pipe", timeout: 10_000, maxBuffer: 5_000_000 },
-      ).toString();
+      const { execFile } = await import("node:child_process");
+      logOutput = await new Promise<string>((resolve, reject) => {
+        execFile(
+          "git",
+          ["log", `--format=---COMMIT---`, "--name-only", "-n", String(GIT_LOG_COMMITS)],
+          { cwd: this.cwd, timeout: 10_000, maxBuffer: 5_000_000 },
+          (err, stdout) => (err ? reject(err) : resolve(stdout)),
+        );
+      });
     } catch {
       return;
     }
