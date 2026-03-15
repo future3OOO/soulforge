@@ -21,11 +21,21 @@
 
 ## What is SoulForge?
 
-A terminal IDE where your AI pair programmer lives inside your editor — not beside it. Real Neovim with your config, multi-agent dispatch that parallelizes work, and a code intelligence graph that understands your entire codebase. All in a single terminal session that works over SSH.
+Your real Neovim — not vim emulation, not an external editor, the actual thing with your config, plugins, and LSP — with an AI agent that understands your codebase structurally. Graph-powered code intelligence, multi-agent dispatch, 9 LLM providers. Works over SSH, in tmux, on headless servers. No Electron, no GUI.
 
 <p align="center">
   <img src="assets/soulforge-hero.png" alt="SoulForge in action" width="900" />
 </p>
+
+### Why SoulForge?
+
+| | SoulForge | CLI AI Tools |
+|---|---|---|
+| **Editor** | Your real Neovim (config, plugins, LSP) | Built-in editor or none |
+| **Code understanding** | Graph intelligence (PageRank, blast radius, cochange) | File reads + grep |
+| **Providers** | 9 providers, any model, you own the keys | Single vendor lock-in |
+| **Cost** | Token usage visible per task/agent/model | Hidden behind subscription |
+| **Terminal** | Native TUI, works over SSH | Varies |
 
 ---
 
@@ -35,8 +45,8 @@ A terminal IDE where your AI pair programmer lives inside your editor — not be
 <tr>
 <td width="50%">
 
-### Embedded Neovim
-Your actual config, plugins, keybindings, and LSP — connected to the AI via msgpack-RPC. The AI reads, navigates, and edits through the same editor you use.
+### Real Neovim, Not Emulation
+Your actual Neovim config, plugins, keybindings, and LSP — embedded via msgpack-RPC. The AI reads, navigates, and edits through the same editor you use. Treesitter highlighting, your colorscheme, your muscle memory.
 
 </td>
 <td width="50%">
@@ -50,13 +60,13 @@ Parallelize work across explore, code, and web search agents. Shared file cache 
 <td>
 
 ### Graph-Powered Repo Map
-SQLite-backed codebase graph with PageRank ranking, cochange analysis, blast radius estimation, and clone detection. Zero-token queries — no LLM cost. [Deep dive →](docs/repo-map.md)
+SQLite-backed codebase graph with PageRank ranking, cochange analysis, blast radius estimation, and clone detection. The agent understands which files matter, what changes together, and how far edits ripple — before reading a single line. [Deep dive →](docs/repo-map.md)
 
 </td>
 <td>
 
 ### 4-Tier Code Intelligence
-LSP → ts-morph → tree-sitter → regex fallback chain. Covers 20+ languages. Always has an answer, from precise to approximate. [Deep dive →](docs/architecture.md)
+LSP → ts-morph → tree-sitter → regex fallback chain. 20+ languages. The agent always has structural understanding, from compiler-precise to best-effort. [Deep dive →](docs/architecture.md)
 
 </td>
 </tr>
@@ -69,8 +79,8 @@ LSP → ts-morph → tree-sitter → regex fallback chain. Covers 20+ languages.
 </td>
 <td>
 
-### Task Router
-Assign models per task type — Opus for planning, Sonnet for coding, Haiku for search. Automatic tier detection routes trivial tasks to fast models.
+### Task Router + Cost Transparency
+Assign models per task: Opus for planning, Sonnet for coding, Haiku for search. Token usage visible per task, per agent, per model — you see exactly what you're spending and the router optimizes it automatically.
 
 </td>
 </tr>
@@ -84,7 +94,7 @@ Two-layer compaction keeps long sessions productive: rolling tool-result pruning
 <td>
 
 ### User Steering
-Type messages while the agent is working — they queue up and inject into the next agent step. Abort cleanly with Ctrl+X. [Deep dive →](docs/steering.md)
+Type messages while the agent is working — they queue up and inject into the next agent step. Steer without interrupting. Abort cleanly with Ctrl+X. [Deep dive →](docs/steering.md)
 
 </td>
 </tr>
@@ -92,13 +102,13 @@ Type messages while the agent is working — they queue up and inject into the n
 <td>
 
 ### Project Toolchain
-Auto-detects lint, typecheck, test, and build commands across 16 ecosystems. Pre-commit gate blocks `git commit` on lint/type errors. Monorepo package discovery. [Deep dive →](docs/project-tool.md)
+Auto-detects lint, typecheck, test, and build commands across 16 ecosystems from config files. Pre-commit gate blocks `git commit` on lint/type errors. Monorepo package discovery. [Deep dive →](docs/project-tool.md)
 
 </td>
 <td>
 
-### 9 LLM Providers
-Anthropic, OpenAI, Google, xAI, Ollama (local), OpenRouter, LLMGateway, Vercel Gateway, and custom proxy — all through the Vercel AI SDK with automatic provider option degradation. [Deep dive →](docs/provider-options.md)
+### Any Model, Any Provider
+9 providers — Anthropic, OpenAI, Google, xAI, Ollama (local), OpenRouter, and more. You own the API keys. No vendor lock-in. Automatic provider option degradation when features aren't supported. [Deep dive →](docs/provider-options.md)
 
 </td>
 </tr>
@@ -480,6 +490,21 @@ bun run lint:fix      # auto-fix
 | [Getting Started](GETTING_STARTED.md) | Installation, configuration, first steps |
 | [Contributing](CONTRIBUTING.md) | Dev setup, project structure, PR guidelines |
 | [Security](SECURITY.md) | Security policy, responsible disclosure |
+
+---
+
+## Roadmap
+
+**In progress:**
+- **MCP server support** — connect existing MCP tools (databases, APIs, custom servers) directly to SoulForge
+- **Repo Map visualization** — interactive dependency graph, PageRank heatmap, blast radius explorer
+- **GitHub CLI integration** — native `gh_pr`, `gh_issue`, `gh_status` tools with structured output
+- **Dispatch worktrees** — git worktree per code agent for conflict-free parallel edits
+
+**Planned:**
+- **Benchmarks** — side-by-side comparisons: tool calls, edit accuracy, token efficiency on large codebases
+- **Multi-tab coordination** — worktree isolation + shared awareness board across concurrent sessions
+- **Orchestrated workflows** — sequential agent handoffs (planner → TDD → reviewer → security)
 
 ---
 
