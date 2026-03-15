@@ -21,21 +21,23 @@
 
 ## What is SoulForge?
 
-Your real Neovim — not vim emulation, not an external editor, the actual thing with your config, plugins, and LSP — with an AI agent that understands your codebase structurally. Graph-powered code intelligence, multi-agent dispatch, 9 LLM providers. Works over SSH, in tmux, on headless servers. No Electron, no GUI.
+Your real Neovim — config, plugins, LSP — embedded in an AI agent that understands your codebase structurally. Graph-powered intelligence, multi-agent dispatch, 9 providers. Works over SSH.
 
 <p align="center">
   <img src="assets/soulforge-hero.png" alt="SoulForge in action" width="900" />
 </p>
 
-### Why SoulForge?
+### How it compares
 
-| | SoulForge | CLI AI Tools |
-|---|---|---|
-| **Editor** | Your real Neovim (config, plugins, LSP) | Built-in editor or none |
-| **Code understanding** | Graph intelligence (PageRank, blast radius, cochange) | File reads + grep |
-| **Providers** | 9 providers, any model, you own the keys | Single vendor lock-in |
-| **Cost** | Token usage visible per task/agent/model | Hidden behind subscription |
-| **Terminal** | Native TUI, works over SSH | Varies |
+| | SoulForge | Claude Code | Copilot CLI | Aider |
+|---|---|---|---|---|
+| **Editor** | Embedded Neovim (your config) | No editor | No editor | No editor |
+| **Code intelligence** | Graph + PageRank + blast radius + cochange + clone detection | File reads + grep | LSP (optional) | Tree-sitter repo map |
+| **Multi-agent** | Parallel dispatch (8 agents, shared cache) | Subagents + Agent Teams | Explore agent | Single agent |
+| **Providers** | 9 (Anthropic, OpenAI, Google, xAI, Ollama, +4) | Anthropic only | Multi-model | 100+ LLMs |
+| **Cost visibility** | Per task, per agent, per model | `/cost` per session | Request counts | Per message |
+| **MCP** | Roadmap | Yes | Yes | No |
+| **Open source** | AGPL-3.0 | Yes | Yes | Apache 2.0 |
 
 ---
 
