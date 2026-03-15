@@ -1,11 +1,12 @@
 import { existsSync, readdirSync } from "node:fs";
 import { extname, join } from "node:path";
 import { FileCache } from "./cache.js";
-import type {
-  BackendPreference,
-  CodeIntelligenceConfig,
-  IntelligenceBackend,
-  Language,
+import {
+  EXT_TO_LANGUAGE,
+  type BackendPreference,
+  type CodeIntelligenceConfig,
+  type IntelligenceBackend,
+  type Language,
 } from "./types.js";
 
 // ─── Health Check Types ───
@@ -32,59 +33,6 @@ export interface HealthCheckResult {
   probeFile: string;
   backends: BackendProbeResult[];
 }
-
-const EXT_TO_LANGUAGE: Record<string, Language> = {
-  ".ts": "typescript",
-  ".tsx": "typescript",
-  ".mts": "typescript",
-  ".cts": "typescript",
-  ".js": "javascript",
-  ".jsx": "javascript",
-  ".mjs": "javascript",
-  ".cjs": "javascript",
-  ".py": "python",
-  ".go": "go",
-  ".rs": "rust",
-  ".java": "java",
-  ".c": "c",
-  ".h": "c",
-  ".cpp": "cpp",
-  ".cc": "cpp",
-  ".cxx": "cpp",
-  ".hpp": "cpp",
-  ".cs": "csharp",
-  ".rb": "ruby",
-  ".php": "php",
-  ".swift": "swift",
-  ".kt": "kotlin",
-  ".kts": "kotlin",
-  ".scala": "scala",
-  ".lua": "lua",
-  ".ex": "elixir",
-  ".exs": "elixir",
-  ".dart": "dart",
-  ".zig": "zig",
-  ".sh": "bash",
-  ".bash": "bash",
-  ".zsh": "bash",
-  ".ml": "ocaml",
-  ".mli": "ocaml",
-  ".m": "objc",
-  ".css": "css",
-  ".scss": "css",
-  ".less": "css",
-  ".html": "html",
-  ".htm": "html",
-  ".json": "json",
-  ".jsonc": "json",
-  ".toml": "toml",
-  ".vue": "vue",
-  ".res": "rescript",
-  ".resi": "rescript",
-  ".sol": "solidity",
-  ".tla": "tlaplus",
-  ".el": "elisp",
-};
 
 const PROJECT_FILE_TO_LANGUAGE: Record<string, Language> = {
   "tsconfig.json": "typescript",
@@ -327,15 +275,11 @@ export class CodeIntelligenceRouter {
 
   /** Find a file to use for LSP warmup probing */
   private findProbeFile(language: Language): string | null {
-    const extMap: Partial<Record<Language, string[]>> = {
-      typescript: [".ts", ".tsx"],
-      javascript: [".js", ".jsx"],
-      python: [".py"],
-      go: [".go"],
-      rust: [".rs"],
-    };
-    const exts = extMap[language];
-    if (!exts) return null;
+    // Build extensions list from the canonical EXT_TO_LANGUAGE map
+      const exts = Object.entries(EXT_TO_LANGUAGE)
+      .filter(([_, lang]) => lang === language)
+      .map(([ext]) => ext);
+      if (exts.length === 0) return null;
 
     // Check src/ first, then root
     for (const dir of ["src", "."]) {

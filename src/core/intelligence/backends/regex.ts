@@ -1,16 +1,17 @@
 import { readFileSync } from "node:fs";
-import { basename, resolve } from "node:path";
+import { resolve } from "node:path";
 import type { FileCache } from "../cache.js";
-import type {
-  CodeBlock,
-  ExportInfo,
-  FileOutline,
-  ImportInfo,
-  IntelligenceBackend,
-  Language,
-  SourceLocation,
-  SymbolInfo,
-  SymbolKind,
+import {
+  detectLanguageFromPath,
+  type CodeBlock,
+  type ExportInfo,
+  type FileOutline,
+  type ImportInfo,
+  type IntelligenceBackend,
+  type Language,
+  type SourceLocation,
+  type SymbolInfo,
+  type SymbolKind,
 } from "../types.js";
 
 // ─── Language-specific regex patterns ───
@@ -405,22 +406,6 @@ export class RegexBackend implements IntelligenceBackend {
   }
 
   private detectLang(file: string): Language {
-    const ext: Record<string, Language> = {
-      ".ts": "typescript",
-      ".tsx": "typescript",
-      ".mts": "typescript",
-      ".cts": "typescript",
-      ".js": "javascript",
-      ".jsx": "javascript",
-      ".mjs": "javascript",
-      ".cjs": "javascript",
-      ".py": "python",
-      ".go": "go",
-      ".rs": "rust",
-    };
-    const name = basename(file);
-    const dot = name.lastIndexOf(".");
-    if (dot === -1) return "unknown";
-    return ext[name.slice(dot)] ?? "unknown";
+    return detectLanguageFromPath(file);
   }
 }

@@ -6,23 +6,24 @@
 
 import { existsSync, readdirSync, readFileSync } from "node:fs";
 import { dirname, join, resolve } from "node:path";
-import type {
-  CallHierarchyResult,
-  CodeAction,
-  CodeBlock,
-  Diagnostic,
-  ExportInfo,
-  FileOutline,
-  FormatEdit,
-  ImportInfo,
-  IntelligenceBackend,
-  Language,
-  RefactorResult,
-  SourceLocation,
-  SymbolInfo,
-  SymbolKind,
-  TypeHierarchyResult,
-  TypeInfo,
+import {
+  detectLanguageFromPath,
+  type CallHierarchyResult,
+  type CodeAction,
+  type CodeBlock,
+  type Diagnostic,
+  type ExportInfo,
+  type FileOutline,
+  type FormatEdit,
+  type ImportInfo,
+  type IntelligenceBackend,
+  type Language,
+  type RefactorResult,
+  type SourceLocation,
+  type SymbolInfo,
+  type SymbolKind,
+  type TypeHierarchyResult,
+  type TypeInfo,
 } from "../../types.js";
 import * as nvimBridge from "./nvim-bridge.js";
 import {
@@ -1094,21 +1095,8 @@ export class LspBackend implements IntelligenceBackend {
 // ─── Helpers ───
 
 function detectLanguage(file: string): Language | null {
-  const ext = file.slice(file.lastIndexOf(".")).toLowerCase();
-  const map: Record<string, Language> = {
-    ".ts": "typescript",
-    ".tsx": "typescript",
-    ".mts": "typescript",
-    ".cts": "typescript",
-    ".js": "javascript",
-    ".jsx": "javascript",
-    ".mjs": "javascript",
-    ".cjs": "javascript",
-    ".py": "python",
-    ".go": "go",
-    ".rs": "rust",
-  };
-  return map[ext] ?? null;
+  const lang = detectLanguageFromPath(file);
+  return lang === "unknown" ? null : lang;
 }
 
 function lspLocationToSourceLocation(loc: LspLocation): SourceLocation {

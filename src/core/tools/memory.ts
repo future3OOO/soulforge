@@ -12,7 +12,7 @@ const categorySchema = z
 export function createMemoryTool(manager: MemoryManager) {
   return tool({
     description:
-      "Persistent memory: write (title-only, 120 chars), list, search, or delete memories.",
+      "Persistent memory for facts worth remembering across sessions. NOT a scratchpad — do NOT save session state, progress checkpoints, or context before compaction. Write only genuinely useful long-term knowledge (decisions, conventions, architecture facts).",
     inputSchema: z.object({
       action: z.enum(["write", "list", "search", "delete"]),
       scope: scopeOrBothSchema.optional().describe("Memory scope"),

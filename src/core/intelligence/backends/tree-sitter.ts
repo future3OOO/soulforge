@@ -1,15 +1,16 @@
 import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
 import type { FileCache } from "../cache.js";
-import type {
-  CodeBlock,
-  ExportInfo,
-  FileOutline,
-  ImportInfo,
-  IntelligenceBackend,
-  Language,
-  SymbolInfo,
-  SymbolKind,
+import {
+  detectLanguageFromPath,
+  type CodeBlock,
+  type ExportInfo,
+  type FileOutline,
+  type ImportInfo,
+  type IntelligenceBackend,
+  type Language,
+  type SymbolInfo,
+  type SymbolKind,
 } from "../types.js";
 
 // Tree-sitter query patterns per language
@@ -224,60 +225,8 @@ type TSQuery = import("web-tree-sitter").Query;
 type TSQueryCapture = import("web-tree-sitter").QueryCapture;
 type TSNode = import("web-tree-sitter").Node;
 
-const EXT_TO_LANG: Record<string, Language> = {
-  ".ts": "typescript",
-  ".tsx": "typescript",
-  ".mts": "typescript",
-  ".cts": "typescript",
-  ".js": "javascript",
-  ".jsx": "javascript",
-  ".mjs": "javascript",
-  ".cjs": "javascript",
-  ".py": "python",
-  ".go": "go",
-  ".rs": "rust",
-  ".java": "java",
-  ".c": "c",
-  ".h": "c",
-  ".cpp": "cpp",
-  ".cc": "cpp",
-  ".cxx": "cpp",
-  ".hpp": "cpp",
-  ".hh": "cpp",
-  ".cs": "csharp",
-  ".rb": "ruby",
-  ".php": "php",
-  ".swift": "swift",
-  ".kt": "kotlin",
-  ".kts": "kotlin",
-  ".scala": "scala",
-  ".sc": "scala",
-  ".lua": "lua",
-  ".ex": "elixir",
-  ".exs": "elixir",
-  ".dart": "dart",
-  ".zig": "zig",
-  ".sh": "bash",
-  ".bash": "bash",
-  ".zsh": "bash",
-  ".ml": "ocaml",
-  ".mli": "ocaml",
-  ".m": "objc",
-  ".css": "css",
-  ".scss": "css",
-  ".less": "css",
-  ".html": "html",
-  ".htm": "html",
-  ".json": "json",
-  ".jsonc": "json",
-  ".toml": "toml",
-  ".vue": "vue",
-  ".res": "rescript",
-  ".resi": "rescript",
-  ".sol": "solidity",
-  ".tla": "tlaplus",
-  ".el": "elisp",
-};
+// Use canonical map — tree-sitter also needs .hh and .sc which may not be in EXT_TO_LANGUAGE
+// Those extras are added to the canonical map in types.ts
 
 // Store the module reference for Query construction
 let TSQueryClass: (new (lang: TSLanguage, source: string) => TSQuery) | null = null;
@@ -972,9 +921,7 @@ export class TreeSitterBackend implements IntelligenceBackend {
   }
 
   private detectLang(file: string): Language {
-    const dot = file.lastIndexOf(".");
-    if (dot === -1) return "unknown";
-    return EXT_TO_LANG[file.slice(dot)] ?? "unknown";
+    return detectLanguageFromPath(file);
   }
 
   /** Map a file to its grammar key — handles tsx/typescript split.
