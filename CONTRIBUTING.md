@@ -319,4 +319,4 @@ If you're unsure whether something is in scope, open an issue first.
 
 ## License
 
-AGPL-3.0-only. By contributing, you agree your code is licensed under the same terms.
+Business Source License 1.1. By contributing, you agree your code is licensed under the same terms. See [LICENSE](LICENSE) and [COMMERCIAL_LICENSE.md](COMMERCIAL_LICENSE.md) for details.

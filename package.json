@@ -11,7 +11,7 @@
   },
   "module": "src/boot.tsx",
   "type": "module",
-  "license": "AGPL-3.0-only",
+  "license": "BUSL-1.1",
   "author": "proxySoul",
   "bin": {
     "soulforge": "./dist/index.js",

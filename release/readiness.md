@@ -7,14 +7,14 @@ Audit date: 2026-03-14
 | Area | Score | Notes |
 |------|-------|-------|
 | Production readiness | 9/10 | DB timeouts fixed, atomic writes, large file handling |
-| Open-source readiness | 95%+ | All docs complete, no secrets, AGPL licensed |
+| Open-source readiness | 95%+ | All docs complete, no secrets, BSL 1.1 licensed |
 | Competitive position | Strong niche | Only terminal IDE with embedded editor + deep intelligence + multi-agent |
 
 ## Inventory
 
 - 32 tools, 50+ components, 15 hooks, 5 agent types, 9 LLM providers, 5 forge modes
 - 1,196 tests passing, 26 test files
-- TypeScript strict, Biome linted, AGPL-3.0
+- TypeScript strict, Biome linted, BSL 1.1-3.0
 
 ## Competitive Position
 
@@ -133,7 +133,7 @@ Audit date: 2026-03-14
 ### Green Lights
 
 - No secrets in source — all API keys from env vars
-- License: AGPL-3.0 with full text
+- License: BSL 1.1 with full text
 - CONTRIBUTING.md and GETTING_STARTED.md exist
 - No personal paths in source
 - No debug logging in production

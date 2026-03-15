@@ -37,7 +37,7 @@ Your real Neovim — config, plugins, LSP — embedded in an AI agent that under
 | **Providers** | 9 (Anthropic, OpenAI, Google, xAI, Ollama, +4) | Anthropic only | Multi-model | 100+ LLMs |
 | **Cost visibility** | Per task, per agent, per model | `/cost` per session | Request counts | Per message |
 | **MCP** | Roadmap | Yes | Yes | No |
-| **Open source** | AGPL-3.0 | Yes | Yes | Apache 2.0 |
+| **License** | BSL 1.1 (source-available) | Open source | Open source | Apache 2.0 |
 
 ---
 
