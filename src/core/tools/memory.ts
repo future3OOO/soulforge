@@ -16,7 +16,10 @@ export function createMemoryTool(manager: MemoryManager) {
     inputSchema: z.object({
       action: z.enum(["write", "list", "search", "delete"]),
       scope: scopeOrBothSchema.optional().describe("Memory scope"),
-      title: z.string().max(120).optional().describe("For write: the memory text"),
+      title: z
+        .string()
+        .optional()
+        .describe("For write: the memory text (auto-truncated to 120 chars)"),
       category: categorySchema.optional().describe("For write/list: category"),
       tags: z.array(z.string()).optional().describe("For write: 1-3 keyword tags"),
       id: z.string().optional().describe("For write (update) or delete: memory ID"),
@@ -47,8 +50,9 @@ export function createMemoryTool(manager: MemoryManager) {
               };
             }
             const scope = resolvedScope as MemoryScope;
+            const title = args.title.length > 200 ? `${args.title.slice(0, 197)}...` : args.title;
             const record = manager.write(scope, {
-              title: args.title,
+              title,
               category: args.category as MemoryCategory,
               tags: args.tags ?? [],
               ...(args.id ? { id: args.id } : {}),

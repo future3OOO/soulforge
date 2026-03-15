@@ -744,7 +744,12 @@ export class ContextManager {
     ];
 
     if (!isMinimal) {
-      parts.push("", ...buildToolGuidance(hasRepoMap));
+      parts.push(
+        "",
+        "Context compaction is automatic — do NOT preemptively save to memory before compaction. Just keep working. Your plan steps, task list, and key state survive compaction automatically.",
+        "",
+        ...buildToolGuidance(hasRepoMap),
+      );
       if (this.repoMapReady && this.repoMap.getStats().symbols === 0) {
         parts.push(
           "",

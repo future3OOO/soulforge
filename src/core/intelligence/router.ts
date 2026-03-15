@@ -372,6 +372,27 @@ export class CodeIntelligenceRouter {
     const probeFile = this.findProbeFile(language);
     const results: BackendProbeResult[] = [];
 
+    // Discover a real symbol name from the probe file for readSymbol test
+    let probeSymbolName = "main";
+    if (probeFile) {
+      try {
+        // Use the first backend that can find symbols to get a real name
+        for (const b of this.backends) {
+          if (b.supportsLanguage(language) && typeof b.findSymbols === "function") {
+            if (!this.initialized.has(b.name)) {
+              await b.initialize?.(this.cwd);
+              this.initialized.add(b.name);
+            }
+            const syms = await b.findSymbols(probeFile);
+            if (syms && syms.length > 0) {
+              probeSymbolName = syms[0]!.name;
+              break;
+            }
+          }
+        }
+      } catch { /* use fallback */ }
+    }
+
     // Key operations to test, grouped by what they need
     const fileOps: Array<{
       op: keyof IntelligenceBackend;
@@ -383,7 +404,7 @@ export class CodeIntelligenceRouter {
       { op: "findExports", label: "findExports", fn: (b, f) => b.findExports!(f) },
       { op: "getFileOutline", label: "getFileOutline", fn: (b, f) => b.getFileOutline!(f) },
       { op: "getDiagnostics", label: "getDiagnostics", fn: (b, f) => b.getDiagnostics!(f) },
-      { op: "readSymbol", label: "readSymbol", fn: (b, f) => b.readSymbol!(f, "default") },
+      { op: "readSymbol", label: `readSymbol(${probeSymbolName})`, fn: (b, f) => b.readSymbol!(f, probeSymbolName) },
     ];
 
     for (const backend of this.backends) {

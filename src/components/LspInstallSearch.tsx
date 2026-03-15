@@ -117,46 +117,46 @@ export const LspInstallSearch = memo(function LspInstallSearch({
   const innerW = popupWidth - 2;
 
   // Async refresh — defers the heavy checkPackageStatus calls off the first paint
-    const refreshAll = useCallback(async () => {
+  const refreshAll = useCallback(async () => {
     setRegistryLoading(true);
     // Yield to let the modal paint first
     await new Promise((r) => setTimeout(r, 16));
-      const statuses = getAllPackageStatus();
-      setAllStatus(statuses);
-      setRegistryLoaded(statuses.length > 0);
-      setRecommended(getRecommendedPackages(cwd));
+    const statuses = getAllPackageStatus();
+    setAllStatus(statuses);
+    setRegistryLoaded(statuses.length > 0);
+    setRecommended(getRecommendedPackages(cwd));
     setRegistryLoading(false);
-    }, [cwd]);
+  }, [cwd]);
 
-    // Load registry on open
-    useEffect(() => {
+  // Load registry on open
+  useEffect(() => {
     if (!visible) return;
     setTab("search");
-      setQuery("");
+    setQuery("");
     setCursor(0);
     setScrollOffset(0);
     setCategoryFilter("All");
-      setPendingToggle(null);
+    setPendingToggle(null);
 
     // Try local first
-      const localPkgs = loadRegistry();
+    const localPkgs = loadRegistry();
     if (localPkgs.length > 0) {
-        refreshAll();
+      refreshAll();
       return;
-      }
+    }
 
-      // Download if not available
-      if (!downloadAttemptedRef.current) {
-        downloadAttemptedRef.current = true;
-        setRegistryLoading(true);
-        downloadRegistry()
-          .then(() => refreshAll())
-          .catch(() => {
-            onSystemMessage("Failed to download Mason registry");
-            setRegistryLoading(false);
-          });
-      }
-    }, [visible, refreshAll, onSystemMessage]);
+    // Download if not available
+    if (!downloadAttemptedRef.current) {
+      downloadAttemptedRef.current = true;
+      setRegistryLoading(true);
+      downloadRegistry()
+        .then(() => refreshAll())
+        .catch(() => {
+          onSystemMessage("Failed to download Mason registry");
+          setRegistryLoading(false);
+        });
+    }
+  }, [visible, refreshAll, onSystemMessage]);
 
   // Filter logic
   const filterQuery = query.toLowerCase().trim();
@@ -199,28 +199,28 @@ export const LspInstallSearch = memo(function LspInstallSearch({
     if (filterQuery) {
       list = list.filter(
         (s) =>
-            s.pkg.name.toLowerCase().includes(filterQuery) ||
-            s.pkg.languages.some((l) => l.toLowerCase().includes(filterQuery)),
-        );
-      }
-      return list;
-    }, [allStatus, disabledServers, filterQuery]);
-
-    const filteredRecommended = useMemo(() => {
-      if (!filterQuery) return recommended;
-      return recommended.filter(
-        (s) =>
           s.pkg.name.toLowerCase().includes(filterQuery) ||
           s.pkg.languages.some((l) => l.toLowerCase().includes(filterQuery)),
       );
-    }, [recommended, filterQuery]);
+    }
+    return list;
+  }, [allStatus, disabledServers, filterQuery]);
 
-    const currentItems = (): PackageStatus[] => {
-      if (tab === "search") return filteredList;
-      if (tab === "installed") return installedList;
-      if (tab === "disabled") return disabledList;
-      return filteredRecommended;
-    };
+  const filteredRecommended = useMemo(() => {
+    if (!filterQuery) return recommended;
+    return recommended.filter(
+      (s) =>
+        s.pkg.name.toLowerCase().includes(filterQuery) ||
+        s.pkg.languages.some((l) => l.toLowerCase().includes(filterQuery)),
+    );
+  }, [recommended, filterQuery]);
+
+  const currentItems = (): PackageStatus[] => {
+    if (tab === "search") return filteredList;
+    if (tab === "installed") return installedList;
+    if (tab === "disabled") return disabledList;
+    return filteredRecommended;
+  };
 
   const adjustScroll = (nextCursor: number) => {
     setScrollOffset((prev) => {
@@ -252,7 +252,7 @@ export const LspInstallSearch = memo(function LspInstallSearch({
         onSystemMessage(`✓ ${status.pkg.name} installed successfully`);
         clearProbeCache();
         clearPathCache();
-          refreshAll();
+        refreshAll();
       } else {
         onSystemMessage(`✗ Failed to install ${status.pkg.name}: ${result.error}`);
       }
@@ -518,8 +518,8 @@ export const LspInstallSearch = memo(function LspInstallSearch({
                   : tab === "installed"
                     ? "type to filter installed..."
                     : tab === "disabled"
-                        ? "type to filter disabled..."
-                        : "type to filter recommended..."}
+                      ? "type to filter disabled..."
+                      : "type to filter recommended..."}
               </text>
             </>
           )}
@@ -615,9 +615,8 @@ export const LspInstallSearch = memo(function LspInstallSearch({
         </PopupRow>
         <PopupRow w={innerW}>
           <text fg="#555" bg={POPUP_BG}>
-            {"↑↓"} nav | {"⏎"}{" "}
-            {tab === "installed" || tab === "disabled" ? "toggle" : "install"} | d disable |{" "}
-              {"^F"} category | {"⇥"} tab | esc close
+            {"↑↓"} nav | {"⏎"} {tab === "installed" || tab === "disabled" ? "toggle" : "install"} |
+            d disable | {"^F"} category | {"⇥"} tab | esc close
           </text>
         </PopupRow>
       </box>

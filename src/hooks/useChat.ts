@@ -505,6 +505,33 @@ export function useChat({
   const workingStateRef = useRef<WorkingStateManager | null>(
     initialStrategy === "v2" ? new WorkingStateManager(effectiveConfig.compaction) : null,
   );
+
+  // Rehydrate v2 working state from restored session messages
+  const didRehydrate = useRef(false);
+  if (!didRehydrate.current && workingStateRef.current && initialState?.coreMessages?.length) {
+    didRehydrate.current = true;
+    const wsm = workingStateRef.current;
+    for (const msg of initialState.coreMessages) {
+      if (msg.role === "user") {
+        extractFromUserMessage(wsm, msg);
+      } else if (msg.role === "assistant" && Array.isArray(msg.content)) {
+        extractFromAssistantMessage(wsm, msg);
+        for (const part of msg.content) {
+          if (typeof part === "object" && "type" in part && part.type === "tool-call") {
+            const tc = part as { toolName: string; input: Record<string, unknown> };
+            extractFromToolCall(wsm, tc.toolName, tc.input);
+          }
+        }
+      } else if (msg.role === "tool" && Array.isArray(msg.content)) {
+        for (const part of msg.content) {
+          if (typeof part === "object" && "type" in part && part.type === "tool-result") {
+            const tr = part as { toolName: string; output: unknown };
+            extractFromToolResult(wsm, tr.toolName, tr.output);
+          }
+        }
+      }
+    }
+  }
   const prevCompactionStrategy = useRef(effectiveConfig.compaction?.strategy);
 
   // Sync store on mount (useRef initializer doesn't trigger the change block)
@@ -885,10 +912,16 @@ export function useChat({
 
   const autoSummarizedRef = useRef(false);
   useEffect(() => {
-    const systemChars = contextManager.getContextBreakdown().reduce((sum, s) => sum + s.chars, 0);
-    const totalChars = systemChars + chatChars;
-    const contextBudgetChars = getModelContextWindow(activeModelRef.current) * 3.5;
-    const pct = totalChars / contextBudgetChars;
+    const ctxWindow = getModelContextWindow(activeModelRef.current);
+    const apiTokens = contextTokens;
+    let pct: number;
+    if (apiTokens > 0) {
+      pct = apiTokens / ctxWindow;
+    } else {
+      const systemChars = contextManager.getContextBreakdown().reduce((sum, s) => sum + s.chars, 0);
+      const totalChars = systemChars + chatChars;
+      pct = totalChars / (ctxWindow * 3.5);
+    }
     const triggerAt = effectiveConfig.compaction?.triggerThreshold ?? 0.7;
     const resetAt = effectiveConfig.compaction?.resetThreshold ?? 0.4;
     if (pct > triggerAt && !autoSummarizedRef.current && coreMessagesRef.current.length >= 6) {
@@ -908,6 +941,7 @@ export function useChat({
       autoSummarizedRef.current = false;
     }
   }, [
+    contextTokens,
     chatChars,
     contextManager,
     summarizeConversation,
