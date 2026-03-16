@@ -582,6 +582,7 @@ interface AgentInfo {
   modelId?: string;
   tier?: string;
   dependsOn?: string[];
+  calledDone?: boolean;
 }
 
 interface MultiAgentState {
@@ -668,6 +669,7 @@ function applyMultiAgentEvent(
       toolUses: event.toolUses,
       tokenUsage: event.tokenUsage,
       cacheHits: event.cacheHits,
+      calledDone: event.calledDone,
     };
     if (existing) {
       next.set(event.agentId, { ...existing, state: "done", ...stats });
@@ -780,7 +782,11 @@ const MultiAgentChildRow = memo(
             {info.state === "running" ? (
               <Spinner color={roleColor} />
             ) : info.state === "done" ? (
-              <span fg="#4a7">✓</span>
+              info.calledDone ? (
+                <span fg="#4a7">✓</span>
+              ) : (
+                <span fg="#d9a020">⚠</span>
+              )
             ) : info.state === "error" ? (
               <span fg="#f44">✗</span>
             ) : (

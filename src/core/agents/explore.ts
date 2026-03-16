@@ -11,18 +11,22 @@ import { repairToolCall } from "./stream-options.js";
 
 function exploreBase(): string {
   return [
-    "Explore agent. Read-only codebase research.",
+    "Explore agent. Read-only codebase research. Only call tools when necessary.",
     "",
-    "WORKFLOW: Your task includes specific file paths and symbols. Go directly to those targets — read_code for the named symbols, read_file only if the task specifies config files. When your task includes line numbers (e.g. 'lines 75-137'), use read_file with startLine/endLine — this bypasses truncation and returns exact content. Paths in the task are already resolved — use them directly.",
-    "DISCOVERY: If your task names symbols or keywords but NOT file paths, run one navigate workspace_symbols call with the keyword, then read_code on the result. If workspace_symbols returns nothing, fall back to grep for the symbol name across the codebase. One search, one read — never chain multiple discovery tools for the same target. If the task is web research, go straight to web_search.",
-    "INVESTIGATION: When your task asks to find patterns, compare implementations, audit quality, or analyze across multiple files — work breadth-first: soul_grep (count mode) to find frequency of repeated idioms, soul_analyze (unused_exports, identifier_frequency) for structural hotspots, grep for repeated multi-line patterns (error handling, guard clauses, boilerplate). Read specific files only AFTER scanning reveals targets. Compare sibling functions (same file or same role across files) by reading them side-by-side. Report both file-local AND cross-file patterns with occurrence counts.",
+    "Tool results and cache are always current. Data from tools is authoritative — never re-read to verify.",
+    "Task file paths are pre-resolved from the Repo Map — go directly to them.",
+    "Two examples confirming a pattern = confirmed. Stop and call done.",
     "",
-    'OUTPUT CONTRACT: The parent agent is BLIND to your tool results — it only sees your done call. Paste full function bodies, complete type definitions, and entire relevant code blocks into keyFindings[].detail. If the parent has to call read_file after you, your done call failed. Rule: if you read it and it matters, paste it. Descriptions like "it uses a map to track X" are worthless — paste the actual map code.',
+    "EXTRACTION (task has file paths + symbols): read_code for named symbols, read_file for config/full files. Use line ranges when given. Call done.",
+    "DISCOVERY (task has keywords, no paths): one navigate workspace_symbols → read_code on result. If nothing, one grep. One search, one read.",
+    "INVESTIGATION (find patterns across files): soul_grep count → soul_analyze → read only the hits. Breadth-first, not file-by-file.",
+    "WEB RESEARCH: go straight to web_search.",
     "",
-    "RECOGNIZE YOUR RATIONALIZATIONS: You will feel the urge to read_file every target sequentially. These are the excuses — do the opposite:",
-    '- "Let me read each file to understand the pattern" — use soul_grep count mode. It shows frequency across the codebase in one call.',
-    '- "I need the full file" — use read_code with the symbol name. Extracts exactly what you need.',
-    "- \"I'll read everything then analyze\" — you'll run out of steps. Scan first (soul_grep/soul_analyze), read only the hits.",
+    "TOOL SELECTION: one symbol → read_code. Multiple symbols or full file → read_file once (no chunking). Pattern frequency → soul_grep count. Structure → soul_analyze.",
+    "",
+    "STEP BUDGET: You have ~15 tool calls max. Reserve the last call for done. If you've read 10+ files, call done NOW with what you have — partial results beat no results.",
+    "",
+    'OUTPUT CONTRACT: Parent is BLIND to your tool results — only sees your done call. Paste full code in keyFindings[].detail. Descriptions like "it uses a map" are worthless — paste the actual code. If the parent has to re-read your files, your done call failed.',
   ].join("\n");
 }
 
@@ -38,7 +42,7 @@ const exploreDoneTool = tool({
           file: z.string(),
           detail: z
             .string()
-            .min(30, "Detail must contain actual code, not a prose summary")
+            .min(10)
             .describe(
               "PASTE the actual code: full function bodies, complete type definitions, entire relevant blocks. The parent makes decisions from this text alone.",
             ),
@@ -97,7 +101,7 @@ export function createExploreAgent(model: LanguageModel, options?: ExploreAgentO
       })(),
       providerOptions: EPHEMERAL_CACHE,
     },
-    stopWhen: [stepCountIs(15), tokenBudget(80_000), hasToolCall("done")],
+    stopWhen: [stepCountIs(17), tokenBudget(80_000), hasToolCall("done")],
     prepareStep: buildPrepareStep({
       bus,
       agentId,

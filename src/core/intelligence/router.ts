@@ -165,10 +165,10 @@ export class CodeIntelligenceRouter {
         continue;
       }
 
-      // Lazy initialization
-      await this.ensureInitialized(backend);
-
       try {
+        // Lazy initialization — inside try so init failures fall through to next backend
+        await this.ensureInitialized(backend);
+
         const result = await Promise.race([
           fn(backend),
           new Promise<null>((resolve) => setTimeout(resolve, 30_000, null)),
@@ -249,7 +249,11 @@ export class CodeIntelligenceRouter {
 
     for (const backend of this.backends) {
       if (backend.supportsLanguage(language)) {
-        await this.ensureInitialized(backend);
+        try {
+          await this.ensureInitialized(backend);
+        } catch {
+          // Skip backends that fail to initialize
+        }
       }
     }
 
@@ -471,12 +475,22 @@ export class CodeIntelligenceRouter {
     };
   }
 
+  private initFailed = new Set<string>();
+
   private async ensureInitialized(backend: IntelligenceBackend): Promise<void> {
     if (this.initialized.has(backend.name)) return;
-    if (backend.initialize) {
-      await backend.initialize(this.cwd);
+    if (this.initFailed.has(backend.name)) {
+      throw new Error(`${backend.name} initialization previously failed`);
     }
-    this.initialized.add(backend.name);
+    try {
+      if (backend.initialize) {
+        await backend.initialize(this.cwd);
+      }
+      this.initialized.add(backend.name);
+    } catch (err) {
+      this.initFailed.add(backend.name);
+      throw err;
+    }
   }
 
   private findBackendByName(

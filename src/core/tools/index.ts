@@ -876,7 +876,7 @@ export function buildCodeTools(
   return buildTools(cwd, editorSettings, onApproveWebSearch, opts);
 }
 
-const SUBAGENT_MAX_LINES = 300;
+const SUBAGENT_MAX_LINES = 750;
 const SUBAGENT_MAX_OUTPUT_BYTES = 8192;
 
 function truncateLines(output: string): string {
@@ -901,7 +901,7 @@ export function buildSubagentExploreTools(opts?: {
   const subagentCwd = process.cwd();
   return {
     read_file: tool({
-      description: `${readFileTool.description} Capped at 300 lines — use startLine/endLine for large files.`,
+      description: `${readFileTool.description} Capped at 750 lines — use startLine/endLine for files larger than that.`,
       inputSchema: z.object({
         path: z.string().describe("File path to read"),
         startLine: z.number().optional().describe("Start line (1-indexed)"),

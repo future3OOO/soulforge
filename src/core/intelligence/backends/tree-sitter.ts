@@ -830,11 +830,17 @@ export class TreeSitterBackend implements IntelligenceBackend {
     if (TreeSitterBackend.IS_BUNDLED) {
       return join(BUNDLED_WASM_DIR, basename);
     }
-    try {
-      return require.resolve(filename);
-    } catch {
-      return join(BUNDLED_WASM_DIR, basename);
+    // Dev mode: resolve from node_modules relative to project root
+    const cwd = process.cwd();
+    const devPaths = [
+      join(cwd, "node_modules", "web-tree-sitter", basename),
+      join(cwd, "node_modules", "tree-sitter-wasms", "out", basename),
+    ];
+    for (const p of devPaths) {
+      if (existsSync(p)) return p;
     }
+    // Fallback to bundled install location
+    return join(BUNDLED_WASM_DIR, basename);
   }
 
   private async doInit(): Promise<void> {

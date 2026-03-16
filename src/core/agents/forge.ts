@@ -210,6 +210,64 @@ function buildForgePrepareStep(
             : "You have dispatch results. Proceed to implementation or respond — additional reads are likely redundant.";
         result.system = result.system ? `${result.system}\n\n${hint}` : hint;
       }
+
+      // Detect excessive reads without action — language-agnostic
+      const READ_TOOLS = new Set([
+        "read_file",
+        "read_code",
+        "grep",
+        "soul_grep",
+        "soul_find",
+        "navigate",
+        "analyze",
+      ]);
+      const ACTION_TOOLS = new Set([
+        "edit_file",
+        "write_file",
+        "create_file",
+        "plan",
+        "dispatch",
+        "shell",
+      ]);
+      let totalReads = 0;
+      let lastActionStep = -1;
+      for (let i = 0; i < messages.length; i++) {
+        const m = messages[i];
+        if (m?.role !== "assistant" || !Array.isArray(m.content)) continue;
+        for (const part of m.content) {
+          if (typeof part !== "object" || part === null || !("type" in part)) continue;
+          if ((part as { type: string }).type !== "tool-call" || !("toolName" in part)) continue;
+          const tn = (part as { toolName: string }).toolName;
+          if (READ_TOOLS.has(tn)) totalReads++;
+          if (ACTION_TOOLS.has(tn)) lastActionStep = i;
+        }
+      }
+      const readsSinceAction =
+        lastActionStep === -1
+          ? totalReads
+          : (() => {
+              let count = 0;
+              for (let i = lastActionStep + 1; i < messages.length; i++) {
+                const m = messages[i];
+                if (m?.role !== "assistant" || !Array.isArray(m.content)) continue;
+                for (const part of m.content) {
+                  if (typeof part !== "object" || part === null || !("type" in part)) continue;
+                  if ((part as { type: string }).type !== "tool-call" || !("toolName" in part))
+                    continue;
+                  if (READ_TOOLS.has((part as { toolName: string }).toolName)) count++;
+                }
+              }
+              return count;
+            })();
+
+      // Only nudge when no dispatch was used (dispatches handle their own read patterns)
+      // and the agent isn't in plan mode (audits/plans legitimately need many reads)
+      if (!hasDispatch) {
+        if (readsSinceAction >= 8) {
+          const nudge = `${String(readsSinceAction)} consecutive reads without an action (plan/edit/dispatch). If you're gathering for a plan, call plan now. If this is an audit, use dispatch for parallel scanning.`;
+          result.system = result.system ? `${result.system}\n\n${nudge}` : nudge;
+        }
+      }
     }
 
     // Inject task list so it survives compaction and is always visible
@@ -387,11 +445,20 @@ export function createForgeAgent({
     callOptionsSchema: z.object({
       userMessage: z.string().optional(),
     }),
-    instructions: {
-      role: "system" as const,
-      content: contextManager.buildSystemPrompt(),
-      providerOptions: EPHEMERAL_CACHE,
-    },
+    instructions: (() => {
+      const prompt = contextManager.buildSystemPrompt();
+      return [
+        {
+          role: "system" as const,
+          content: prompt.static,
+          providerOptions: EPHEMERAL_CACHE,
+        },
+        {
+          role: "system" as const,
+          content: prompt.dynamic,
+        },
+      ];
+    })(),
     prepareCall: ({ options: _options, ...settings }) => {
       return {
         ...settings,

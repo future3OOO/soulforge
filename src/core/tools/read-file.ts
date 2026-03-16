@@ -136,6 +136,18 @@ export const readFileTool = {
   },
 };
 
+const TOP_LEVEL_KINDS = new Set([
+  "function",
+  "class",
+  "interface",
+  "type",
+  "enum",
+  "variable",
+  "constant",
+  "method",
+  "property",
+]);
+
 async function getCompactOutline(filePath: string): Promise<string | null> {
   try {
     const { getIntelligenceRouter } = await import("../intelligence/index.js");
@@ -146,12 +158,34 @@ async function getCompactOutline(filePath: string): Promise<string | null> {
     );
     if (!outline || outline.symbols.length === 0) return null;
 
-    const symbolLines = outline.symbols.map((s) => {
+    // Only include meaningful symbols — skip callbacks, locals, JSX noise.
+    // Works across all languages: TS/JS, Python, Go, Rust, Java, C#, etc.
+    const meaningful = outline.symbols.filter((s) => {
+      if (!TOP_LEVEL_KINDS.has(s.kind)) return false;
+      if (s.name.length <= 1) return false;
+      // Skip string/char literals in any language
+      if (/^["'`]/.test(s.name)) return false;
+      // Skip anonymous/unnamed symbols
+      if (s.name === "<unknown>" || s.name === "<function>") return false;
+      // Skip callback/closure patterns (JS/TS specific but harmless elsewhere)
+      if (s.name.includes("callback") || s.name.includes("() ")) return false;
+      // Skip likely local variables — short names that are constants/variables
+      // (keeps short class/function/type names like Go's `DB` or Rust's `Ok`)
+      if ((s.kind === "constant" || s.kind === "variable") && s.name.length <= 3) return false;
+      return true;
+    });
+    if (meaningful.length === 0) return null;
+
+    // Sort by line number (top-level declarations first), cap at 25
+    meaningful.sort((a, b) => a.location.line - b.location.line);
+    const capped = meaningful.slice(0, 25);
+    const symbolLines = capped.map((s) => {
       const end = s.location.endLine ? `-${String(s.location.endLine)}` : "";
       return `  ${s.kind} ${s.name} — ${String(s.location.line)}${end}`;
     });
+    const more = meaningful.length > 30 ? `\n  ... +${String(meaningful.length - 30)} more` : "";
 
-    return `[Outline: ${String(outline.symbols.length)} symbols — use read_code for targeted reading]\n${symbolLines.join("\n")}\n`;
+    return `[Outline: ${String(meaningful.length)} symbols — use read_code for targeted reading]\n${symbolLines.join("\n")}${more}\n`;
   } catch {
     return null;
   }

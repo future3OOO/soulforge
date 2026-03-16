@@ -185,9 +185,13 @@ function extractDoneResult(result: AgentResult): DoneToolResult | null {
   return null;
 }
 
-function buildFallbackResult(result: AgentResult): string {
+function buildFallbackResult(
+  result: AgentResult,
+  agentFindings?: Array<{ label: string; content: string }>,
+): string {
   const filesRead = new Set<string>();
   const filesEdited = new Set<string>();
+  const readContents: Array<{ file: string; content: string }> = [];
 
   for (const step of result.steps) {
     for (const tc of step.toolCalls ?? []) {
@@ -197,21 +201,64 @@ function buildFallbackResult(result: AgentResult): string {
         if (tc.toolName === "edit_file") filesEdited.add(path);
       }
     }
+    // Extract content from tool results (the actual code the agent read)
+    for (const tr of step.toolResults ?? []) {
+      if (tr.toolName === "read_file" || tr.toolName === "read_code") {
+        const input = tr.input as Record<string, unknown> | undefined;
+        const file = (input?.path ?? input?.file) as string | undefined;
+        const raw = tr.output;
+        if (!file || !raw) continue;
+        const content = typeof raw === "string" ? raw : JSON.stringify(raw);
+        // Extract the actual output content from JSON wrapper if present
+        let text = content;
+        try {
+          const parsed = JSON.parse(content) as { output?: string; success?: boolean };
+          if (parsed.output && parsed.success !== false) text = parsed.output;
+        } catch {}
+        if (text && text.length > 20 && !text.includes("[Already in your context")) {
+          // Cap per-file content to keep total reasonable
+          const capped =
+            text.length > 2000
+              ? `${text.slice(0, 2000)}\n[... ${String(text.length - 2000)} chars truncated]`
+              : text;
+          readContents.push({ file, content: capped });
+        }
+      }
+    }
   }
 
   const parts: string[] = [];
   if (filesEdited.size > 0) parts.push(`Files edited: ${[...filesEdited].join(", ")}`);
-  if (filesRead.size > 0) parts.push(`Files examined: ${[...filesRead].join(", ")}`);
 
   const text = result.text.trim();
   if (text) {
     parts.push(text.length > 6000 ? `${text.slice(0, 6000)} [truncated]` : text);
   }
 
-  if (parts.length === 0 || (filesRead.size > 0 && !text)) {
+  // Include agent's own report_finding calls as synthesis
+  if (agentFindings && agentFindings.length > 0) {
+    parts.push(...agentFindings.map((f) => `**${f.label}:**\n${f.content}`));
+  }
+
+  // Auto-synthesize from tool results when agent didn't call done
+  if (readContents.length > 0 && !agentFindings?.length) {
+    // Budget: ~8k chars total for all file contents
+    let budget = 8000;
+    const findings: string[] = [];
+    for (const { file, content } of readContents) {
+      if (budget <= 0) break;
+      const slice = content.slice(0, budget);
+      findings.push(`--- ${file} ---\n${slice}`);
+      budget -= slice.length + 50;
+    }
     parts.push(
-      "(Agent did not call done — no synthesis produced. File contents are in the dispatch cache. " +
-        "Use read_code to extract specific symbols from the files listed above.)",
+      `(Agent exhausted steps without calling done. Auto-extracted content from ${String(readContents.length)} file(s):)\n` +
+        findings.join("\n\n"),
+    );
+  } else if (filesRead.size > 0) {
+    parts.push(
+      `(Agent did not call done — no synthesis produced. Read ${String(filesRead.size)} files: ${[...filesRead].join(", ")}. ` +
+        "File contents are in the dispatch cache.)",
     );
   }
 
@@ -735,13 +782,17 @@ async function runAgentTask(
         callbacks._acc.cacheRead || (result.totalUsage.inputTokenDetails?.cacheReadTokens ?? 0);
 
       const doneResult = extractDoneResult(result);
-      const resultText = doneResult ? formatDoneResult(doneResult) : buildFallbackResult(result);
+      const agentFindings = bus.getFindings().filter((f) => f.agentId === task.agentId);
+      const calledDone = doneResult !== null;
+      const resultText = calledDone
+        ? formatDoneResult(doneResult)
+        : buildFallbackResult(result, agentFindings);
 
       const agentResult: BusAgentResult = {
         agentId: task.agentId,
         role: task.role,
         task: task.task,
-        result: resultText,
+        result: calledDone ? `[done] ${resultText}` : `[no-done] ${resultText}`,
         success: true,
       };
       bus.setResult(agentResult);
@@ -763,6 +814,7 @@ async function runAgentTask(
         resultChars: resultText.length,
         modelId: selectedModelId,
         tier: taskTier,
+        calledDone,
       });
       return { doneResult, resultText, callbacks, result: agentResult };
     } catch (error) {
@@ -820,17 +872,13 @@ export function buildSubagentTools(models: SubagentModels) {
   return {
     dispatch: tool({
       description:
-        "Dispatch parallel subagents. The system rejects explore dispatches for ≤6 files and code dispatches for ≤3 files — read or edit directly for those. " +
-        "BEFORE writing tasks: check the Repo Map and conversation for data you already have. Act on existing data first. " +
-        'Task format: "Read [symbol] from [path], [symbol] from [path]. Return their implementations." ' +
-        "Every task MUST name specific files and symbols. " +
-        "For navigate calls (references, definition, call_hierarchy, etc.), include the file path — " +
-        'e.g. "Find references to mergeConfigs in src/config/index.ts". ' +
-        "Include line numbers from the Repo Map when available (e.g. 'read lines 181-265'). " +
-        "Web search tasks: ONE focused query per task. " +
-        "Split by file ownership, not concept. " +
-        "explore: read-only extraction. code: edits (assign distinct files per agent). " +
-        "dependsOn: only when one agent genuinely needs another's output.",
+        "Dispatch parallel subagents. Provide a contract listing ALL files you need — the system verifies them against the Repo Map and rejects hallucinated paths. " +
+        "If you need ≤6 files, the system rejects dispatch and tells you to read directly (with Repo Map symbol info). " +
+        "BEFORE dispatching: can you answer from the Repo Map + ≤5 direct tool calls? If yes, don't dispatch. " +
+        'Task format: "Read [symbol] from [path]. Return full implementation." Every task MUST name specific files and symbols. ' +
+        "Include line numbers from the Repo Map when available. " +
+        "Split by file ownership, not concept. explore: read-only. code: edits (distinct files per agent). " +
+        "Web search: ONE focused query per task.",
       inputSchema: z.object({
         tasks: z
           .array(
@@ -871,11 +919,160 @@ export function buildSubagentTools(models: SubagentModels) {
           .describe(
             "Override all dispatch validation (per-turn dispatch limit, file overlap between agents, investigation quality, ≤4 file rejection, web task limit). Only set true AFTER reviewing all previous dispatch results and confirming they lack the specific information you need.",
           ),
+        contract: z
+          .object({
+            filesNeeded: z
+              .array(z.string())
+              .min(1)
+              .describe(
+                "ALL file paths you need across all tasks. Must be exact paths from the Repo Map. The system verifies these exist before approving dispatch.",
+              ),
+            reason: z
+              .string()
+              .min(10)
+              .describe(
+                "Why dispatch instead of direct reads? Must justify why this requires parallel agents rather than sequential read_code/read_file calls.",
+              ),
+          })
+          .describe(
+            "REQUIRED. List every file you need and justify why dispatch is necessary. " +
+              "The system verifies files against the Repo Map and rejects hallucinated paths. " +
+              "If you need ≤6 files, the system will tell you to read them directly.",
+          ),
       }),
       execute: async (rawArgs, { abortSignal, toolCallId }) => {
         const bus = new AgentBus(cacheRef.current);
         try {
           const WEB_MARKER = "web";
+
+          // Contract verification — validate files against Repo Map before proceeding
+          if (!rawArgs.contract && !rawArgs.force) {
+            return (
+              "⛔ dispatch [rejected → no contract]\n" +
+              "Provide a contract listing ALL files you need (contract.filesNeeded) and why dispatch is needed (contract.reason). " +
+              "The system verifies files against the Repo Map before approving. " +
+              "If you need ≤6 files, read them directly instead of dispatching."
+            );
+          }
+          if (rawArgs.contract && !rawArgs.force) {
+            const contract = rawArgs.contract;
+            const repoMap = models.repoMap;
+            const verified: string[] = [];
+            const hallucinated: string[] = [];
+            const onDiskOnly: string[] = [];
+            const cwd = process.cwd();
+
+            for (const file of contract.filesNeeded) {
+              const norm = normalizePath(file);
+              if (norm === "web") continue;
+
+              // Tier 1: Repo Map (most reliable — has symbols, line ranges)
+              if (repoMap) {
+                const symbols = repoMap.getFileSymbolRanges(norm);
+                if (symbols.length > 0) {
+                  verified.push(norm);
+                  continue;
+                }
+              }
+
+              // Tier 2: disk existence (for config files, files outside repo map, no repo map)
+              const { existsSync } = require("node:fs") as typeof import("node:fs");
+              const { resolve: resolvePath, isAbsolute } =
+                require("node:path") as typeof import("node:path");
+              const abs = isAbsolute(norm) ? norm : resolvePath(cwd, norm);
+              if (existsSync(abs)) {
+                onDiskOnly.push(norm);
+                continue;
+              }
+
+              hallucinated.push(norm);
+            }
+
+            // Reject hallucinated files
+            if (hallucinated.length > 0) {
+              return (
+                `⛔ dispatch [rejected → hallucinated files]\n` +
+                `${String(hallucinated.length)} file(s) in your contract don't exist:\n` +
+                hallucinated.map((f) => `  ✗ \`${f}\``).join("\n") +
+                `\nCheck the Repo Map for correct paths. Use soul_find if you're unsure of a filename.`
+              );
+            }
+
+            // Completeness check: all targetFiles across tasks must be in the contract
+            const contractSet = new Set([...verified, ...onDiskOnly]);
+            const missingFromContract: string[] = [];
+            for (const t of rawArgs.tasks) {
+              for (const f of t.targetFiles) {
+                const norm = normalizePath(f);
+                if (norm === "web" || !norm.includes(".")) continue;
+                if (!contractSet.has(norm)) missingFromContract.push(norm);
+              }
+            }
+            if (missingFromContract.length > 0) {
+              return (
+                `⛔ dispatch [rejected → incomplete contract]\n` +
+                `Tasks reference files not listed in contract.filesNeeded:\n` +
+                [...new Set(missingFromContract)].map((f) => `  ✗ \`${f}\``).join("\n") +
+                `\nAdd ALL files to the contract so the system can verify completeness.`
+              );
+            }
+
+            // Completeness check: for code tasks, warn about missing dependents
+            if (repoMap) {
+              const codeFiles = rawArgs.tasks
+                .filter((t) => t.role === "code")
+                .flatMap((t) => t.targetFiles.map(normalizePath));
+              if (codeFiles.length > 0) {
+                const missingDeps: string[] = [];
+                for (const f of codeFiles) {
+                  const importers = repoMap.getFileDependents(f);
+                  for (const imp of importers.slice(0, 5)) {
+                    if (!contractSet.has(imp.path) && !codeFiles.includes(imp.path)) {
+                      missingDeps.push(`\`${imp.path}\` imports \`${f}\``);
+                    }
+                  }
+                }
+                if (missingDeps.length > 0) {
+                  const depList = [...new Set(missingDeps)].slice(0, 5).join("\n  ");
+                  return (
+                    `⚠️ dispatch [rejected → missing dependents]\n` +
+                    `Code edits may break importers not in your contract:\n  ${depList}\n` +
+                    `Add them to contract.filesNeeded or set force: true if they don't need updates.`
+                  );
+                }
+              }
+            }
+
+            // Threshold: ≤6 files → reject with enriched Repo Map info
+            const totalFiles = verified.length + onDiskOnly.length;
+            const MAX_DIRECT_FILES = 6;
+            if (totalFiles > 0 && totalFiles <= MAX_DIRECT_FILES) {
+              const fileList: string[] = [];
+              for (const f of verified) {
+                if (repoMap) {
+                  const symbols = repoMap.getFileSymbolRanges(f);
+                  if (symbols.length > 0) {
+                    const top = symbols
+                      .slice(0, 5)
+                      .map((s) => `${s.name} (${s.kind}, L${String(s.line)})`)
+                      .join(", ");
+                    fileList.push(`  \`${f}\` → ${top}`);
+                    continue;
+                  }
+                }
+                fileList.push(`  \`${f}\``);
+              }
+              for (const f of onDiskOnly) {
+                fileList.push(`  \`${f}\` (not in Repo Map — use read_file)`);
+              }
+              return (
+                `⛔ dispatch [rejected → read directly]\n` +
+                `You only need ${String(totalFiles)} file(s) — read them directly:\n` +
+                fileList.join("\n") +
+                `\nUse read_code for specific symbols or read_file for full files. Dispatch is for 7+ files or parallel edits.`
+              );
+            }
+          }
 
           if (models.agentFeatures?.targetFileValidation !== false) {
             for (const t of rawArgs.tasks) {
@@ -885,7 +1082,7 @@ export function buildSubagentTools(models: SubagentModels) {
 
               const hasFilePaths = t.targetFiles.some((f) => f.includes("/") || f.includes("."));
               if (!hasFilePaths) {
-                return `Error: task "${t.id ?? "?"}" has no valid file paths in targetFiles. Every non-web task must reference specific files from the Repo Map. Got: [${t.targetFiles.join(", ")}]`;
+                return `⛔ dispatch [rejected → invalid targetFiles]\nTask "${t.id ?? "?"}" has no valid file paths in targetFiles. Every non-web task must reference specific files from the Repo Map. Got: [${t.targetFiles.join(", ")}]`;
               }
             }
           }
@@ -902,7 +1099,7 @@ export function buildSubagentTools(models: SubagentModels) {
                 (t.dependsOn?.length ?? 0) > 0,
             );
             if (pinned.length >= MAX_TASKS) {
-              return `Dispatch rejected: ${String(args.tasks.length)} tasks (max ${String(MAX_TASKS)}). Merge related tasks — split by file ownership, not concept.`;
+              return `⛔ dispatch [rejected → too many tasks]\n${String(args.tasks.length)} tasks (max ${String(MAX_TASKS)}). Merge related tasks — split by file ownership, not concept.`;
             }
             const slots = MAX_TASKS - pinned.length;
             mergeable.sort((a, b) => b.targetFiles.length - a.targetFiles.length);
@@ -935,7 +1132,7 @@ export function buildSubagentTools(models: SubagentModels) {
 
               if (cached.length === allTargetFiles.length && !hasCodeTask) {
                 return (
-                  `Dispatch blocked: ALL ${String(cached.length)} target files are already in your context. ` +
+                  `⛔ dispatch [rejected → all files cached]\nALL ${String(cached.length)} target files are already in your context. ` +
                   `You have the data — plan, edit, or respond now. ` +
                   `Set force: true only if you need code agents to EDIT these files.`
                 );
@@ -950,7 +1147,7 @@ export function buildSubagentTools(models: SubagentModels) {
                 const actionHint = hasCodeTask
                   ? "Set force: true only if you need agents to EDIT these files."
                   : "Set force: true only if you need agents to do multi-step investigation beyond what's already in context.";
-                return `Dispatch rejected: ${String(cached.length)}/${String(allTargetFiles.length)} target files are already in your context (${cachedList}).${missingHint} Act on the data you have. ${actionHint}`;
+                return `⛔ dispatch [rejected → files already cached]\n${String(cached.length)}/${String(allTargetFiles.length)} target files already in context (${cachedList}).${missingHint} Act on the data you have. ${actionHint}`;
               }
             }
           }
@@ -962,7 +1159,7 @@ export function buildSubagentTools(models: SubagentModels) {
                 .map((s, i) => `  ${String(i + 1)}. ${s}`)
                 .join("\n");
               return (
-                `Dispatch rejected: this is dispatch #${String(turnDispatchCount + 1)} this turn. Previous dispatch(es):\n${prev}\n` +
+                `⛔ dispatch [rejected → repeat dispatch]\nThis is dispatch #${String(turnDispatchCount + 1)} this turn. Previous dispatch(es):\n${prev}\n` +
                 `Act on these results before dispatching again. If they lack what you need, use read_file/read_code/soul_grep for targeted follow-up. ` +
                 `Set force: true only after confirming previous results genuinely lack the specific information you need.`
               );
@@ -990,7 +1187,7 @@ export function buildSubagentTools(models: SubagentModels) {
                 .map(([f, owners]) => `  \`${f}\` — ${owners.join(", ")}`)
                 .join("\n");
               return (
-                `Dispatch rejected: ${String(overlaps.length)} file(s) targeted by multiple agents:\n${lines}\n` +
+                `⛔ dispatch [rejected → file overlap]\n${String(overlaps.length)} file(s) targeted by multiple agents:\n${lines}\n` +
                 `Split by file ownership — each file belongs to exactly one agent. ` +
                 `Set force: true to proceed anyway.`
               );
@@ -1003,7 +1200,7 @@ export function buildSubagentTools(models: SubagentModels) {
               if (t.role !== "investigate") continue;
               if (INVESTIGATION_SIGNALS.test(t.task)) continue;
               return (
-                `Dispatch rejected: investigate task "${t.id ?? "?"}" lacks a specific investigation target.\n` +
+                `⛔ dispatch [rejected → vague investigation]\nTask "${t.id ?? "?"}" lacks a specific investigation target.\n` +
                 `Task: "${t.task.slice(0, 120)}${t.task.length > 120 ? "..." : ""}"\n` +
                 `Investigation tasks should specify what to look for: a pattern, a question, a metric, or a comparison. ` +
                 `Example: "Use soul_grep count mode to find inline style={{ patterns across all screens, then compare error handling in useSocial vs useAuth."\n` +
@@ -1015,7 +1212,7 @@ export function buildSubagentTools(models: SubagentModels) {
               (t) => t.targetFiles.length === 1 && t.targetFiles[0]?.toLowerCase() === WEB_MARKER,
             );
             if (webTasks.length > 2) {
-              return `Dispatch rejected: ${String(webTasks.length)} web search tasks is excessive. Use at most 2 focused web tasks per dispatch. Check the conversation for URLs the user already shared (use fetch_page) and previous search results before searching again. Set force: true only after confirming existing context lacks the answer.`;
+              return `⛔ dispatch [rejected → too many web tasks]\n${String(webTasks.length)} web search tasks is excessive (max 2). Check the conversation for URLs the user already shared (use fetch_page) and previous search results before searching again. Set force: true only after confirming existing context lacks the answer.`;
             }
 
             // Gate: reject small dispatches — faster to do directly
@@ -1042,7 +1239,7 @@ export function buildSubagentTools(models: SubagentModels) {
               ) {
                 const fileList = [...uniqueFiles].map((f) => `\`${f}\``).join(", ");
                 return (
-                  `Dispatch rejected: ${String(uniqueFiles.size)} file${uniqueFiles.size === 1 ? "" : "s"} (${fileList}) — read them directly with read_code or read_file. ` +
+                  `⛔ dispatch [rejected → too few files]\n${String(uniqueFiles.size)} file${uniqueFiles.size === 1 ? "" : "s"} (${fileList}) — read directly with read_code or read_file. ` +
                   `Dispatch is for parallel work across ${String(MAX_EXPLORE_FILES + 1)}+ files or when agents need to EDIT. ` +
                   `Set force: true only if you need agents to do multi-step research beyond simple reads.`
                 );
@@ -1051,7 +1248,7 @@ export function buildSubagentTools(models: SubagentModels) {
               if (hasCode && uniqueFiles.size <= MAX_CODE_FILES) {
                 const fileList = [...uniqueFiles].map((f) => `\`${f}\``).join(", ");
                 return (
-                  `Dispatch rejected: ${String(uniqueFiles.size)} file${uniqueFiles.size === 1 ? "" : "s"} (${fileList}) — edit them directly with edit_file. ` +
+                  `⛔ dispatch [rejected → too few files]\n${String(uniqueFiles.size)} file${uniqueFiles.size === 1 ? "" : "s"} (${fileList}) — edit directly with edit_file. ` +
                   `Code dispatch is for edits across ${String(MAX_CODE_FILES + 1)}+ files where agents own distinct files. ` +
                   `Set force: true only if the edit requires multi-step work (read → analyze → edit → verify) that justifies an agent.`
                 );
@@ -1263,9 +1460,11 @@ export function buildSubagentTools(models: SubagentModels) {
           }
 
           for (const r of results) {
-            const status = r.success ? "✓" : "✗";
+            const done = r.result.startsWith("[done]");
+            const status = r.success ? (done ? "✓" : "⚠") : "✗";
+            const doneTag = done ? " [done]" : " [no-done]";
             sections.push(
-              `\n### ${status} Agent: ${r.agentId} (${r.role})\nTask: ${r.task}\n\n${r.result}\n\n---`,
+              `\n### ${status} Agent: ${r.agentId} (${r.role})${doneTag}\nTask: ${r.task}\n\n${r.result}\n\n---`,
             );
           }
 
