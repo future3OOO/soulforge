@@ -1205,6 +1205,42 @@ export function buildSubagentTools(models: SubagentModels) {
             args = { ...args, tasks: [...pinned, ...mergeable] };
           }
 
+          // Auto-split tasks with too many files per agent (ensures agents call done within step budget)
+          const MAX_FILES_PER_AGENT = 5;
+          const splitTasks: typeof args.tasks = [];
+          for (const t of args.tasks) {
+            const isWebTask =
+              t.targetFiles.length === 1 && t.targetFiles[0]?.toLowerCase() === WEB_MARKER;
+            if (
+              isWebTask ||
+              t.role === "code" ||
+              t.role === "investigate" ||
+              t.targetFiles.length <= MAX_FILES_PER_AGENT
+            ) {
+              splitTasks.push(t);
+              continue;
+            }
+            // Split explore tasks with >5 files into chunks
+            for (let i = 0; i < t.targetFiles.length; i += MAX_FILES_PER_AGENT) {
+              const chunk = t.targetFiles.slice(i, i + MAX_FILES_PER_AGENT);
+              const chunkId = t.id
+                ? `${t.id}-${String(Math.floor(i / MAX_FILES_PER_AGENT) + 1)}`
+                : undefined;
+              splitTasks.push({
+                ...t,
+                id: chunkId,
+                targetFiles: chunk,
+                task:
+                  i === 0
+                    ? t.task
+                    : `${t.task} (continued — files ${String(i + 1)}-${String(i + chunk.length)})`,
+              });
+            }
+          }
+          if (splitTasks.length !== args.tasks.length) {
+            args = { ...args, tasks: splitTasks };
+          }
+
           if (!args.force && cacheRef.current) {
             const cache = cacheRef.current;
             const allTargetFiles: string[] = [];
