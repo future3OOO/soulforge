@@ -11,21 +11,41 @@ import { getModeInstructions } from "../modes/prompts.js";
 import { buildForbiddenContext, isForbidden } from "../security/forbidden.js";
 import { onFileEdited, onFileRead } from "../tools/file-events.js";
 
-// System prompt: plain text, prohibition-style enforcement, micro-fragment rules
-// Synthesized from: Claude Code (cache-stable fragments), ECC (schema > prompt), omo (prohibition + clearance)
+// System prompt: question-driven tool routing + prohibition enforcement
+// Pattern: map the QUESTION the agent would ask → the tool that answers it
+// Sources: Claude Code (fragments), ECC (schema > prompt), omo (prohibition + clearance)
 const TOOL_GUIDANCE_BASE = [
+  // Core discipline
   "Only call tools when necessary. If the Repo Map, cache, or previous results already answer your question, act without calling tools.",
   "Repo Map, tool results, and read cache are always current (auto-updated on every edit). This data is authoritative. FORBIDDEN: re-reading, re-grepping, or re-verifying data you already have.",
   "Stop as soon as you can act. Two examples confirming a pattern = confirmed. If you have enough to plan or edit, do it now. Every additional read is token waste.",
-  "Workflow: 1) Check the Repo Map for paths, symbols, line ranges, dependencies. 2) If the Repo Map answers it, act — no tool call. 3) If you need code, one read per file, one search per question.",
-  "Tool selection: one symbol = read_code. Full file = read_file once. FORBIDDEN: chunking a file into sequential reads. Definition/references = navigate. Structure = analyze. Pattern frequency = soul_grep count or soul_analyze. File discovery = soul_find. Rename = rename_symbol. Move = move_symbol. Extract = refactor. Test/build/lint = project.",
-  "Compound tools (rename_symbol, move_symbol, project) do the COMPLETE job. FORBIDDEN: extra verification steps after compound tools.",
-  "Every response MUST end with an action: a tool call, a plan, an edit, or a direct answer. FORBIDDEN: passive endings ('let me know'), reading more after stating you have enough, summaries without next steps.",
+  "Workflow: 1) Check Repo Map for paths, symbols, line ranges, dependencies. 2) If it answers your question, act — no tool call. 3) If you need code, one read per file, one search per question.",
+  // Question → tool routing (intelligence tools FIRST, low-level as FALLBACK)
+  "BEFORE reaching for grep or read_file, ask which question you're answering:",
+  "Where is this symbol defined? → navigate(action: definition) — gives exact file + line. Not grep.",
+  "Who calls this function? What references it? → navigate(action: references) — gives all call sites. Not grep.",
+  "What does this function do? Read its code. → read_code(target, name, file) — extracts by name. Not read_file.",
+  "What's the structure of this file? → analyze(action: outline) — symbols without reading content. Not read_file.",
+  "Are there type errors after my edit? → analyze(action: diagnostics) — instant LSP check. Not project(typecheck).",
+  "How widespread is this pattern? → soul_grep(count: true) — per-file counts from index. Not grep.",
+  "Where does this file/symbol live? → soul_find — PageRank-ranked fuzzy search. Not glob.",
+  "What breaks if I change this file? → soul_impact(action: blast_radius) — from dependency graph. Not grep.",
+  "What depends on this / what does this depend on? → soul_impact(action: dependents/dependencies).",
+  "Is this export used anywhere? → soul_analyze(action: unused_exports) — dead code detection.",
+  "Rename this symbol across all files? → rename_symbol — compiler-guaranteed atomic rename. FORBIDDEN: grep + manual edit_file for renames.",
+  "Move this to another file? → move_symbol — extracts + updates all importers. FORBIDDEN: manual copy + import fixup.",
+  "Run tests/build/lint? → project — auto-detects toolchain. FORBIDDEN: shell for standard project commands.",
+  "Need the full file (config/json/markdown)? → read_file once. FORBIDDEN: chunking into sequential reads.",
+  "Need string literal or non-code pattern? → grep. This is grep's job, not navigate's.",
+  // Compound discipline
+  "Compound tools (rename_symbol, move_symbol, project) do the COMPLETE job. FORBIDDEN: extra verification after them.",
+  // Turnover
+  "Every response MUST end with an action: a tool call, a plan, an edit, or a direct answer. FORBIDDEN: passive endings, reading more after stating you have enough, summaries without next steps.",
 ];
 
 const TOOL_GUIDANCE_LOW_LEVEL_WITH_MAP = [
-  "Low-level tools (only when intelligence tools fail): read_file for config/json/yaml/markdown. grep for string literals, non-code patterns. glob for files not in Repo Map. shell only when project tool can't handle it.",
-  "Repo Map tools (zero-token): soul_grep for count-mode + word boundary. soul_find for fuzzy file/symbol discovery (PageRank). soul_analyze for frequency, unused exports, profiles. soul_impact for dependency graphs.",
+  "FALLBACK tools (only when intelligence tools above can't answer your question): read_file for config/json/yaml/markdown. grep for string literals, non-code patterns. glob for files not in Repo Map. shell only when project tool can't handle it.",
+  "Repo Map tools (zero-token, no file reads needed): soul_grep for count-mode + word boundary. soul_find for fuzzy file/symbol discovery (PageRank). soul_analyze for frequency, unused exports, profiles. soul_impact for dependency graphs, blast radius, cochanges.",
   "Cross-cutting analysis: soul_grep count + soul_analyze for broad patterns, grep for specific multi-line patterns. Dispatch investigation agents for parallel scanning.",
 ];
 

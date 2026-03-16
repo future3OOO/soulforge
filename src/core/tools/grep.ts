@@ -80,7 +80,14 @@ export const grepTool = {
       new Promise<string>((res) => setTimeout(() => res(filtered), ENRICHMENT_TIMEOUT_MS)),
     ]);
 
-    return { success: true, output: enriched };
+    // Hint: if pattern is a single identifier, navigate(references) is more precise
+    const isIdentifier = /^[a-zA-Z_$][a-zA-Z0-9_$]*$/.test(pattern);
+    const hint =
+      isIdentifier && !glob
+        ? `\n\n[Hint: for symbol references, navigate(action: references, symbol: "${pattern}") gives exact call sites without false positives.]`
+        : "";
+
+    return { success: true, output: enriched + hint };
   },
 };
 
