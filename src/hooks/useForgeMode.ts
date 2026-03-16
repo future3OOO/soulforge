@@ -1,7 +1,7 @@
 import { useCallback, useState } from "react";
 import type { ForgeMode } from "../types/index.js";
 
-const MODE_ORDER: ForgeMode[] = ["default", "architect", "socratic", "challenge", "plan"];
+const MODE_ORDER: ForgeMode[] = ["default", "architect", "socratic", "challenge", "plan", "auto"];
 
 const MODE_LABELS: Record<ForgeMode, string> = {
   default: "Default",
@@ -9,6 +9,7 @@ const MODE_LABELS: Record<ForgeMode, string> = {
   socratic: "Socratic",
   challenge: "Challenge",
   plan: "Plan",
+  auto: "Auto",
 };
 
 const MODE_COLORS: Record<ForgeMode, string> = {
@@ -17,6 +18,7 @@ const MODE_COLORS: Record<ForgeMode, string> = {
   socratic: "#FF8C00",
   challenge: "#FF0040",
   plan: "#00BFFF",
+  auto: "#2d5",
 };
 
 interface ForgeModeState {

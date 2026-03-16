@@ -502,6 +502,7 @@ export function useChat({
   activeModelRef.current = activeModel;
   const [isCompacting, setIsCompacting] = useState(false);
   const isCompactingRef = useRef(false);
+  const compactAbortRef = useRef<AbortController | null>(null);
   const pendingCompactRef = useRef(false);
   const initialStrategy = effectiveConfig.compaction?.strategy ?? "v1";
   const workingStateRef = useRef<WorkingStateManager | null>(
@@ -605,6 +606,15 @@ export function useChat({
       isCompactingRef.current = true;
       setIsCompacting(true);
       if (visibleRef.current) useStatusBarStore.getState().setCompacting(true);
+
+      const compactAbort = new AbortController();
+      compactAbortRef.current = compactAbort;
+      const startTime = Date.now();
+      const compactTimer = setInterval(() => {
+        const elapsed = Math.round((Date.now() - startTime) / 1000);
+        if (visibleRef.current) useStatusBarStore.getState().setCompactElapsed(elapsed);
+      }, 1000);
+
       try {
         const compactModelId = resolveTaskModel(
           "compact",
@@ -723,6 +733,7 @@ export function useChat({
             providerOptions,
             headers,
             skipLlm: compactionCfg?.llmExtraction === false,
+            abortSignal: compactAbort.signal,
           });
           wsm.reset();
         } else {
@@ -757,6 +768,7 @@ export function useChat({
           const { text: v1Summary } = await generateText({
             model,
             maxOutputTokens: 8192,
+            abortSignal: compactAbort.signal,
             ...(providerOptions && Object.keys(providerOptions).length > 0
               ? { providerOptions }
               : {}),
@@ -900,6 +912,8 @@ export function useChat({
           },
         ]);
       } finally {
+        clearInterval(compactTimer);
+        compactAbortRef.current = null;
         isCompactingRef.current = false;
         setIsCompacting(false);
         if (visibleRef.current) useStatusBarStore.getState().setCompacting(false);
@@ -1255,14 +1269,20 @@ export function useChat({
         const webSearchModelId = tr?.webSearch ?? undefined;
         const trivialModelId = tr?.trivial ?? undefined;
         const desloppifyModelId = tr?.desloppify ?? undefined;
+        const verifyModelId = tr?.verify ?? undefined;
         const hasSubagentModels =
-          explorationModelId || codingModelId || trivialModelId || desloppifyModelId;
+          explorationModelId ||
+          codingModelId ||
+          trivialModelId ||
+          desloppifyModelId ||
+          verifyModelId;
         const subagentModels = hasSubagentModels
           ? {
               exploration: explorationModelId ? resolveModel(explorationModelId) : undefined,
               coding: codingModelId ? resolveModel(codingModelId) : undefined,
               trivial: trivialModelId ? resolveModel(trivialModelId) : undefined,
               desloppify: desloppifyModelId ? resolveModel(desloppifyModelId) : undefined,
+              verify: verifyModelId ? resolveModel(verifyModelId) : undefined,
             }
           : undefined;
         const webSearchModel = webSearchModelId ? resolveModel(webSearchModelId) : undefined;
@@ -1921,16 +1941,13 @@ export function useChat({
             setActivePlan(null);
             setSidebarPlan(null);
             setCoreMessages((prev) => {
-              let end = prev.length;
-              while (end > 0) {
-                const m = prev[end - 1];
-                if (!m) break;
-                if (m.role === "tool") {
-                  end--;
-                  continue;
-                }
-                if (m.role === "assistant" && Array.isArray(m.content)) {
-                  const hasPlanCall = m.content.some(
+              let planIdx = -1;
+              for (let i = prev.length - 1; i >= 0; i--) {
+                const m = prev[i];
+                if (
+                  m?.role === "assistant" &&
+                  Array.isArray(m.content) &&
+                  m.content.some(
                     (p: unknown) =>
                       typeof p === "object" &&
                       p !== null &&
@@ -1938,15 +1955,14 @@ export function useChat({
                       (p as { type: string }).type === "tool-call" &&
                       "toolName" in p &&
                       (p as { toolName: string }).toolName === "plan",
-                  );
-                  if (hasPlanCall) {
-                    end--;
-                    continue;
-                  }
+                  )
+                ) {
+                  planIdx = i;
+                  break;
                 }
-                break;
               }
-              return prev.slice(0, end);
+              if (planIdx < 0) return prev;
+              return prev.slice(0, planIdx);
             });
             setTimeout(() => handleSubmit(postAction.reviseFeedback ?? "Revise the plan."), 0);
           } else {
@@ -2072,6 +2088,20 @@ export function useChat({
   pendingQuestionRef.current = pendingQuestion;
 
   const abort = useCallback(() => {
+    if (compactAbortRef.current) {
+      compactAbortRef.current.abort();
+      compactAbortRef.current = null;
+      setMessages((prev) => [
+        ...prev,
+        {
+          id: crypto.randomUUID(),
+          role: "system" as const,
+          content: "Compaction aborted.",
+          timestamp: Date.now(),
+        },
+      ]);
+      return;
+    }
     if (abortRef.current) {
       const pq = pendingQuestionRef.current;
       if (pq) {

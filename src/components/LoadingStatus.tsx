@@ -1,6 +1,7 @@
 import { fg as fgStyle, StyledText, type TextRenderable } from "@opentui/core";
 import { useEffect, useRef } from "react";
 import { icon } from "../core/icons.js";
+import { useStatusBarStore } from "../stores/statusbar.js";
 
 const FORGE_STATUSES = [
   "Forging response…",
@@ -44,7 +45,7 @@ function buildBusyContent(
   const statusColor = isCompacting ? "#3388cc" : "#6A0DAD";
 
   const chunks = [fgStyle(ghostColor)(` ${currentGhost} `), fgStyle(statusColor)(busyStatus)];
-  if (isLoading && elapsedSec > 0) {
+  if ((isLoading || isCompacting) && elapsedSec > 0) {
     chunks.push(fgStyle("#555")(` ${formatElapsed(elapsedSec)}`));
   }
   if (queueCount != null && queueCount > 0) {
@@ -116,7 +117,11 @@ export function LoadingStatus({ isLoading, isCompacting, queueCount }: LoadingSt
     const timer = setInterval(() => {
       ghostTickRef.current++;
       const { isLoading: ld, isCompacting: cp, queueCount: qc } = propsRef.current;
-      const elapsed = ld ? Math.floor((Date.now() - loadingStartRef.current) / 1000) : 0;
+      const elapsed = cp
+        ? useStatusBarStore.getState().compactElapsed
+        : ld
+          ? Math.floor((Date.now() - loadingStartRef.current) / 1000)
+          : 0;
       try {
         if (textRef.current) {
           textRef.current.content = buildBusyContent(

@@ -19,8 +19,9 @@ export async function buildV2Summary(opts: {
   providerOptions?: Record<string, JSONObject>;
   headers?: Record<string, string>;
   skipLlm?: boolean;
+  abortSignal?: AbortSignal;
 }): Promise<string> {
-  const { wsm, olderMessages, model, providerOptions, headers, skipLlm } = opts;
+  const { wsm, olderMessages, model, providerOptions, headers, skipLlm, abortSignal } = opts;
 
   const structuredState = wsm.serialize();
 
@@ -33,6 +34,7 @@ export async function buildV2Summary(opts: {
   const { text: gapFill } = await generateText({
     model,
     maxOutputTokens: 2048,
+    ...(abortSignal ? { abortSignal } : {}),
     ...(providerOptions && Object.keys(providerOptions).length > 0 ? { providerOptions } : {}),
     ...(headers ? { headers } : {}),
     prompt: [

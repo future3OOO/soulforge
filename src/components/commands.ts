@@ -931,7 +931,7 @@ async function handleCommandInner(input: string, ctx: CommandContext): Promise<v
 
   if (cmd === "/mode" || cmd.startsWith("/mode ")) {
     const modeName = trimmed.slice(5).trim().toLowerCase();
-    const validModes = ["default", "architect", "socratic", "challenge", "plan"] as const;
+    const validModes = ["default", "architect", "socratic", "challenge", "plan", "auto"] as const;
     type Mode = (typeof validModes)[number];
     const patch = (v: string) => ({ defaultForgeMode: v as Mode });
 
@@ -958,7 +958,7 @@ async function handleCommandInner(input: string, ctx: CommandContext): Promise<v
         {
           id: crypto.randomUUID(),
           role: "system",
-          content: `Unknown mode: ${modeName}. Available: default, architect, socratic, challenge, plan`,
+          content: `Unknown mode: ${modeName}. Available: default, architect, socratic, challenge, plan, auto`,
           timestamp: Date.now(),
         },
       ]);
@@ -999,6 +999,12 @@ async function handleCommandInner(input: string, ctx: CommandContext): Promise<v
             label: "Plan",
             description: "research & plan only — no file edits or shell",
             color: "#00BFFF",
+          },
+          {
+            value: "auto",
+            label: "Auto",
+            description: "autonomous execution — minimal questions, action over planning",
+            color: "#2d5",
           },
         ],
         onSelect: (value, scope) => applyMode(value as Mode, scope),

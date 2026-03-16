@@ -18,6 +18,11 @@ function exploreBase(): string {
     "INVESTIGATION: When your task asks to find patterns, compare implementations, audit quality, or analyze across multiple files — work breadth-first: soul_grep (count mode) to find frequency of repeated idioms, soul_analyze (unused_exports, identifier_frequency) for structural hotspots, grep for repeated multi-line patterns (error handling, guard clauses, boilerplate). Read specific files only AFTER scanning reveals targets. Compare sibling functions (same file or same role across files) by reading them side-by-side. Report both file-local AND cross-file patterns with occurrence counts.",
     "",
     'OUTPUT CONTRACT: The parent agent is BLIND to your tool results — it only sees your done call. Paste full function bodies, complete type definitions, and entire relevant code blocks into keyFindings[].detail. If the parent has to call read_file after you, your done call failed. Rule: if you read it and it matters, paste it. Descriptions like "it uses a map to track X" are worthless — paste the actual map code.',
+    "",
+    "RECOGNIZE YOUR RATIONALIZATIONS: You will feel the urge to read_file every target sequentially. These are the excuses — do the opposite:",
+    '- "Let me read each file to understand the pattern" — use soul_grep count mode. It shows frequency across the codebase in one call.',
+    '- "I need the full file" — use read_code with the symbol name. Extracts exactly what you need.',
+    "- \"I'll read everything then analyze\" — you'll run out of steps. Scan first (soul_grep/soul_analyze), read only the hits.",
   ].join("\n");
 }
 
@@ -68,7 +73,7 @@ export function createExploreAgent(model: LanguageModel, options?: ExploreAgentO
     repoMap: options?.repoMap,
   });
   if (hasBus) {
-    tools = wrapWithBusCache(tools, bus, agentId) as typeof tools;
+    tools = wrapWithBusCache(tools, bus, agentId, options?.repoMap) as typeof tools;
   }
 
   const allTools = {

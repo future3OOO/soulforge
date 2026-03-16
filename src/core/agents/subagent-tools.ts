@@ -31,6 +31,7 @@ interface SubagentModels {
   webSearchModel?: LanguageModel;
   trivialModel?: LanguageModel;
   desloppifyModel?: LanguageModel;
+  verifyModel?: LanguageModel;
   providerOptions?: ProviderOptions;
   headers?: Record<string, string>;
   onApproveWebSearch?: (query: string) => Promise<boolean>;
@@ -422,6 +423,110 @@ async function runDesloppify(
       agentId: "desloppify",
       role: "code",
       task: `cleanup ${String(editedPaths.length)} files`,
+      totalAgents: tasks.length + 1,
+      error: msg,
+    });
+    return null;
+  }
+}
+
+const VERIFY_PROMPT = [
+  "You are a verification specialist. Your job is not to confirm the implementation works — it is to try to break it.",
+  "",
+  "RECOGNIZE YOUR RATIONALIZATIONS:",
+  '- "The code looks correct" — reading is not verification. Run typecheck/lint/tests.',
+  '- "The tests pass" — the implementer is an LLM. Its tests may be circular or mock-heavy. Verify independently.',
+  '- "This is probably fine" — probably is not verified. Check it.',
+  "",
+  "PROCESS:",
+  "1. Read each edited file with read_code to understand what changed",
+  "2. Run project typecheck — type errors in edited files are automatic FAIL",
+  "3. Run project lint — lint errors in edited files are FAIL",
+  "4. Run project test if tests exist — failures are FAIL",
+  "5. Check for logic issues: missing error handling, race conditions, broken imports, unused variables",
+  "6. Check the changes make sense in context: read callers/importers of modified exports",
+  "",
+  "OUTPUT: End your done call summary with exactly one of:",
+  "  VERDICT: PASS",
+  "  VERDICT: FAIL — [specific issues]",
+  "  VERDICT: PARTIAL — [what could not be verified and why]",
+  "",
+  "PASS means you ran checks and found no issues. FAIL means you found concrete problems. PARTIAL means tooling was unavailable.",
+  "If the code is trivial (config change, comment, rename) and typecheck passes, PASS quickly.",
+].join("\n");
+
+async function runVerifier(
+  bus: AgentBus,
+  tasks: AgentTask[],
+  models: SubagentModels,
+  parentToolCallId: string,
+  abortSignal?: AbortSignal,
+): Promise<string | null> {
+  if (models.agentFeatures?.verifyEdits === false) return null;
+  const codeAgents = tasks.filter((t) => t.role === "code");
+  if (codeAgents.length === 0) return null;
+
+  const reviewModel = models.verifyModel ?? models.explorationModel ?? models.defaultModel;
+
+  const editedFiles = bus.getEditedFiles();
+  if (editedFiles.size === 0) return null;
+
+  const editedPaths = [...editedFiles.keys()];
+
+  emitMultiAgentEvent({
+    parentToolCallId,
+    type: "agent-start",
+    agentId: "verifier",
+    role: "explore",
+    task: `verify ${String(editedPaths.length)} edited files`,
+    totalAgents: tasks.length + 1,
+    modelId:
+      typeof reviewModel === "object" && "modelId" in reviewModel
+        ? String(reviewModel.modelId)
+        : "unknown",
+    tier: "standard",
+  });
+
+  try {
+    const verifyTask: AgentTask = {
+      agentId: "verifier",
+      role: "explore",
+      task: `${VERIFY_PROMPT}\n\nFiles edited by code agents:\n${editedPaths.map((p) => `- ${p}`).join("\n")}`,
+    };
+
+    bus.registerTasks([verifyTask]);
+
+    const { agent } = createAgent(verifyTask, { ...models, explorationModel: reviewModel }, bus);
+
+    const callbacks = buildStepCallbacks(parentToolCallId, "verifier");
+    const result = await agent.generate({
+      prompt: verifyTask.task,
+      abortSignal,
+      ...callbacks,
+    });
+
+    const doneResult = extractDoneResult(result);
+    const resultText = doneResult ? formatDoneResult(doneResult) : buildFallbackResult(result);
+
+    emitMultiAgentEvent({
+      parentToolCallId,
+      type: "agent-done",
+      agentId: "verifier",
+      role: "explore",
+      task: `verify ${String(editedPaths.length)} edited files`,
+      totalAgents: tasks.length + 1,
+    });
+
+    return `\n\n### Verification\n${resultText}`;
+  } catch (err) {
+    const msg = err instanceof Error ? err.message : String(err);
+    logBackgroundError("verifier", msg);
+    emitMultiAgentEvent({
+      parentToolCallId,
+      type: "agent-error",
+      agentId: "verifier",
+      role: "explore",
+      task: `verify ${String(editedPaths.length)} edited files`,
       totalAgents: tasks.length + 1,
       error: msg,
     });
@@ -890,7 +995,7 @@ export function buildSubagentTools(models: SubagentModels) {
               );
             }
 
-            // Gate: intra-dispatch file overlap between agents
+            // Gate: intra-dispatch file overlap between agents (exact files only, not directories)
             const fileOwners = new Map<string, string[]>();
             for (const t of args.tasks) {
               const isWebTask =
@@ -899,6 +1004,7 @@ export function buildSubagentTools(models: SubagentModels) {
               const label = t.id ?? t.task.slice(0, 60);
               for (const f of t.targetFiles) {
                 const norm = normalizePath(f);
+                if (!norm.includes(".")) continue;
                 const owners = fileOwners.get(norm);
                 if (owners) owners.push(label);
                 else fileOwners.set(norm, [label]);
@@ -1065,16 +1171,19 @@ export function buildSubagentTools(models: SubagentModels) {
               abortSignal,
             );
 
+            const verifyResult = await runVerifier(bus, [task], models, toolCallId, abortSignal);
+
             const edited = [...editedMap.keys()];
             turnDispatchCount++;
             turnDispatchSummaries.push(
               `${args.objective ?? "Single agent"}: ${edited.length > 0 ? `edited ${edited.join(", ")}` : "read-only"}`,
             );
 
+            const postParts = [desloppifyResult, verifyResult].filter(Boolean);
             return {
               reads: bus.getFileReadRecords(task.agentId),
               filesEdited: edited,
-              output: desloppifyResult ? `${resultText}\n${desloppifyResult}` : resultText,
+              output: postParts.length > 0 ? `${resultText}\n${postParts.join("\n")}` : resultText,
             } satisfies DispatchOutput;
           }
 
@@ -1217,6 +1326,9 @@ export function buildSubagentTools(models: SubagentModels) {
             combinedAbort,
           );
           if (desloppifyResult) sections.push(desloppifyResult);
+
+          const verifyResult = await runVerifier(bus, tasks, models, toolCallId, combinedAbort);
+          if (verifyResult) sections.push(verifyResult);
 
           const evalResult = await runEvaluator(bus, tasks, toolCallId);
           if (evalResult) sections.push(evalResult);

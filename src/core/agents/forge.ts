@@ -108,6 +108,7 @@ interface ForgeAgentOptions {
     coding?: LanguageModel;
     trivial?: LanguageModel;
     desloppify?: LanguageModel;
+    verify?: LanguageModel;
   };
   webSearchModel?: LanguageModel;
   onApproveWebSearch?: (query: string) => Promise<boolean>;
@@ -198,6 +199,7 @@ export function createForgeAgent({
         codingModel: subagentModels?.coding,
         trivialModel: subagentModels?.trivial,
         desloppifyModel: subagentModels?.desloppify,
+        verifyModel: subagentModels?.verify,
         webSearchModel,
         providerOptions,
         headers,

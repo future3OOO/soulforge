@@ -319,7 +319,7 @@ export function TabInstance({
         <LandingPage bootProviders={bootProviders} bootPrereqs={bootPrereqs} />
       ) : (
         <box flexGrow={1} flexShrink={1} minHeight={0} flexDirection="row">
-          <AnimatedBorder active={chat.isLoading}>
+          <AnimatedBorder active={chat.isLoading || chat.isCompacting}>
             <scrollbox
               ref={scrollRef}
               stickyScroll={true}

@@ -1083,6 +1083,7 @@ export function App({
               semantic: null,
               trivial: null,
               desloppify: null,
+              verify: null,
               default: null,
             };
             const updated = { ...current, [slot]: modelId };
@@ -1200,6 +1201,7 @@ export function App({
             semantic: null,
             trivial: null,
             desloppify: null,
+            verify: null,
             default: null,
           };
           const updated = { ...current, [slot]: null };

@@ -56,6 +56,13 @@ const MODE_INSTRUCTIONS: Record<ForgeMode, string | null> = {
     "Respectful but relentless. When satisfied: switch to default mode.",
   ].join("\n"),
   plan: null, // handled dynamically by getPlanModeInstructions
+  auto: [
+    "AUTO MODE — continuous autonomous execution.",
+    "Execute immediately. Make reasonable assumptions and proceed.",
+    "Minimize interruptions — prefer assumptions over questions. Only ask when genuinely blocked between fundamentally different approaches.",
+    "Prefer action over planning — do not create plans unless explicitly asked. Start coding.",
+    "Be thorough — complete the full task including verification without stopping.",
+  ].join("\n"),
 };
 
 export function getModeInstructions(

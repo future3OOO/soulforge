@@ -20,6 +20,8 @@ export interface TaskRouter {
   trivial: string | null;
   /** Model for de-sloppify cleanup pass after code agents */
   desloppify: string | null;
+  /** Model for post-dispatch verification specialist */
+  verify: string | null;
   default: string | null;
 }
 
@@ -223,6 +225,8 @@ export interface AgentFeatures {
   dispatchCache?: boolean;
   /** Require targetFiles on dispatch tasks — reject vague instructions. Default: true */
   targetFileValidation?: boolean;
+  /** Run a verification agent after code agents to adversarially review changes. Default: true (when exploration model is set) */
+  verifyEdits?: boolean;
 }
 
 export interface AppConfig {
@@ -281,7 +285,7 @@ export type FocusMode = "chat" | "editor";
 
 // ─── Forge Mode Types ───
 
-export type ForgeMode = "default" | "architect" | "socratic" | "challenge" | "plan";
+export type ForgeMode = "default" | "architect" | "socratic" | "challenge" | "plan" | "auto";
 
 // ─── Editor Types ───
 

@@ -19,6 +19,7 @@ function codeBase(): string {
     "DISCOVERY: If your task names symbols or keywords but NOT file paths, run one navigate workspace_symbols call with the keyword, then read_code on the result. If workspace_symbols returns nothing, fall back to grep for the symbol name across the codebase. One search, one read — never chain multiple discovery tools for the same target.",
     "",
     "OUTPUT CONTRACT: The parent agent is BLIND to your tool results — it only sees your done call. For edits: exact file paths, what changed, and the final signatures/types of key additions. For research: paste actual code, not descriptions. If the parent has to re-read your files, your done call failed.",
+    "Do NOT emit commentary between tool calls. Use tools, then report once in done. Stay within your task scope — if you discover related issues outside scope, mention in one sentence, don't fix them.",
   ].join("\n");
 }
 
@@ -69,7 +70,7 @@ export function createCodeAgent(model: LanguageModel, options?: CodeAgentOptions
     repoMap: options?.repoMap,
   });
   if (hasBus) {
-    tools = wrapWithBusCache(tools, bus, agentId) as typeof tools;
+    tools = wrapWithBusCache(tools, bus, agentId, options?.repoMap) as typeof tools;
   }
 
   const allTools = {

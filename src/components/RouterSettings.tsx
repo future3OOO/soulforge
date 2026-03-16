@@ -24,6 +24,7 @@ const SLOTS: SlotItem[] = [
   { key: "semantic", label: "Semantic", desc: "repo map summary generation" },
   { key: "trivial", label: "Trivial", desc: "single-file reads, small edits (fast/cheap)" },
   { key: "desloppify", label: "De-sloppify", desc: "cleanup pass after code agents" },
+  { key: "verify", label: "Verify", desc: "adversarial review after code agents" },
   { key: "default", label: "Default", desc: "everything else" },
 ];
 

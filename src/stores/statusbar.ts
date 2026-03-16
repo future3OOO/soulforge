@@ -29,6 +29,7 @@ interface StatusBarState {
   subagentChars: number;
   rssMB: number;
   compacting: boolean;
+  compactElapsed: number;
   compactionStrategy: "v1" | "v2";
   v2Slots: number;
 
@@ -39,6 +40,7 @@ interface StatusBarState {
   setSubagentChars: (chars: number) => void;
   setRssMB: (mb: number) => void;
   setCompacting: (v: boolean) => void;
+  setCompactElapsed: (s: number) => void;
   setCompactionStrategy: (s: "v1" | "v2") => void;
   setV2Slots: (n: number) => void;
 }
@@ -51,6 +53,7 @@ export const useStatusBarStore = create<StatusBarState>()((set) => ({
   subagentChars: 0,
   rssMB: Math.round(process.memoryUsage().rss / 1024 / 1024),
   compacting: false,
+  compactElapsed: 0,
   compactionStrategy: "v1",
   v2Slots: 0,
 
@@ -60,7 +63,8 @@ export const useStatusBarStore = create<StatusBarState>()((set) => ({
   setContextWindow: (tokens) => set({ contextWindow: tokens }),
   setSubagentChars: (chars) => set({ subagentChars: chars }),
   setRssMB: (mb) => set({ rssMB: mb }),
-  setCompacting: (v) => set({ compacting: v }),
+  setCompacting: (v) => set({ compacting: v, compactElapsed: 0 }),
+  setCompactElapsed: (s) => set({ compactElapsed: s }),
   setCompactionStrategy: (s) => set({ compactionStrategy: s }),
   setV2Slots: (n) => set({ v2Slots: n }),
 }));

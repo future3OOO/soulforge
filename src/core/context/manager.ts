@@ -14,6 +14,8 @@ import { onFileEdited, onFileRead } from "../tools/file-events.js";
 // Static prompt sections — extracted for stable cache prefix across turns and subagents
 const TOOL_GUIDANCE_BASE = [
   "## Intelligence Layer",
+  "**Workflow: Repo Map → targeted search → surgical reads.** Check the Repo Map for file/symbol locations first. Use soul_grep/soul_analyze to scan broadly. Only read_file for specific content the Repo Map and search tools can't provide.",
+  "",
   "You have LSP-powered code intelligence with multi-tier fallback (LSP → ts-morph → tree-sitter → regex). Use it as the primary way to understand code.",
   "",
   "**Symbol operations** — the right tool for each job:",
@@ -92,6 +94,8 @@ const DISPATCH_GUIDANCE_BASE = [
   "**Before dispatching, check what you already have.** Tool results, previous dispatch results, and file contents already in conversation are your first source.",
   "For 1-6 files to read or 1-3 files to edit, do it directly — the system rejects explore dispatches for ≤6 files and code dispatches for ≤3 files.",
   "One dispatch per task is the target. A second dispatch means the first was poorly scoped — the system rejects dispatches where target files are already read.",
+  "",
+  "**Never delegate understanding.** Don't write 'based on your findings, fix the bug' or 'read this and tell me what's there.' Write prompts that prove YOU understood: include file paths, line numbers, what specifically to look for or change. If you can't write a specific prompt, you haven't done enough research yet — use soul_grep/soul_analyze first.",
   "",
   "**After dispatch:** results include code content from subagent keyFindings. The system injects file-read records — trust them and act on the returned data. If lines were compacted, the output tells you exactly how many and what to do.",
 ];

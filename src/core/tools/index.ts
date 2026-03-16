@@ -85,6 +85,14 @@ export function buildTools(
   const mm = opts?.memoryManager ?? new MemoryManager(effectiveCwd);
   const memoryTool = createMemoryTool(mm);
 
+  let sequentialReads = 0;
+  const READ_NUDGE_THRESHOLD = 4;
+  const READ_NUDGE =
+    "\n\n---\n[Hint: You've read several files sequentially. Consider soul_grep (count mode) to scan patterns across the codebase, or soul_analyze for structural insights — both are faster than reading files one by one.]";
+  const resetReadCounter = () => {
+    sequentialReads = 0;
+  };
+
   async function gateOutsideCwd(
     toolName: string,
     filePath: string,
@@ -108,7 +116,14 @@ export function buildTools(
         startLine: z.number().optional().describe("Start line (1-indexed)"),
         endLine: z.number().optional().describe("End line (1-indexed)"),
       }),
-      execute: deferExecute((args) => readFileTool.execute(args)),
+      execute: deferExecute(async (args) => {
+        const result = await readFileTool.execute(args);
+        sequentialReads++;
+        if (sequentialReads >= READ_NUDGE_THRESHOLD && result.success) {
+          return { ...result, output: result.output + READ_NUDGE };
+        }
+        return result;
+      }),
     }),
 
     edit_file: tool({
@@ -213,7 +228,10 @@ export function buildTools(
               "Essential for counting variable/identifier occurrences.",
           ),
       }),
-      execute: deferExecute(soulGrepTool.createExecute(opts?.repoMap)),
+      execute: deferExecute((args) => {
+        resetReadCounter();
+        return soulGrepTool.createExecute(opts?.repoMap)(args);
+      }),
     }),
 
     soul_find: tool({
@@ -226,7 +244,10 @@ export function buildTools(
           .describe("Filter by file category"),
         limit: z.number().optional().describe("Max results (default 20)"),
       }),
-      execute: deferExecute(soulFindTool.createExecute(opts?.repoMap)),
+      execute: deferExecute((args) => {
+        resetReadCounter();
+        return soulFindTool.createExecute(opts?.repoMap)(args);
+      }),
     }),
 
     soul_analyze: tool({
@@ -239,7 +260,10 @@ export function buildTools(
         name: z.string().optional().describe("Identifier name (for identifier_frequency lookup)"),
         limit: z.number().optional().describe("Max results"),
       }),
-      execute: deferExecute(soulAnalyzeTool.createExecute(opts?.repoMap)),
+      execute: deferExecute((args) => {
+        resetReadCounter();
+        return soulAnalyzeTool.createExecute(opts?.repoMap)(args);
+      }),
     }),
 
     soul_impact: tool({
@@ -250,7 +274,10 @@ export function buildTools(
           .describe("Impact action"),
         file: z.string().describe("File path to analyze"),
       }),
-      execute: deferExecute(soulImpactTool.createExecute(opts?.repoMap)),
+      execute: deferExecute((args) => {
+        resetReadCounter();
+        return soulImpactTool.createExecute(opts?.repoMap)(args);
+      }),
     }),
 
     shell: tool({
@@ -292,6 +319,7 @@ export function buildTools(
           ),
       }),
       execute: deferExecute((args) => {
+        resetReadCounter();
         if (!args.force) {
           const hit = tryInterceptGrep(args, opts?.repoMap, effectiveCwd);
           if (hit) return Promise.resolve(hit);
@@ -439,6 +467,7 @@ export function buildTools(
           ),
       }),
       execute: deferExecute((args) => {
+        resetReadCounter();
         if (!args.force) {
           const hit = tryInterceptNavigate(args, opts?.repoMap, effectiveCwd);
           if (hit) return Promise.resolve(hit);
@@ -458,7 +487,14 @@ export function buildTools(
         startLine: z.number().optional().describe("Start line for scope target"),
         endLine: z.number().optional().describe("End line for scope target"),
       }),
-      execute: deferExecute((args) => readCodeTool.execute(args)),
+      execute: deferExecute(async (args) => {
+        const result = await readCodeTool.execute(args);
+        sequentialReads++;
+        if (sequentialReads >= READ_NUDGE_THRESHOLD && result.success) {
+          return { ...result, output: result.output + READ_NUDGE };
+        }
+        return result;
+      }),
     }),
 
     rename_symbol: tool({
@@ -1104,6 +1140,18 @@ export function buildSubagentExploreTools(opts?: {
           }),
         }
       : {}),
+
+    project: tool({
+      description: `${projectTool.description} Read-only actions only: test, build, lint, typecheck.`,
+      inputSchema: z.object({
+        action: z.enum(["test", "build", "lint", "typecheck"]).describe("Read-only project action"),
+        file: z.string().optional().describe("Target file or directory"),
+        timeout: z.number().optional().describe("Timeout in ms"),
+      }),
+      execute: deferExecute((args) =>
+        projectTool.execute(args as Parameters<typeof projectTool.execute>[0]),
+      ),
+    }),
   };
 }
 
@@ -1214,27 +1262,11 @@ export function wrapWithBusCache(
   tools: Record<string, WrappableTool>,
   bus: AgentBus,
   agentId: string,
+  repoMap?: RepoMap,
 ): Record<string, WrappableTool> {
   const wrapped = { ...tools };
 
   const CACHE_HIT_LINES_THRESHOLD = 80;
-
-  const CONFIG_EXTENSIONS = new Set([
-    ".json",
-    ".yaml",
-    ".yml",
-    ".toml",
-    ".xml",
-    ".md",
-    ".css",
-    ".scss",
-    ".html",
-    ".env",
-    ".conf",
-    ".ini",
-    ".cfg",
-    ".lock",
-  ]);
 
   function tagCacheHit(result: unknown, path: string): unknown {
     const text =
@@ -1243,16 +1275,37 @@ export function wrapWithBusCache(
         : String((result as Record<string, unknown>)?.output ?? "");
     const lineCount = text.split("\n").length;
     if (lineCount < CACHE_HIT_LINES_THRESHOLD) return result;
-    const ext = path.slice(path.lastIndexOf(".")).toLowerCase();
-    const hint = CONFIG_EXTENSIONS.has(ext)
-      ? `[Cached]`
-      : `[Cached — use read_code(target, name, "${path}") for specific symbols instead of re-reading.]`;
-    if (typeof result === "string") return `${hint}\n${result}`;
-    if (result && typeof result === "object" && "output" in result) {
-      const r = result as Record<string, unknown>;
-      return { ...r, output: `${hint}\n${String(r.output ?? "")}` };
+
+    let symbols: Array<{ name: string; kind: string; line: number }> = [];
+    if (repoMap) {
+      try {
+        symbols = repoMap.getFileSymbolRanges(path);
+      } catch {}
     }
-    return result;
+
+    if (symbols.length === 0) {
+      const tag = "[Cached]";
+      if (typeof result === "string") return `${tag}\n${result}`;
+      if (result && typeof result === "object" && "output" in result) {
+        return { ...(result as Record<string, unknown>), output: `${tag}\n${text}` };
+      }
+      return result;
+    }
+
+    const top = symbols.slice(0, 12);
+    const symbolHint = `Exported symbols: ${top.map((s) => `${s.name} (${s.kind}, line ${String(s.line)})`).join(", ")}${symbols.length > 12 ? `, +${String(symbols.length - 12)} more` : ""}`;
+
+    const stub = [
+      `[Cached — ${String(lineCount)} lines, already read by another agent]`,
+      symbolHint,
+      `Use read_code(target, name, "${path}") for specific symbols, or read_file with startLine/endLine for a range.`,
+      `Use check_findings to see what peer agents found in this file.`,
+    ].join("\n");
+
+    if (result && typeof result === "object") {
+      return { ...(result as Record<string, unknown>), output: stub };
+    }
+    return { success: true, output: stub };
   }
 
   function makeCachedExecute(
