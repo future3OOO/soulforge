@@ -482,6 +482,30 @@ export function buildPrepareStep({
     const warnThreshold =
       role === "explore" ? BUDGET_WARNING_THRESHOLD_EXPLORE : BUDGET_WARNING_THRESHOLD_CODE;
 
+    if (role === "explore" && stepNumber >= 13) {
+      const hasDone = messages.some(
+        (m) =>
+          m.role === "assistant" &&
+          Array.isArray(m.content) &&
+          m.content.some(
+            (p) =>
+              typeof p === "object" &&
+              p !== null &&
+              "type" in p &&
+              (p as { type: string }).type === "tool-call" &&
+              "toolName" in p &&
+              (p as { toolName: string }).toolName === "done",
+          ),
+      );
+      if (!hasDone) {
+        result.activeTools = ["done"];
+        result.toolChoice = "required";
+        const existing = result.system ?? "";
+        result.system =
+          `${existing}\nStep limit approaching. Call done NOW with your findings. Paste the code you've read into keyFindings — the parent cannot see your tool results.`.trim();
+      }
+    }
+
     if (totalTokens > forceThreshold) {
       result.activeTools = ["done"];
       result.toolChoice = "required";

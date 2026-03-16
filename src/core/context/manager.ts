@@ -74,7 +74,7 @@ const DISPATCH_GUIDANCE_BASE = [
   "- Every task requires `targetFiles` — exact file paths (extraction) or directory roots (investigation).",
   "- Split by file ownership, not by concept. Overlapping files = wasted cache.",
   "",
-  "Previous dispatch results and tool returns are already in your context — act on them.",
+  "**After dispatch: ACT.** Dispatch results contain full file content from agent reads. Proceed to planning or editing immediately. Re-reading dispatched files returns a cache stub, not the content. One dispatch per task is the target — a second dispatch means the first was poorly scoped.",
   "If the user shared a URL, `fetch_page` it before searching. fetch_page returns a 'Pages on this site' section — use those links instead of guessing.",
   "",
   "**Web search tasks:** ONE focused query per task with `targetFiles: ['web']`.",

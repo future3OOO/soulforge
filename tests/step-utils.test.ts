@@ -924,6 +924,595 @@ describe("buildSymbolLookup", () => {
 	});
 });
 
+// ---------------------------------------------------------------------------
+// summary format tests — every SUMMARIZABLE_TOOL with real audit data
+// ---------------------------------------------------------------------------
+
+describe("summary formats — real audit tool outputs", () => {
+	const DISPATCH_OUTPUT = [
+		"## Comprehensive project audit for bugs, performance, UI/UX issues",
+		"**8/8** agents completed successfully.",
+		"",
+		"### ✓ Agent: app-layout (explore)",
+		"Task: Read the main app layouts and navigation structure.",
+		"Read: app/_layout.tsx, app/(auth)/_layout.tsx, app/(tabs)/_layout.tsx",
+		"",
+		"### ✓ Agent: core-screens (explore)",
+		"Task: Read the main tab screens.",
+		"Read: app/(tabs)/index.tsx, app/(tabs)/collection.tsx, app/(tabs)/browse.tsx",
+		"",
+		"### ✓ Agent: auth-screens (explore)",
+		"Task: Read all auth screens.",
+		"",
+		"### ✓ Agent: stores-hooks (investigate)",
+		"Task: Find state management patterns.",
+		"",
+		"### ✓ Agent: components (investigate)",
+		"Task: Analyze component architecture.",
+		"",
+		"### Files Edited",
+		"- `src/hooks/useSocial.ts` — stores-hooks",
+		"- `src/components/PostCard.tsx` — auth-screens",
+		"",
+		"VERDICT: PASS — all changes verified by typecheck",
+		"",
+		"### Cache",
+		"Files: 5 hits, 0 waits, 41 misses | Tools: 3 hits, 0 waits, 27 misses",
+	].join("\n");
+
+	const DISPATCH_NO_SECTIONS = "Dispatch completed with 3 agents.\nNo structured output.\n" +
+		Array.from({ length: 10 }, (_, i) => `Agent ${String(i)} explored files and found various patterns across the codebase.`).join("\n");
+
+	const SOUL_GREP_COUNT = [
+		"2383 matches across 91 files",
+		"",
+		"    231  ./app/blindbox.tsx",
+		"    109  ./app/(tabs)/collection.tsx",
+		"    108  ./app/post/create.tsx",
+		"    100  ./app/post/[id].tsx",
+		"     86  ./app/series/[id].tsx",
+		"     83  ./components/PostCard.tsx",
+	].join("\n");
+
+	const SOUL_GREP_SMALL = "2 matches across 1 files\n\n      2  ./app/(tabs)/collection.tsx";
+
+	const SHELL_TYPECHECK_FAIL = [
+		"app/(tabs)/browse.tsx(407,15): error TS2322: Type '{ data: SeriesWithProgress[] }' is not assignable.",
+		"app/(tabs)/collection.tsx(12,5): error TS2322: Type 'string' is not assignable to type 'number'.",
+		"Found 2 errors.",
+		"exit code: 2",
+	].join("\n");
+
+	const SHELL_OK = "     697 components/PostCard.tsx\n";
+
+	const SHELL_PNPM = [
+		"Packages: +5",
+		"+++++",
+		"Progress: resolved 312, reused 310, downloaded 2, added 5, done",
+		"",
+		"devDependencies:",
+		"+ eslint 8.57.0",
+		"+ eslint-config-expo 7.0.0",
+		"+ prettier 3.2.5",
+		"+ eslint-config-prettier 9.1.0",
+		"+ eslint-plugin-prettier 5.1.3",
+		"",
+		"Done in 4.2s",
+	].join("\n");
+
+	const READ_FILE_OUTPUT = Array.from(
+		{ length: 350 },
+		(_, i) => `     ${String(i + 1)}\t${i === 0 ? "import { useState } from 'react';" : `const line${String(i)} = ${String(i)};`}`,
+	).join("\n");
+
+	const SOUL_FIND_OUTPUT = Array.from(
+		{ length: 20 },
+		(_, i) => `[${String(0.95 - i * 0.02).slice(0, 4)}] src/components/Component${String(i)}.tsx`,
+	).join("\n");
+
+	const SOUL_ANALYZE_OUTPUT = [
+		"Structural clones for functions in app/(auth)/login.tsx:",
+		"",
+		"  FloatingBubble (line 15) — 2 clone(s):",
+		"    app/(auth)/signup.tsx:15 — FloatingBubble",
+		"    app/(auth)/onboarding.tsx:14 — FloatingBubble",
+		"  (anonymous) (line 23) — 2 clone(s):",
+		"    app/(auth)/signup.tsx:23 — (anonymous)",
+		"    app/(auth)/onboarding.tsx:22 — (anonymous)",
+		"  FloatingSparkle (line 47) — 2 clone(s):",
+		"    app/(auth)/signup.tsx:47 — FloatingSparkle",
+		"    app/(auth)/onboarding.tsx:46 — FloatingSparkle",
+	].join("\n");
+
+	const LIST_DIR_OUTPUT = [
+		"Total: 23 entries",
+		"",
+		"  app/",
+		"  components/",
+		"  constants/",
+		"  hooks/",
+		"  lib/",
+		"  db/",
+		"  types/",
+		"  stores/",
+		"  services/",
+		"  assets/",
+		"  scripts/",
+		"  package.json",
+		"  tsconfig.json",
+		"  babel.config.js",
+		"  metro.config.js",
+		"  app.json",
+		"  .gitignore",
+		"  .eslintrc.js",
+	].join("\n");
+
+	const PLAN_OUTPUT = [
+		"# Fix audit issues — performance and bugs",
+		"",
+		"### Step 1: Fix race condition in useFeed",
+		"Add abort controller to prevent stale loadMore appending after refresh.",
+		"",
+		"### Step 2: Extract FloatingBubble to shared component",
+		"Create AuthBackground.tsx with FloatingBubble + FloatingSparkle.",
+		"",
+		"### Step 3: Memoize feed items array",
+		"Wrap feedItems construction in useMemo.",
+	].join("\n");
+
+	const MEMORY_OUTPUT = [
+		"1. [decision] Use AbortController for all fetch operations",
+		"2. [convention] StyleSheet.create for all component styles",
+		"3. [pattern] Shared animated background for auth screens",
+		"4. [fact] 76 update_plan_step calls in single conversation",
+		"5. [architecture] Supabase RLS handles ownership checks",
+	].join("\n");
+
+	const GIT_OUTPUT = [
+		"feat: fix race condition in useFeed hook",
+		"",
+		"- Add AbortController to loadMore to prevent stale data appending after refresh",
+		"- Cancel in-flight requests on refresh cycle",
+		"- Extract FloatingBubble to AuthBackground.tsx shared component",
+		"- Memoize feedItems array with useMemo to prevent rebuild on every render",
+		"- Fix deletePost to include userId in query filter for ownership check",
+	].join("\n");
+
+	it("dispatch: extracts heading, agent count, files, agents, verification", () => {
+		const msgs = buildPaddedConversation({
+			id: "d1", name: "dispatch",
+			input: { objective: "audit" },
+			output: DISPATCH_OUTPUT,
+		});
+		const result = compactOldToolResults(msgs);
+		const text = resultText(result, 1);
+		expect(text).toStartWith("[pruned] dispatch completed");
+		expect(text).toContain("Comprehensive project audit");
+		expect(text).toContain("8/8 agents");
+		expect(text).toContain("edited:");
+		expect(text).toContain("agents: app-layout");
+		expect(text).toContain("verification: PASS");
+	});
+
+	it("dispatch: gracefully handles missing sections", () => {
+		const msgs = buildPaddedConversation({
+			id: "d1", name: "dispatch",
+			input: { objective: "audit" },
+			output: DISPATCH_NO_SECTIONS,
+		});
+		const result = compactOldToolResults(msgs);
+		const text = resultText(result, 1);
+		expect(text).toStartWith("[pruned] dispatch completed");
+		expect(text).not.toContain("agents:");
+		expect(text).not.toContain("edited:");
+		expect(text).not.toContain("verification:");
+	});
+
+	it("grep: includes match count and search pattern", () => {
+		const msgs = buildPaddedConversation({
+			id: "g1", name: "grep",
+			input: { pattern: "estimatedItemSize", path: "app" },
+			output: SOUL_GREP_COUNT,
+		});
+		const result = compactOldToolResults(msgs);
+		const text = resultText(result, 1);
+		expect(text).toMatch(/\[pruned\] \d+ matches for "estimatedItemSize"/);
+	});
+
+	it("soul_grep: includes match count and search pattern from args", () => {
+		const msgs = buildPaddedConversation({
+			id: "sg1", name: "soul_grep",
+			input: { pattern: "style={{" },
+			output: SOUL_GREP_COUNT,
+		});
+		const result = compactOldToolResults(msgs);
+		const text = resultText(result, 1);
+		expect(text).toContain("matches");
+		expect(text).toContain('for "style={{"');
+	});
+
+	it("soul_grep: works without pattern in args", () => {
+		const msgs = buildPaddedConversation({
+			id: "sg1", name: "soul_grep",
+			input: {},
+			output: SOUL_GREP_COUNT,
+		});
+		const result = compactOldToolResults(msgs);
+		const text = resultText(result, 1);
+		expect(text).toContain("matches");
+		expect(text).not.toContain("for ");
+	});
+
+	it("soul_grep: small result not pruned (under 200 chars)", () => {
+		const msgs = buildPaddedConversation({
+			id: "sg1", name: "soul_grep",
+			input: { pattern: "useState<any" },
+			output: SOUL_GREP_SMALL,
+		});
+		const result = compactOldToolResults(msgs);
+		const text = resultText(result, 1);
+		expect(text).toBe(SOUL_GREP_SMALL);
+	});
+
+	it("shell: includes command, line count, and exit code", () => {
+		const msgs = buildPaddedConversation({
+			id: "s1", name: "shell",
+			input: { command: "npx tsc --noEmit 2>&1 | tail -30" },
+			output: SHELL_TYPECHECK_FAIL,
+		});
+		const result = compactOldToolResults(msgs);
+		const text = resultText(result, 1);
+		expect(text).toContain("`npx tsc --noEmit");
+		expect(text).toContain("exit code: 2");
+	});
+
+	it("shell: detects errors in output", () => {
+		const errorOutput = Array.from({ length: 15 }, (_, i) => `${String(i + 1)}:1  error  Parsing error: Unexpected token at line ${String(i)}`).join("\n") +
+			"\n\n15 problems (15 errors, 0 warnings)";
+		const msgs = buildPaddedConversation({
+			id: "s1", name: "shell",
+			input: { command: "npx eslint app/(tabs)/index.tsx --max-warnings=999 2>&1 | head -30" },
+			output: errorOutput,
+		});
+		const result = compactOldToolResults(msgs);
+		const text = resultText(result, 1);
+		expect(text).toContain("had errors");
+	});
+
+	it("shell: shows ok for clean output", () => {
+		const msgs = buildPaddedConversation({
+			id: "s1", name: "shell",
+			input: { command: "wc -l components/PostCard.tsx" },
+			output: SHELL_OK,
+		});
+		const result = compactOldToolResults(msgs);
+		const text = resultText(result, 1);
+		expect(text).toBe(SHELL_OK);
+	});
+
+	it("shell: truncates long commands at 60 chars", () => {
+		const longCmd = "cd /Users/liya/Desktop/dev/popshelf && npx eslint app/(tabs)/index.tsx --max-warnings=999 2>&1 | head -30";
+		const msgs = buildPaddedConversation({
+			id: "s1", name: "shell",
+			input: { command: longCmd },
+			output: SHELL_PNPM,
+		});
+		const result = compactOldToolResults(msgs);
+		const text = resultText(result, 1);
+		const cmdPart = text.match(/`([^`]+)`/)?.[1] ?? "";
+		expect(cmdPart.length).toBeLessThanOrEqual(60);
+	});
+
+	it("shell: works without command in args", () => {
+		const msgs = buildPaddedConversation({
+			id: "s1", name: "shell",
+			input: {},
+			output: SHELL_PNPM,
+		});
+		const result = compactOldToolResults(msgs);
+		const text = resultText(result, 1);
+		expect(text).toStartWith("[pruned] `");
+		expect(text).toContain("lines");
+	});
+
+	it("glob: includes file count and pattern", () => {
+		const globOutput = Array.from({ length: 30 }, (_, i) => `src/components/File${String(i)}.tsx`).join("\n");
+		const msgs = buildPaddedConversation({
+			id: "g1", name: "glob",
+			input: { pattern: "**/*.tsx" },
+			output: globOutput,
+		});
+		const result = compactOldToolResults(msgs);
+		const text = resultText(result, 1);
+		expect(text).toContain("30 files");
+		expect(text).toContain("**/*.tsx");
+	});
+
+	it("glob: works without pattern in args", () => {
+		const globOutput = Array.from({ length: 30 }, (_, i) => `src/File${String(i)}.ts`).join("\n");
+		const msgs = buildPaddedConversation({
+			id: "g1", name: "glob",
+			input: {},
+			output: globOutput,
+		});
+		const result = compactOldToolResults(msgs);
+		const text = resultText(result, 1);
+		expect(text).toContain("30 files");
+		expect(text).not.toContain("for ");
+	});
+
+	it("soul_find: includes result count and query", () => {
+		const msgs = buildPaddedConversation({
+			id: "sf1", name: "soul_find",
+			input: { query: "FloatingBubble" },
+			output: SOUL_FIND_OUTPUT,
+		});
+		const result = compactOldToolResults(msgs);
+		const text = resultText(result, 1);
+		expect(text).toContain("results");
+		expect(text).toContain('"FloatingBubble"');
+	});
+
+	it("soul_find: works without query in args", () => {
+		const msgs = buildPaddedConversation({
+			id: "sf1", name: "soul_find",
+			input: {},
+			output: SOUL_FIND_OUTPUT,
+		});
+		const result = compactOldToolResults(msgs);
+		const text = resultText(result, 1);
+		expect(text).toContain("results");
+		expect(text).not.toContain("for ");
+	});
+
+	it("soul_analyze: includes action and first line", () => {
+		const msgs = buildPaddedConversation({
+			id: "sa1", name: "soul_analyze",
+			input: { action: "duplication", file: "app/(auth)/login.tsx" },
+			output: SOUL_ANALYZE_OUTPUT,
+		});
+		const result = compactOldToolResults(msgs);
+		const text = resultText(result, 1);
+		expect(text).toStartWith("[pruned] duplication:");
+		expect(text).toContain("Structural clones");
+	});
+
+	it("soul_impact: includes action and first line", () => {
+		const impactOutput = "Dependents of lib/social-api.ts:\n" +
+			Array.from({ length: 15 }, (_, i) => `  app/(tabs)/screen${String(i)}.tsx`).join("\n");
+		const msgs = buildPaddedConversation({
+			id: "si1", name: "soul_impact",
+			input: { action: "dependents", file: "lib/social-api.ts" },
+			output: impactOutput,
+		});
+		const result = compactOldToolResults(msgs);
+		const text = resultText(result, 1);
+		expect(text).toStartWith("[pruned] dependents:");
+		expect(text).toContain("Dependents of lib/social-api.ts");
+	});
+
+	it("soul_analyze: works without action in args", () => {
+		const msgs = buildPaddedConversation({
+			id: "sa1", name: "soul_analyze",
+			input: {},
+			output: SOUL_ANALYZE_OUTPUT,
+		});
+		const result = compactOldToolResults(msgs);
+		const text = resultText(result, 1);
+		expect(text).toStartWith("[pruned] Structural clones");
+	});
+
+	it("list_dir: extracts entry count", () => {
+		const msgs = buildPaddedConversation({
+			id: "ld1", name: "list_dir",
+			input: { path: "." },
+			output: LIST_DIR_OUTPUT,
+		});
+		const result = compactOldToolResults(msgs);
+		const text = resultText(result, 1);
+		expect(text).toBe("[pruned] 23 entries");
+	});
+
+	it("list_dir: falls back to line count when no entry match", () => {
+		const noCountOutput = Array.from({ length: 25 }, (_, i) => `  some-longer-filename-${String(i)}.ts`).join("\n");
+		const msgs = buildPaddedConversation({
+			id: "ld1", name: "list_dir",
+			input: { path: "." },
+			output: noCountOutput,
+		});
+		const result = compactOldToolResults(msgs);
+		const text = resultText(result, 1);
+		expect(text).toBe("[pruned] 25 entries");
+	});
+
+	it("memory: includes memory count", () => {
+		const msgs = buildPaddedConversation({
+			id: "m1", name: "memory",
+			input: { action: "list" },
+			output: MEMORY_OUTPUT,
+		});
+		const result = compactOldToolResults(msgs);
+		const text = resultText(result, 1);
+		expect(text).toBe("[pruned] 5 memories");
+	});
+
+	it("plan: includes title and step count", () => {
+		const msgs = buildPaddedConversation({
+			id: "p1", name: "plan",
+			input: {},
+			output: PLAN_OUTPUT,
+		});
+		const result = compactOldToolResults(msgs);
+		const text = resultText(result, 1);
+		expect(text).toContain("Fix audit issues");
+		expect(text).toContain("3 steps");
+	});
+
+	it("update_plan_step: includes status line", () => {
+		const msgs = buildPaddedConversation({
+			id: "ups1", name: "update_plan_step",
+			input: { stepId: "step-1", status: "active" },
+			output: "Step step-1: active\nSome extra details that are longer than two hundred characters to ensure the pruning threshold is met. " +
+				"This is padding to make the output exceed the 200-char minimum for pruning to kick in. More filler text here.",
+		});
+		const result = compactOldToolResults(msgs);
+		const text = resultText(result, 1);
+		expect(text).toContain("Step step-1: active");
+	});
+
+	it("ask_user: includes user response first line", () => {
+		const userResponse = "Yes, go ahead and fix all the performance issues first.\nAlso fix the race condition in useFeed.\n" +
+			"More padding text here to ensure we exceed the 200 character threshold for pruning to activate on this output content.";
+		const msgs = buildPaddedConversation({
+			id: "au1", name: "ask_user",
+			input: { question: "Should I fix performance issues first?" },
+			output: userResponse,
+		});
+		const result = compactOldToolResults(msgs);
+		const text = resultText(result, 1);
+		expect(text).toStartWith("[pruned] user:");
+		expect(text).toContain("Yes, go ahead and fix all the performance issues first.");
+	});
+
+	it("git: includes first line of output", () => {
+		const msgs = buildPaddedConversation({
+			id: "g1", name: "git",
+			input: { action: "commit" },
+			output: GIT_OUTPUT,
+		});
+		const result = compactOldToolResults(msgs);
+		const text = resultText(result, 1);
+		expect(text).toStartWith("[pruned] feat: fix race condition");
+	});
+
+	it("read_file: includes line count", () => {
+		const msgs = buildPaddedConversation({
+			id: "rf1", name: "read_file",
+			input: { path: "src/hooks/useSocial.ts" },
+			output: READ_FILE_OUTPUT,
+		});
+		const result = compactOldToolResults(msgs);
+		const text = resultText(result, 1);
+		expect(text).toContain("350 lines");
+	});
+
+	it("unknown summarizable tool: falls back to line/char count", () => {
+		const longOutput = "x\n".repeat(150);
+		const msgs = buildPaddedConversation({
+			id: "wf1", name: "web_search",
+			input: { query: "react performance" },
+			output: longOutput,
+		});
+		const result = compactOldToolResults(msgs);
+		const text = resultText(result, 1);
+		expect(text).toMatch(/\[pruned\] \d+ lines, \d+ chars/);
+	});
+});
+
+// ---------------------------------------------------------------------------
+// stripBookkeepingTools — unit tests
+// ---------------------------------------------------------------------------
+
+describe("stripBookkeepingTools via forge prepareStep", () => {
+	it("strips update_plan_step calls and results from conversation", () => {
+		const msgs: ModelMessage[] = [
+			{
+				role: "assistant",
+				content: [
+					{ type: "tool-call" as const, toolCallId: "tc-1", toolName: "read_file", input: { path: "/a.ts" } },
+					{ type: "tool-call" as const, toolCallId: "ups-1", toolName: "update_plan_step", input: { stepId: "s1", status: "active" } },
+				],
+			},
+			{
+				role: "tool",
+				content: [
+					{ type: "tool-result" as const, toolCallId: "tc-1", toolName: "read_file", output: { type: "text" as const, value: "file content" } as never },
+					{ type: "tool-result" as const, toolCallId: "ups-1", toolName: "update_plan_step", output: { type: "text" as const, value: "Step s1: active" } as never },
+				],
+			},
+		];
+		const result = compactOldToolResults(msgs);
+		const assistantContent = result[0]!.content as Array<{ toolName?: string }>;
+		const toolContent = result[1]!.content as Array<{ toolName?: string }>;
+		expect(assistantContent.some(p => p.toolName === "read_file")).toBe(true);
+		expect(toolContent.some(p => p.toolName === "read_file")).toBe(true);
+	});
+
+	it("preserves text parts when stripping tool-calls from mixed messages", () => {
+		const msgs: ModelMessage[] = [
+			{
+				role: "assistant",
+				content: [
+					{ type: "text" as const, text: "Let me update the plan." },
+					{ type: "tool-call" as const, toolCallId: "ups-1", toolName: "update_plan_step", input: { stepId: "s1", status: "done" } },
+					{ type: "tool-call" as const, toolCallId: "rf-1", toolName: "read_file", input: { path: "/b.ts" } },
+				],
+			},
+			{
+				role: "tool",
+				content: [
+					{ type: "tool-result" as const, toolCallId: "ups-1", toolName: "update_plan_step", output: { type: "text" as const, value: "Step s1: done" } as never },
+					{ type: "tool-result" as const, toolCallId: "rf-1", toolName: "read_file", output: { type: "text" as const, value: "file B" } as never },
+				],
+			},
+		];
+		const result = compactOldToolResults(msgs);
+		const assistantContent = result[0]!.content as Array<{ type: string; text?: string }>;
+		expect(assistantContent.some(p => p.type === "text" && p.text === "Let me update the plan.")).toBe(true);
+	});
+});
+
+// ---------------------------------------------------------------------------
+// argsMap robustness
+// ---------------------------------------------------------------------------
+
+describe("argsMap — non-object input handling", () => {
+	it("tool call with string input gracefully falls back (no args context)", () => {
+		const msgs: ModelMessage[] = [
+			{
+				role: "assistant",
+				content: [
+					{ type: "tool-call" as const, toolCallId: "bad-1", toolName: "soul_grep", input: "style={{" as never },
+				],
+			},
+			toolResult([{ id: "bad-1", name: "soul_grep", output: LONG_CONTENT }]),
+		];
+		for (let i = 0; i < Math.ceil(KEEP_RECENT_MESSAGES / 2) + 1; i++) {
+			const id = `pad-${String(i)}`;
+			msgs.push(
+				assistantToolCall([{ id, name: "read_file", input: { path: `/p${String(i)}.ts` } }]),
+				toolResult([{ id, name: "read_file", output: LONG_CONTENT }]),
+			);
+		}
+		const result = compactOldToolResults(msgs);
+		const text = resultText(result, 1);
+		expect(text).toContain("matches");
+		expect(text).not.toContain("for ");
+	});
+
+	it("tool call with null input gracefully falls back", () => {
+		const msgs: ModelMessage[] = [
+			{
+				role: "assistant",
+				content: [
+					{ type: "tool-call" as const, toolCallId: "bad-1", toolName: "shell", input: null as never },
+				],
+			},
+			toolResult([{ id: "bad-1", name: "shell", output: LONG_CONTENT }]),
+		];
+		for (let i = 0; i < Math.ceil(KEEP_RECENT_MESSAGES / 2) + 1; i++) {
+			const id = `pad-${String(i)}`;
+			msgs.push(
+				assistantToolCall([{ id, name: "read_file", input: { path: `/p${String(i)}.ts` } }]),
+				toolResult([{ id, name: "read_file", output: LONG_CONTENT }]),
+			);
+		}
+		const result = compactOldToolResults(msgs);
+		const text = resultText(result, 1);
+		expect(text).toContain("[pruned]");
+	});
+});
+
 describe("compactOldToolResults + stripBookkeepingTools — audit conversation simulation", () => {
 	// Simulates the actual audit conversation from audit_issue.json
 	// 299 tool calls, 6 dispatches, 76 update_plan_step, 98 read_file

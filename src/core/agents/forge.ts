@@ -1,4 +1,3 @@
-import { resolve } from "node:path";
 import type { ModelMessage, ProviderOptions } from "@ai-sdk/provider-utils";
 import type { LanguageModel } from "ai";
 import { stepCountIs, ToolLoopAgent, tool } from "ai";
@@ -20,7 +19,6 @@ import {
 import { readFileTool } from "../tools/read-file.js";
 import { renderTaskList } from "../tools/task-list.js";
 import { normalizePath } from "./agent-bus.js";
-import { buildSymbolLookup, compactOldToolResults } from "./step-utils.js";
 import { repairToolCall, sanitizeMessages } from "./stream-options.js";
 import { buildSubagentTools, type SharedCacheRef } from "./subagent-tools.js";
 
@@ -107,13 +105,74 @@ function stripBookkeepingTools(messages: ModelMessage[]): ModelMessage[] {
     .filter(Boolean) as ModelMessage[];
 }
 
+function hasToolCall(messages: ModelMessage[], toolName: string): boolean {
+  for (const msg of messages) {
+    if (msg.role !== "assistant" || !Array.isArray(msg.content)) continue;
+    for (const part of msg.content) {
+      if (
+        typeof part === "object" &&
+        part !== null &&
+        "type" in part &&
+        (part as { type: string }).type === "tool-call" &&
+        "toolName" in part &&
+        (part as { toolName: string }).toolName === toolName
+      ) {
+        return true;
+      }
+    }
+  }
+  return false;
+}
+
+const READ_TOOL_NAMES = new Set(["read_file", "read_code"]);
+
+function countReadsAfterLastDispatch(messages: ModelMessage[]): number {
+  let lastDispatchIdx = -1;
+  for (let i = messages.length - 1; i >= 0; i--) {
+    const msg = messages[i];
+    if (msg?.role !== "assistant" || !Array.isArray(msg.content)) continue;
+    for (const part of msg.content) {
+      if (
+        typeof part === "object" &&
+        part !== null &&
+        "type" in part &&
+        (part as { type: string }).type === "tool-call" &&
+        "toolName" in part &&
+        (part as { toolName: string }).toolName === "dispatch"
+      ) {
+        lastDispatchIdx = i;
+        break;
+      }
+    }
+    if (lastDispatchIdx >= 0) break;
+  }
+  if (lastDispatchIdx < 0) return 0;
+
+  let count = 0;
+  for (let i = lastDispatchIdx + 1; i < messages.length; i++) {
+    const msg = messages[i];
+    if (msg?.role !== "assistant" || !Array.isArray(msg.content)) continue;
+    for (const part of msg.content) {
+      if (
+        typeof part === "object" &&
+        part !== null &&
+        "type" in part &&
+        (part as { type: string }).type === "tool-call" &&
+        "toolName" in part &&
+        READ_TOOL_NAMES.has((part as { toolName: string }).toolName)
+      ) {
+        count++;
+      }
+    }
+  }
+  return count;
+}
+
 function buildForgePrepareStep(
   isPlanMode: boolean,
   drainSteering?: () => string | null,
-  repoMap?: import("../intelligence/repo-map.js").RepoMap,
+  _repoMap?: import("../intelligence/repo-map.js").RepoMap,
 ) {
-  const symbolLookup = buildSymbolLookup(repoMap);
-
   // biome-ignore lint/suspicious/noExplicitAny: PrepareStepFunction generic is invariant
   return ({ stepNumber, messages }: { stepNumber: number; messages: ModelMessage[] }): any => {
     const sanitized = sanitizeMessages(messages);
@@ -124,10 +183,7 @@ function buildForgePrepareStep(
       system?: string;
     } = {};
 
-    let processed = stripBookkeepingTools(sanitized);
-    if (stepNumber >= 2) {
-      processed = compactOldToolResults(processed, symbolLookup);
-    }
+    const processed = stripBookkeepingTools(sanitized);
     if (processed !== messages) {
       result.messages = processed;
     }
@@ -141,6 +197,18 @@ function buildForgePrepareStep(
       } else {
         result.system =
           "You have gathered substantial context. Start assembling the plan — call plan when ready.";
+      }
+    }
+
+    if (!isPlanMode && stepNumber >= 3) {
+      const hasDispatch = hasToolCall(messages, "dispatch");
+      const readsAfterDispatch = countReadsAfterLastDispatch(messages);
+      if (hasDispatch && readsAfterDispatch >= 2) {
+        const hint =
+          readsAfterDispatch >= 4
+            ? "You are re-reading files the dispatch already returned. Stop reading — synthesize what you have and act: edit code, propose a plan, or respond to the user."
+            : "You have dispatch results. Proceed to implementation or respond — additional reads are likely redundant.";
+        result.system = result.system ? `${result.system}\n\n${hint}` : hint;
       }
     }
 
@@ -293,7 +361,7 @@ export function createForgeAgent({
 
   const cachedReadFile =
     sharedCacheRef && agentFeatures?.dispatchCache !== false
-      ? wrapReadFileWithDispatchCache(directTools.read_file, sharedCacheRef)
+      ? wrapReadFileWithDispatchCache(directTools.read_file, sharedCacheRef, cwd)
       : directTools.read_file;
 
   const allTools = {
@@ -341,7 +409,10 @@ export function createForgeAgent({
 function wrapReadFileWithDispatchCache(
   _original: ReturnType<typeof buildTools>["read_file"],
   cacheRef: SharedCacheRef,
+  projectCwd?: string,
 ) {
+  const cwdPrefix = projectCwd ? (projectCwd.endsWith("/") ? projectCwd : `${projectCwd}/`) : null;
+
   return tool({
     description: readFileTool.description,
     inputSchema: z.object({
@@ -352,14 +423,49 @@ function wrapReadFileWithDispatchCache(
     execute: async (args) => {
       const cache = cacheRef.current;
       if (cache) {
-        const normalized = normalizePath(resolve(args.path));
-        const cached = cache.files.get(normalized);
-        if (cached != null && args.startLine == null && args.endLine == null) {
+        let normalized = normalizePath(args.path);
+        if (cwdPrefix && normalized.startsWith(cwdPrefix)) {
+          normalized = normalized.slice(cwdPrefix.length);
+        }
+        let cached = cache.files.get(normalized);
+        if (cached != null) {
+          for (let depth = 0; depth < 5 && cached.startsWith('{"success":'); depth++) {
+            try {
+              const parsed = JSON.parse(cached) as { success?: boolean; output?: string };
+              if (typeof parsed.success === "boolean" && typeof parsed.output === "string") {
+                cached = parsed.output;
+              } else break;
+            } catch {
+              break;
+            }
+          }
+
           const lines = cached.split("\n");
-          const numbered = lines
-            .map((line: string, i: number) => `${String(i + 1).padStart(4)}  ${line}`)
-            .join("\n");
-          return { success: true, output: `[from dispatch cache]\n${numbered}` };
+          const lineCount = lines.length;
+          const rangeCoversFile =
+            args.startLine != null &&
+            args.startLine <= 1 &&
+            (args.endLine == null || args.endLine >= lineCount * 0.8);
+          const isFullRead = args.startLine == null && args.endLine == null;
+
+          if ((isFullRead || rangeCoversFile) && lineCount > 80) {
+            return {
+              success: true,
+              output:
+                `[Already in your context — dispatch read this file (${String(lineCount)} lines). ` +
+                `Use read_code to extract specific symbols, or proceed with what you have.]`,
+            };
+          }
+
+          if (isFullRead) {
+            const numbered = lines
+              .map((line: string, i: number) => `${String(i + 1).padStart(4)}  ${line}`)
+              .join("\n");
+            return {
+              success: true,
+              output: `[from dispatch cache — ${String(lineCount)} lines]\n${numbered}`,
+            };
+          }
         }
       }
       return readFileTool.execute(args);

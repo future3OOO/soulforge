@@ -1253,6 +1253,8 @@ export function useChat({
         }
       });
 
+      const pendingSteeringMsgs: ChatMessage[] = [];
+
       try {
         const taskType = detectTaskType(input);
         const modelId = resolveTaskModel(
@@ -1308,7 +1310,6 @@ export function useChat({
         await contextManager.ensureGitContext();
 
         steeringAbortedRef.current = false;
-        const pendingSteeringMsgs: ChatMessage[] = [];
         const drainSteering = (): string | null => {
           if (steeringAbortedRef.current) return null;
           const queue = messageQueueRef.current;
@@ -1893,6 +1894,7 @@ export function useChat({
         if (!hasPlanPostAction) {
           setMessages((prev) => [
             ...prev,
+            ...pendingSteeringMsgs,
             {
               id: crypto.randomUUID(),
               role: "system",

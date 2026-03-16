@@ -45,6 +45,7 @@ const exploreDoneTool = tool({
           lineNumbers: z.string().optional(),
         }),
       )
+      .min(1, "At least one key finding with actual code is required")
       .describe("Each finding with pasteable code"),
   }),
 });

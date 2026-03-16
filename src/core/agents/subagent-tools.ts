@@ -185,23 +185,9 @@ function extractDoneResult(result: AgentResult): DoneToolResult | null {
   return null;
 }
 
-const RESULT_TOOLS = new Set([
-  "read_file",
-  "read_code",
-  "grep",
-  "navigate",
-  "analyze",
-  "web_search",
-  "fetch_page",
-]);
-const TOOL_RESULT_CAP = 4000;
-const TOTAL_TOOL_RESULTS_CAP = 16000;
-
 function buildFallbackResult(result: AgentResult): string {
   const filesRead = new Set<string>();
   const filesEdited = new Set<string>();
-  const toolOutputs: string[] = [];
-  let toolOutputChars = 0;
 
   for (const step of result.steps) {
     for (const tc of step.toolCalls ?? []) {
@@ -211,32 +197,6 @@ function buildFallbackResult(result: AgentResult): string {
         if (tc.toolName === "edit_file") filesEdited.add(path);
       }
     }
-
-    for (const tr of step.toolResults ?? []) {
-      if (!RESULT_TOOLS.has(tr.toolName)) continue;
-      if (toolOutputChars >= TOTAL_TOOL_RESULTS_CAP) break;
-
-      const raw =
-        typeof tr.output === "string"
-          ? tr.output
-          : tr.output != null
-            ? JSON.stringify(tr.output)
-            : null;
-      if (!raw || raw.length < 10) continue;
-
-      const inp = tr.input as Record<string, unknown> | null | undefined;
-      const label = inp?.path
-        ? `${tr.toolName}(${String(inp.path)})`
-        : inp?.pattern
-          ? `${tr.toolName}(${String(inp.pattern)})`
-          : inp?.query
-            ? `${tr.toolName}(${String(inp.query)})`
-            : tr.toolName;
-
-      const content = raw.length > TOOL_RESULT_CAP ? `${raw.slice(0, TOOL_RESULT_CAP)}...` : raw;
-      toolOutputs.push(`[${label}]\n${content}`);
-      toolOutputChars += content.length;
-    }
   }
 
   const parts: string[] = [];
@@ -245,13 +205,17 @@ function buildFallbackResult(result: AgentResult): string {
 
   const text = result.text.trim();
   if (text) {
-    const cap = toolOutputs.length > 0 ? 4000 : 10000;
-    parts.push(text.length > cap ? `${text.slice(0, cap)} [truncated]` : text);
+    parts.push(text.length > 6000 ? `${text.slice(0, 6000)} [truncated]` : text);
   }
-  if (toolOutputs.length > 0) {
-    parts.push("\nTool outputs:", ...toolOutputs);
+
+  if (parts.length === 0 || (filesRead.size > 0 && !text)) {
+    parts.push(
+      "(Agent did not call done — no synthesis produced. File contents are in the dispatch cache. " +
+        "Use read_code to extract specific symbols from the files listed above.)",
+    );
   }
-  return parts.join("\n") || "(no output)";
+
+  return parts.join("\n");
 }
 
 const DONE_RESULT_CAP = 8000;
@@ -966,16 +930,25 @@ export function buildSubagentTools(models: SubagentModels) {
             }
             if (allTargetFiles.length > 0) {
               const cached = allTargetFiles.filter((f) => cache.files.has(f));
+              const hasCodeTask = args.tasks.some((t) => t.role === "code");
+              const missing = allTargetFiles.filter((f) => !cache.files.has(f));
+
+              if (cached.length === allTargetFiles.length && !hasCodeTask) {
+                return (
+                  `Dispatch blocked: ALL ${String(cached.length)} target files are already in your context. ` +
+                  `You have the data — plan, edit, or respond now. ` +
+                  `Set force: true only if you need code agents to EDIT these files.`
+                );
+              }
+
               if (cached.length > 0 && cached.length >= allTargetFiles.length * 0.5) {
-                const hasCodeTask = args.tasks.some((t) => t.role === "code");
-                const missing = allTargetFiles.filter((f) => !cache.files.has(f));
                 const cachedList = cached.map((f) => `\`${f}\``).join(", ");
                 const missingHint =
                   missing.length > 0
-                    ? ` Files not yet read: ${missing.map((f) => `\`${f}\``).join(", ")}. Use read_file for these.`
+                    ? ` Files not yet read: ${missing.map((f) => `\`${f}\``).join(", ")}. Use read_file for these ${String(missing.length)} files directly.`
                     : "";
                 const actionHint = hasCodeTask
-                  ? "Set force: true only if you need agents to EDIT these files or do work beyond reading."
+                  ? "Set force: true only if you need agents to EDIT these files."
                   : "Set force: true only if you need agents to do multi-step investigation beyond what's already in context.";
                 return `Dispatch rejected: ${String(cached.length)}/${String(allTargetFiles.length)} target files are already in your context (${cachedList}).${missingHint} Act on the data you have. ${actionHint}`;
               }
@@ -1436,7 +1409,9 @@ export function buildSubagentTools(models: SubagentModels) {
 
         if (typeof dispatch !== "string") {
           compact.push(
-            "\n---\nYou now have the dispatch results. If this gives you enough information to address the user's request, proceed immediately — plan, edit, or respond. Do not re-read files the dispatch already returned.",
+            "\n---\n**Next step: act on these results.** You have the dispatch output above — plan your implementation, write code, or respond to the user. " +
+              "Reading files that dispatch already returned wastes a tool call (the cache will block the re-read). " +
+              "If you need a specific symbol from a large file, use read_code with the symbol name.",
           );
         }
 

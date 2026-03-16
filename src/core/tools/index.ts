@@ -299,6 +299,7 @@ export function buildTools(
       }),
       execute: async (args, { abortSignal }) => {
         await new Promise<void>((r) => setTimeout(r, 0));
+        resetReadCounter();
         if (args.cwd) {
           const gate = await gateOutsideCwd("shell", resolve(args.cwd));
           if (gate.blocked) return gate.result;
@@ -351,6 +352,7 @@ export function buildTools(
           ),
       }),
       execute: deferExecute((args) => {
+        resetReadCounter();
         if (!args.force) {
           const hit = tryInterceptGlob(args, opts?.repoMap, effectiveCwd);
           if (hit) return Promise.resolve(hit);
@@ -1346,7 +1348,12 @@ export function wrapWithBusCache(
       }
       const result = await origExecute(args, opts);
       if (key) {
-        const content = typeof result === "string" ? result : JSON.stringify(result);
+        const content =
+          typeof result === "string"
+            ? result
+            : typeof (result as Record<string, unknown>)?.output === "string"
+              ? String((result as Record<string, unknown>).output)
+              : JSON.stringify(result);
         bus.cacheToolResult(agentId, key, content);
       }
       onExecute?.(args, false);
@@ -1402,8 +1409,13 @@ export function wrapWithBusCache(
           const fallbackGen = reAcquired.cached === false ? reAcquired.gen : -1;
           const result = await origExecute(args, opts);
           if (fallbackGen >= 0) {
-            const text = typeof result === "string" ? result : JSON.stringify(result);
-            bus.releaseFileRead(normalized, text, fallbackGen);
+            const rawText =
+              typeof result === "string"
+                ? result
+                : typeof (result as Record<string, unknown>)?.output === "string"
+                  ? String((result as Record<string, unknown>).output)
+                  : JSON.stringify(result);
+            bus.releaseFileRead(normalized, rawText, fallbackGen);
           }
           bus.recordFileRead(agentId, normalized, { tool: "read_file", cached: false });
           return result;
@@ -1412,8 +1424,13 @@ export function wrapWithBusCache(
         const { gen } = acquired;
         try {
           const result = await origExecute(args, opts);
-          const content = typeof result === "string" ? result : JSON.stringify(result);
-          bus.releaseFileRead(normalized, content, gen);
+          const rawText =
+            typeof result === "string"
+              ? result
+              : typeof (result as Record<string, unknown>)?.output === "string"
+                ? String((result as Record<string, unknown>).output)
+                : JSON.stringify(result);
+          bus.releaseFileRead(normalized, rawText, gen);
           bus.recordFileRead(agentId, normalized, { tool: "read_file", cached: false });
           return result;
         } catch (error) {
