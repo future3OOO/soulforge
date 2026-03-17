@@ -107,8 +107,13 @@ const TOOLS = {
 };
 
 // Steps with enough tokens to trigger cache-aware pruning (explore: 35k, code: 60k)
+// Explore: above prune (35k) but below output nudge (55k)
 const STEPS_ABOVE_PRUNE_THRESHOLD = [
-	{ usage: { inputTokens: 35_000, outputTokens: 35_000 } },
+	{ usage: { inputTokens: 20_000, outputTokens: 20_000 } },
+];
+// Code: above prune (60k) but below output nudge (110k)
+const STEPS_ABOVE_CODE_PRUNE = [
+	{ usage: { inputTokens: 31_000, outputTokens: 31_000 } },
 ];
 
 function callPrepareStep(
@@ -560,7 +565,7 @@ describe("preservation rules", () => {
 
 		const result = callPrepareStep(
 			{ role: "code", allTools: TOOLS },
-			{ stepNumber: 3, messages: msgs, steps: STEPS_ABOVE_PRUNE_THRESHOLD },
+			{ stepNumber: 3, messages: msgs, steps: STEPS_ABOVE_CODE_PRUNE },
 		);
 		expect(resultText(result!.messages!, 1, 0)).toBe("[pruned] 100 lines");
 		expect(resultText(result!.messages!, 1, 1)).toBe(LONG_CONTENT);
@@ -798,13 +803,15 @@ describe("buildPrepareStep — token budgets", () => {
 		expect(result?.activeTools).not.toContain("edit_file");
 	});
 
-	it("explore: no forced done at 70k tokens (output schema handles it)", () => {
+	it("explore: nudges structured output at 55k tokens", () => {
 		const result = callPrepareStep(
 			{ role: "explore", allTools: TOOLS },
-			{ stepNumber: 1, messages: [], steps: makeSteps(71_000) },
+			{ stepNumber: 1, messages: [], steps: makeSteps(56_000) },
 		);
-		// No longer forces done — output schema generates structured results after loop ends
-		expect(result?.activeTools).not.toEqual(["done"]);
+		expect(result?.activeTools).toEqual([]);
+		const lastMsg = result!.messages![result!.messages!.length - 1];
+		const text = (lastMsg?.content as Array<{ text: string }>)[0]?.text;
+		expect(text).toContain("structured output");
 	});
 
 	it("code: warns at 120k tokens", () => {
@@ -816,12 +823,34 @@ describe("buildPrepareStep — token budgets", () => {
 		expect(result?.system).toContain("Finish your current edit");
 	});
 
-	it("code: no forced done at 135k tokens (output schema handles it)", () => {
+	it("code: nudges structured output at 110k tokens", () => {
 		const result = callPrepareStep(
 			{ role: "code", allTools: TOOLS },
-			{ stepNumber: 1, messages: [], steps: makeSteps(136_000) },
+			{ stepNumber: 1, messages: [], steps: makeSteps(111_000) },
 		);
-		expect(result?.activeTools).not.toEqual(["done"]);
+		expect(result?.activeTools).toEqual([]);
+		const lastMsg = result!.messages![result!.messages!.length - 1];
+		const text = (lastMsg?.content as Array<{ text: string }>)[0]?.text;
+		expect(text).toContain("structured output");
+	});
+
+	it("explore: nudges on step limit (stepLimit - 2)", () => {
+		const result = callPrepareStep(
+			{ role: "explore", allTools: TOOLS, stepLimit: 15 },
+			{ stepNumber: 13, messages: [] },
+		);
+		expect(result?.activeTools).toEqual([]);
+		const lastMsg = result!.messages![result!.messages!.length - 1];
+		const text = (lastMsg?.content as Array<{ text: string }>)[0]?.text;
+		expect(text).toContain("structured output");
+	});
+
+	it("explore: no nudge below both thresholds", () => {
+		const result = callPrepareStep(
+			{ role: "explore", allTools: TOOLS, stepLimit: 15 },
+			{ stepNumber: 5, messages: [], steps: makeSteps(50_000) },
+		);
+		expect(result?.activeTools).toBeUndefined();
 	});
 
 	it("no warning below threshold", () => {

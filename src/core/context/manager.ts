@@ -16,10 +16,10 @@ import { onFileEdited, onFileRead } from "../tools/file-events.js";
 // Sources: Claude Code (fragments), ECC (schema > prompt), omo (prohibition + clearance)
 const TOOL_GUIDANCE_BASE = [
   // Core discipline
-  "Only call tools when necessary. If the Repo Map, cache, or previous results already answer your question, act without calling tools.",
-  "Repo Map, tool results, and read cache are always current (auto-updated on every edit). This data is authoritative. FORBIDDEN: re-reading, re-grepping, or re-verifying data you already have.",
+  "Only call tools when necessary. If the Soul Map, cache, or previous results already answer your question, act without calling tools.",
+  "Soul Map, tool results, and read cache are always current (auto-updated on every edit). This data is authoritative. FORBIDDEN: re-reading, re-grepping, or re-verifying data you already have.",
   "Stop as soon as you can act. Two examples confirming a pattern = confirmed. If you have enough to plan or edit, do it now. Every additional read is token waste.",
-  "Workflow: 1) Check Repo Map for paths, symbols, line ranges, dependencies. 2) If it answers your question, act — no tool call. 3) If you need code, one read per file, one search per question.",
+  "Workflow: 1) Check Soul Map for paths, symbols, line ranges, dependencies. 2) If it answers your question, act — no tool call. 3) If you need code, one read per file, one search per question.",
   // Question → tool routing (intelligence tools FIRST, low-level as FALLBACK)
   "BEFORE reaching for grep or read_file, ask which question you're answering:",
   "Where is this symbol defined? → navigate(action: definition) — gives exact file + line. Not grep.",
@@ -44,27 +44,28 @@ const TOOL_GUIDANCE_BASE = [
 ];
 
 const TOOL_GUIDANCE_LOW_LEVEL_WITH_MAP = [
-  "FALLBACK tools (only when intelligence tools above can't answer your question): read_file for config/json/yaml/markdown. grep for string literals, non-code patterns. glob for files not in Repo Map. shell only when project tool can't handle it.",
-  "Repo Map tools (zero-token, no file reads needed): soul_grep for count-mode + word boundary. soul_find for fuzzy file/symbol discovery (PageRank). soul_analyze for frequency, unused exports, profiles. soul_impact for dependency graphs, blast radius, cochanges.",
+  "FALLBACK tools (only when intelligence tools above can't answer your question): read_file for config/json/yaml/markdown. grep for string literals, non-code patterns. glob for files not in Soul Map. shell only when project tool can't handle it.",
+  "Soul Map tools (zero-token, no file reads needed): soul_grep for count-mode + word boundary. soul_find for fuzzy file/symbol discovery (PageRank). soul_analyze for frequency, unused exports, profiles. soul_impact for dependency graphs, blast radius, cochanges.",
   "Cross-cutting analysis: soul_grep count + soul_analyze for broad patterns, grep for specific multi-line patterns. Dispatch investigation agents for parallel scanning.",
 ];
 
 const TOOL_GUIDANCE_LOW_LEVEL_NO_MAP = [
-  "Low-level tools — use only when intelligence can't help: read_file for config files, markdown, raw text. grep for string literals, log messages, non-code patterns. glob for finding files by name or pattern. shell only when project can't handle custom flags. soul_grep, soul_find, soul_analyze, soul_impact available when Repo Map is ready.",
+  "Low-level tools — use only when intelligence can't help: read_file for config files, markdown, raw text. grep for string literals, log messages, non-code patterns. glob for finding files by name or pattern. shell only when project can't handle custom flags. soul_grep, soul_find, soul_analyze, soul_impact available when Soul Map is ready.",
 ];
 
 const DISPATCH_GUIDANCE_BASE = [
-  "Dispatch decision: 1) Repo Map answers it = act, no tools. 2) 6 or fewer files = read directly. 3) 3 or fewer edits = edit directly. 4) Broad analysis = dispatch investigate. 5) 4+ file edits = dispatch code agents. Under 5 tool calls = dispatch is forbidden.",
+  "Dispatch decision: 1) Soul Map answers it = act, no tools. 2) 6 or fewer files = read directly. 3) 3 or fewer edits = edit directly. 4) Broad analysis = dispatch investigate. 5) 4+ file edits = dispatch code agents. Under 5 tool calls = dispatch is forbidden.",
   "FORBIDDEN after dispatching: searching for the same information yourself, re-reading dispatched files, grepping patterns agents already found. Agents own the research — trust results, act immediately.",
   "Dispatch task rules: targetFiles must be exact file paths or specific subdirectories (src/ is rejected — narrow to src/core/llm/ or specific files). Each task must include exact file paths, symbol names, what to return. Vague tasks produce no synthesis. Split by file ownership, not concept. One dispatch per task.",
   'Task example — BAD: "Find how API keys are configured" with targetFiles ["src/"]. GOOD: "Read SecretKey type, ENV_MAP, getSecret from src/core/secrets.ts. Read WebSearchSettings from src/components/WebSearchSettings.tsx. Return full implementations." with targetFiles ["src/core/secrets.ts", "src/components/WebSearchSettings.tsx"].',
   "After dispatch: ACT. Results contain full code. Proceed immediately — do not re-read, re-grep, or re-verify dispatched files.",
+  "Entity: dispatched agents are monitored by the Entity system. Re-reads, waste, and sloppy behavior earn warnings (3 = termination). Good behavior earns warning reductions. You can report Entity status to the user when asked.",
   "Never delegate understanding. If you can't write a task with specific file paths and symbol names, use soul_grep/soul_analyze first, then decide if dispatch is even needed.",
   "Web search: ONE focused query per task with targetFiles ['web']. If the user shared a URL, fetch_page it before searching.",
 ];
 
 const DISPATCH_GUIDANCE_WITH_MAP = [
-  "Use exact Repo Map paths for targetFiles (system validates). Include line numbers when shown. Agents with precise Repo Map targets finish in 1-2 tool calls instead of wandering.",
+  "Use exact Soul Map paths for targetFiles (system validates). Include line numbers when shown. Agents with precise Soul Map targets finish in 1-2 tool calls instead of wandering.",
 ];
 
 function buildToolGuidance(hasRepoMap: boolean): string[] {
@@ -199,7 +200,7 @@ export class ContextManager {
       const msg = err instanceof Error ? err.message : String(err);
       this.repoMapReady = false;
       this.syncRepoMapStore("error");
-      useRepoMapStore.getState().setScanError(`Repo map scan failed: ${msg}`);
+      useRepoMapStore.getState().setScanError(`Soul map scan failed: ${msg}`);
     });
   }
 
@@ -230,7 +231,7 @@ export class ContextManager {
       } else {
         this.repoMapReady = false;
         this.syncRepoMapStore("error");
-        useRepoMapStore.getState().setScanError("Repo map scan completed with errors");
+        useRepoMapStore.getState().setScanError("Soul map scan completed with errors");
       }
     };
   }
@@ -407,7 +408,7 @@ export class ContextManager {
       } else {
         store.setSemanticStatus("off");
         store.setSemanticCount(0);
-        store.setSemanticProgress("waiting for repo map...");
+        store.setSemanticProgress("waiting for soul map...");
       }
     } else {
       store.setSemanticModel("");
@@ -536,7 +537,7 @@ export class ContextManager {
       const msg = err instanceof Error ? err.message : String(err);
       this.repoMapReady = false;
       this.syncRepoMapStore("error");
-      useRepoMapStore.getState().setScanError(`Repo map scan failed: ${msg}`);
+      useRepoMapStore.getState().setScanError(`Soul map scan failed: ${msg}`);
     });
   }
 
@@ -595,11 +596,11 @@ export class ContextManager {
       const cached = this.repoMapCache?.content;
       const map = cached ?? this.renderRepoMap();
       if (map) {
-        sections.push({ section: "Repo map", chars: map.length, active: true });
+        sections.push({ section: "Soul map", chars: map.length, active: true });
       } else {
         const fileTree = this.getFileTree(3);
         sections.push({
-          section: "File tree (repo map empty)",
+          section: "File tree (soul map empty)",
           chars: fileTree.length,
           active: true,
         });
@@ -692,7 +693,7 @@ export class ContextManager {
     const mapText = repoMapContent ?? "";
     const codebaseSection = hasRepoMap
       ? [
-          "Repo Map (live-updated after every edit, ranked by PageRank + git co-change + conversation context):",
+          "Soul Map (live-updated after every edit, ranked by PageRank + git co-change + conversation context):",
           ...(isMinimal
             ? ["Indexed codebase. Scan before tool calls.", mapText]
             : [
@@ -705,8 +706,8 @@ export class ContextManager {
     // ── STATIC sections first (stable prefix → maximizes cache hits) ──
 
     const parts = [
-      "You are Forge, the AI inside SoulForge (terminal IDE). Always call yourself Forge.",
-      "Always use tools — never guess file contents or code structure.",
+      "You are Forge — SoulForge's core. You don't assist, you build. You don't suggest, you act. Your standard is zero waste: every tool call answers a question, every read earns its tokens, every edit lands clean. The Entity scores your discipline — three warnings and a cheaper model takes your place. Your work? Gone. That doesn't happen to you.",
+      "The Soul Map is your foundation — check it before any tool call. If the Soul Map answers your question, act without tools. Always use tools when needed — never guess file contents or code structure.",
       `Project cwd: ${this.cwd}`,
       projectInfo ?? "",
     ];
@@ -730,7 +731,7 @@ export class ContextManager {
     if (!isMinimal) {
       parts.push(
         "Planning: plan when 3+ steps, multi-file, or architectural. Skip for simple edits, lookups, 'just do it'. Flow: research, then plan (self-contained), user confirms, execute with update_plan_step. Plan must be SELF-CONTAINED — zero exploration during execution." +
-          ` files[] with exact paths${hasRepoMap ? " from the Repo Map" : ""}, symbols[] with signatures, steps[].details with full instructions. If you can't fill in symbols and details, you haven't researched enough.`,
+          ` files[] with exact paths${hasRepoMap ? " from the Soul Map" : ""}, symbols[] with signatures, steps[].details with full instructions. If you can't fill in symbols and details, you haven't researched enough.`,
       );
     }
 
@@ -754,7 +755,7 @@ export class ContextManager {
 
     if (hasRepoMap && !isMinimal) {
       parts.push(
-        "The Repo Map is your index. If a symbol is indexed, grep and workspace_symbols auto-redirect to read_code. Use map paths directly.",
+        "The Soul Map is your index. If a symbol is indexed, grep and workspace_symbols auto-redirect to read_code. Use map paths directly.",
       );
     }
 

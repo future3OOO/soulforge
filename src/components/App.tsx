@@ -844,6 +844,7 @@ export function App({
         return;
       }
       // Prevent OpenTUI scrollbox from handling keys meant for Neovim (up/down/j/k etc.)
+      evt.preventDefault();
       evt.stopPropagation();
       return;
     }

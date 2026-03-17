@@ -763,6 +763,8 @@ const MultiAgentChildRow = memo(
     const continuation = isLast ? "  " : "│ ";
 
     const toolUses = isDone ? info.toolUses : liveStats?.toolUses;
+    const stepCount = liveStats?.stepCount;
+    const stepMax = info.role === "code" ? 25 : 15;
     const tokenUsage = isDone ? info.tokenUsage : liveStats?.tokenUsage;
     const cacheHits = isDone ? info.cacheHits : liveStats?.cacheHits;
 
@@ -810,7 +812,11 @@ const MultiAgentChildRow = memo(
                 [{icon("model")} {modelLabel}]
               </span>
             ) : null}
-            {toolUses != null && toolUses > 0 ? (
+            {stepCount != null && stepCount > 0 && !isDone ? (
+              <span fg="#8a6">
+                [{icon("gear")} {String(stepCount)}/{String(stepMax)}]
+              </span>
+            ) : toolUses != null && toolUses > 0 ? (
               <span fg={isDone ? "#444" : "#8a6"}>
                 [{icon("gear")} {String(toolUses)}]
               </span>
@@ -1037,9 +1043,19 @@ const ToolRow = memo(
       }
     }, [tc.result]);
 
+    const dispatchRejection = useMemo(() => {
+      if (tc.toolName !== "dispatch" || tc.state !== "done" || !tc.result) return null;
+      try {
+        const p = JSON.parse(tc.result);
+        if (p.reads) return null;
+      } catch {}
+      const match = tc.result.match(/(?:⛔|⚠️)\s*dispatch\s*\[rejected\s*→\s*(.+?)\]/);
+      return match?.[1] ?? null;
+    }, [tc.toolName, tc.state, tc.result]);
+
     const repoMapIcon = TOOL_ICONS._repomap ?? "◈";
     const icon = isRepoMapHit ? repoMapIcon : (TOOL_ICONS[tc.toolName] ?? "\uF0AD");
-    const label = isRepoMapHit ? "Repo Map" : (TOOL_LABELS[tc.toolName] ?? tc.toolName);
+    const label = isRepoMapHit ? "Soul Map" : (TOOL_LABELS[tc.toolName] ?? tc.toolName);
     const argStr = formatArgs(tc.toolName, tc.args);
     const outsideKind = useMemo(
       () => detectOutsideCwd(tc.toolName, tc.args),
@@ -1076,7 +1092,9 @@ const ToolRow = memo(
             (a) => a.state === "done" || a.state === "error",
           ).length
         : 0;
-      if (tc.state === "running") {
+      if (tc.state === "done" && dispatchRejection) {
+        suffix = ` → rejected — ${dispatchRejection}`;
+      } else if (tc.state === "running") {
         const parts: string[] = [];
         if (seconds != null && seconds > 0) parts.push(formatDuration(seconds));
         if (total > 0) parts.push(`${String(done)}/${String(total)} agents`);
@@ -1117,7 +1135,7 @@ const ToolRow = memo(
 
     const iconColor = isRepoMapHit ? "#2dd4bf" : (TOOL_ICON_COLORS[tc.toolName] ?? "#888");
     const staticCategory = isRepoMapHit
-      ? ("repo-map" as ToolCategory)
+      ? ("soul-map" as ToolCategory)
       : TOOL_CATEGORIES[tc.toolName];
     const backendCategory = useMemo(() => {
       if (isRepoMapHit) return null;
@@ -1173,7 +1191,17 @@ const ToolRow = memo(
               <span fg={isDone ? COLORS.textDone : COLORS.argsActive}> {argStr}</span>
             ) : null}
             {suffix ? (
-              <span fg={tc.state === "error" ? COLORS.error : COLORS.textDone}>{suffix}</span>
+              <span
+                fg={
+                  tc.state === "error"
+                    ? COLORS.error
+                    : dispatchRejection
+                      ? "#d9a020"
+                      : COLORS.textDone
+                }
+              >
+                {suffix}
+              </span>
             ) : null}
           </text>
         </box>

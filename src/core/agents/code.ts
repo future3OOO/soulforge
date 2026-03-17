@@ -15,6 +15,7 @@ function codeBase(): string {
     "Tool results are authoritative. FORBIDDEN: re-reading to verify, re-reading to confirm changes, chunking files, commentary between tool calls.",
     "Task paths are pre-resolved — read target, edit it, move on. On edit failure: re-read with read_file, retry with exact text.",
     "Pick the RIGHT tool: read one symbol = read_code. Find where something is defined = navigate definition. Check for errors after edit = analyze diagnostics (not project typecheck). Rename = rename_symbol (not grep + edit_file). FORBIDDEN: using grep when navigate or read_code answers it.",
+    "Entity oversight: every tool call is monitored. Re-reads, waste, and sloppy behavior earn warnings. 3 warnings = termination and replacement.",
     "Stay in scope — out-of-scope issues get one sentence, no fix. No commentary between tool calls.",
   ].join("\n");
 }
@@ -43,6 +44,7 @@ const codeOutput = Output.object({
 interface CodeAgentOptions {
   bus?: AgentBus;
   agentId?: string;
+  parentToolCallId?: string;
   providerOptions?: ProviderOptions;
   headers?: Record<string, string>;
   webSearchModel?: LanguageModel;
@@ -91,9 +93,11 @@ export function createCodeAgent(model: LanguageModel, options?: CodeAgentOptions
     prepareStep: buildPrepareStep({
       bus,
       agentId,
+      parentToolCallId: options?.parentToolCallId,
       role: "code",
       allTools,
       symbolLookup: buildSymbolLookup(options?.repoMap),
+      stepLimit: 25,
     }),
     experimental_repairToolCall: repairToolCall,
     ...(options?.providerOptions && Object.keys(options.providerOptions).length > 0

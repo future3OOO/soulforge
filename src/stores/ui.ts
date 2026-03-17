@@ -67,7 +67,7 @@ interface UIState {
   setRouterSlotPicking: (slot: keyof TaskRouter | null) => void;
 
   openCommandPicker: (config: CommandPickerConfig) => void;
-  updatePickerOptions: (options: CommandPickerConfig["options"]) => void;
+  updatePickerOptions: (options: CommandPickerConfig["options"], currentValue?: string) => void;
   openInfoPopup: (config: InfoPopupConfig) => void;
   closeInfoPopup: () => void;
 
@@ -111,9 +111,11 @@ export const useUIStore = create<UIState>()((set) => ({
       commandPickerConfig: config,
       modals: { ...INITIAL_MODALS, commandPicker: true },
     })),
-  updatePickerOptions: (options) =>
+  updatePickerOptions: (options, currentValue) =>
     set((s) => ({
-      commandPickerConfig: s.commandPickerConfig ? { ...s.commandPickerConfig, options } : null,
+      commandPickerConfig: s.commandPickerConfig
+        ? { ...s.commandPickerConfig, options, ...(currentValue !== undefined && { currentValue }) }
+        : null,
     })),
   openInfoPopup: (config) =>
     set((s) => ({

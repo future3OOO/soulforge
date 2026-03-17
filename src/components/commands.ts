@@ -114,7 +114,7 @@ function applyRepoMapToggle(
     cm.clearRepoMap();
   }
 
-  sysMsg(ctx, `Repo map ${nowEnabled ? "enabled" : "disabled"} (${toScope}).`);
+  sysMsg(ctx, `Soul map ${nowEnabled ? "enabled" : "disabled"} (${toScope}).`);
 }
 
 function triggerSemanticGeneration(ctx: CommandContext, cm: ContextManager): void {
@@ -179,7 +179,7 @@ function buildRepoMapOptions(ctx: CommandContext) {
         label: cm.getSemanticMode() === "llm" ? "LLM Summaries ✓" : "LLM Summaries",
         description:
           !enabled || !ready
-            ? "requires repo map to be active"
+            ? "requires soul map to be active"
             : cm.getSemanticMode() === "llm"
               ? `ON — ${String(stats.summaries)} cached [${getShortModelLabel(cm.getSemanticModelId(ctx.chat.activeModel))}]`
               : "generate AI descriptions for top symbols",
@@ -189,7 +189,7 @@ function buildRepoMapOptions(ctx: CommandContext) {
         label: cm.getSemanticMode() === "ast" ? "AST Docstrings ✓" : "AST Docstrings",
         description:
           !enabled || !ready
-            ? "requires repo map to be active"
+            ? "requires soul map to be active"
             : cm.getSemanticMode() === "ast"
               ? `ON — ${String(stats.summaries)} extracted from comments`
               : "extract summaries from JSDoc/docstrings (free, instant)",
@@ -223,18 +223,14 @@ function buildRepoMapOptions(ctx: CommandContext) {
 
 function refreshRepoMapPicker(ctx: CommandContext): void {
   const { options, currentValue } = buildRepoMapOptions(ctx);
-  const store = useUIStore.getState();
-  store.updatePickerOptions(options);
-  if (store.commandPickerConfig) {
-    store.commandPickerConfig.currentValue = currentValue;
-  }
+  useUIStore.getState().updatePickerOptions(options, currentValue);
 }
 
 function openRepoMapMenu(ctx: CommandContext): void {
   const { options, currentValue } = buildRepoMapOptions(ctx);
 
   ctx.openCommandPicker({
-    title: "Repo Map",
+    title: "Soul Map",
     icon: icon("repomap"),
     currentValue,
     keepOpen: true,
@@ -246,7 +242,7 @@ function openRepoMapMenu(ctx: CommandContext): void {
       if (value === "enable" || value === "disable") {
         applyRepoMapToggle(ctx, value === "enable", scope ?? "project");
       } else if (value === "refresh") {
-        sysMsg(ctx, "Rebuilding repo map...");
+        sysMsg(ctx, "Rebuilding soul map...");
         cm.refreshRepoMap().catch(() => {});
       } else if (value === "clear") {
         if (cm.isSemanticEnabled()) {
@@ -256,10 +252,10 @@ function openRepoMapMenu(ctx: CommandContext): void {
         cm.setRepoMapEnabled(false);
         cm.clearRepoMap();
         ctx.saveToScope({ repoMap: false }, scope ?? "project");
-        sysMsg(ctx, `Repo map disabled and index cleared (${scope ?? "project"}).`);
+        sysMsg(ctx, `Soul map disabled and index cleared (${scope ?? "project"}).`);
       } else if (value === "semantic") {
         if (!cm.isRepoMapEnabled() || !cm.isRepoMapReady()) {
-          sysMsg(ctx, "Enable repo map first — semantic summaries depend on the symbol index.");
+          sysMsg(ctx, "Enable soul map first — semantic summaries depend on the symbol index.");
           return;
         }
         const current = cm.getSemanticMode();
@@ -273,7 +269,7 @@ function openRepoMapMenu(ctx: CommandContext): void {
         }
       } else if (value === "semantic-ast") {
         if (!cm.isRepoMapEnabled() || !cm.isRepoMapReady()) {
-          sysMsg(ctx, "Enable repo map first — semantic summaries depend on the symbol index.");
+          sysMsg(ctx, "Enable soul map first — semantic summaries depend on the symbol index.");
           return;
         }
         const current = cm.getSemanticMode();
@@ -401,7 +397,7 @@ function openStorageMenu(ctx: CommandContext): void {
         },
         {
           value: "clear-repomap",
-          label: pad("Repo Map", formatBytes(s.repoMap)),
+          label: pad("Soul Map", formatBytes(s.repoMap)),
           description: s.repoMap > 0 ? `${icon("delete_all")} clear` : undefined,
         },
         {
@@ -471,7 +467,7 @@ function openStorageMenu(ctx: CommandContext): void {
         if (value === "clear-repomap") {
           if (s.repoMap === 0) return;
           ctx.contextManager.clearRepoMap();
-          sysMsg(ctx, `Cleared repo map (freed ~${formatBytes(s.repoMap)}).`);
+          sysMsg(ctx, `Cleared soul map (freed ~${formatBytes(s.repoMap)}).`);
         } else if (value === "clear-sessions") {
           if (sessionCount === 0) return;
           const cleared = sm.clearAllSessions();
@@ -1371,7 +1367,7 @@ async function handleCommandInner(input: string, ctx: CommandContext): Promise<v
       }
       lines.push(
         { type: "spacer" },
-        { type: "header", label: "Repo Map" },
+        { type: "header", label: "Soul Map" },
         {
           type: "entry",
           label: "Status",
@@ -2239,12 +2235,14 @@ async function handleCommandInner(input: string, ctx: CommandContext): Promise<v
       if (cmd === "/agent-features") {
         const featureDesc: Record<string, string> = {
           desloppify: "cleanup pass after code agents (needs model in /router)",
+          verifyEdits: "adversarial review after code agents (needs exploration model)",
           tierRouting: "auto-route trivial tasks to cheaper models",
           dispatchCache: "cache file reads across dispatch boundaries",
           targetFileValidation: "require file paths on dispatch tasks",
         };
         const featureLabel: Record<string, string> = {
           desloppify: "De-sloppify",
+          verifyEdits: "Verify Edits",
           tierRouting: "Tier Routing",
           dispatchCache: "Dispatch Cache",
           targetFileValidation: "Target File Validation",

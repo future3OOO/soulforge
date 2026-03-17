@@ -17,7 +17,6 @@ const FORGE_STATUSES = [
 ];
 
 const ghostIcon = () => icon("ghost");
-const GHOST_FRAMES = [ghostIcon, ghostIcon, ghostIcon, () => " "] as const;
 const GHOST_SPEED = 400;
 const COMPLETED_DISPLAY_MS = 5000;
 
@@ -31,15 +30,14 @@ function formatElapsed(sec: number): string {
 }
 
 function buildBusyContent(
-  ghostTick: number,
+  ghostVisible: boolean,
   isCompacting: boolean,
   forgeStatus: string,
   elapsedSec: number,
   isLoading: boolean,
   queueCount: number | undefined,
 ): StyledText {
-  const ghostFrameFn = GHOST_FRAMES[ghostTick % GHOST_FRAMES.length];
-  const currentGhost = ghostFrameFn ? ghostFrameFn() : " ";
+  const currentGhost = ghostVisible ? ghostIcon() : " ";
   const busyStatus = isCompacting ? "Compacting context…" : forgeStatus;
   const ghostColor = isCompacting ? "#5af" : "#8B5CF6";
   const statusColor = isCompacting ? "#3388cc" : "#6A0DAD";
@@ -114,6 +112,9 @@ export function LoadingStatus({ isLoading, isCompacting, queueCount }: LoadingSt
       }
       return;
     }
+    let prevGhostVisible = true;
+    let prevElapsed = -1;
+    let prevQc: number | undefined;
     const timer = setInterval(() => {
       ghostTickRef.current++;
       const { isLoading: ld, isCompacting: cp, queueCount: qc } = propsRef.current;
@@ -122,10 +123,15 @@ export function LoadingStatus({ isLoading, isCompacting, queueCount }: LoadingSt
         : ld
           ? Math.floor((Date.now() - loadingStartRef.current) / 1000)
           : 0;
+      const ghostVisible = ghostTickRef.current % 4 !== 3;
+      if (ghostVisible === prevGhostVisible && elapsed === prevElapsed && qc === prevQc) return;
+      prevGhostVisible = ghostVisible;
+      prevElapsed = elapsed;
+      prevQc = qc;
       try {
         if (textRef.current) {
           textRef.current.content = buildBusyContent(
-            ghostTickRef.current,
+            ghostVisible,
             cp,
             forgeStatusRef.current,
             elapsed,
@@ -145,7 +151,7 @@ export function LoadingStatus({ isLoading, isCompacting, queueCount }: LoadingSt
   }, []);
 
   const initial = showBusy
-    ? buildBusyContent(0, isCompacting, forgeStatusRef.current, 0, isLoading, queueCount)
+    ? buildBusyContent(true, isCompacting, forgeStatusRef.current, 0, isLoading, queueCount)
     : completedTimeRef.current
       ? buildCompletedContent(completedTimeRef.current)
       : new StyledText([]);

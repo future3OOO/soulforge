@@ -151,7 +151,7 @@ export function RepoMapStatusPopup({ visible, onClose }: Props) {
             {`${icon("repomap")} `}
           </text>
           <text bg={POPUP_BG} fg="white" attributes={TextAttributes.BOLD}>
-            Repo Map Status
+            Soul Map Status
           </text>
         </PopupRow>
 

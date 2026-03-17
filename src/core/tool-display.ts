@@ -16,7 +16,7 @@ export type ToolCategory =
   | "ui"
   | "editor"
   | "execution"
-  | "repo-map";
+  | "soul-map";
 
 export const TOOL_CATEGORIES: Record<string, ToolCategory> = {
   // File tools
@@ -66,10 +66,10 @@ export const TOOL_CATEGORIES: Record<string, ToolCategory> = {
   code_execution: "execution",
 
   // Repo map powered
-  soul_grep: "repo-map",
-  soul_find: "repo-map",
-  soul_analyze: "repo-map",
-  soul_impact: "repo-map",
+  soul_grep: "soul-map",
+  soul_find: "soul-map",
+  soul_analyze: "soul-map",
+  soul_impact: "soul-map",
 };
 
 export const CATEGORY_COLORS: Record<string, string> = {
@@ -87,7 +87,7 @@ export const CATEGORY_COLORS: Record<string, string> = {
   ui: "#00BFFF",
   editor: "#5C9FD6",
   execution: "#c55",
-  "repo-map": "#2dd4bf",
+  "soul-map": "#2dd4bf",
   brave: "#FB542B",
   ddg: "#DE5833",
   jina: "#FFAA00",
@@ -145,6 +145,7 @@ const TOOL_ICON_MAP: Record<string, string> = {
   soul_find: "search",
   soul_analyze: "repomap",
   soul_impact: "repomap",
+  _nudge: "lightning",
 };
 
 export function toolIcon(name: string): string {
@@ -191,6 +192,7 @@ export const TOOL_LABELS: Record<string, string> = {
   soul_find: "Finding",
   soul_analyze: "Analyzing",
   soul_impact: "Impact analysis",
+  _nudge: "Output nudge",
 };
 
 // ─── Tool Icon Colors ───
@@ -226,4 +228,5 @@ export const TOOL_ICON_COLORS: Record<string, string> = {
   soul_find: "#2dd4bf",
   soul_analyze: "#2dd4bf",
   soul_impact: "#2dd4bf",
+  _nudge: "#d9a020",
 };

@@ -55,9 +55,11 @@ export function CommandPicker({ visible, config, onClose }: Props) {
   };
 
   const prevVisibleRef = useRef(false);
+  const prevOptionsRef = useRef<CommandPickerOption[] | null>(null);
   useEffect(() => {
     if (!visible || !config) {
       prevVisibleRef.current = visible;
+      prevOptionsRef.current = null;
       return;
     }
     const justOpened = !prevVisibleRef.current;
@@ -68,7 +70,17 @@ export function CommandPicker({ visible, config, onClose }: Props) {
       setCursor(idx >= 0 ? idx : 0);
       setScrollOffset(0);
       if (config.scopeEnabled) setScope(config.initialScope ?? "project");
+    } else if (prevOptionsRef.current && prevOptionsRef.current !== config.options) {
+      setCursor((prev) => {
+        const prevValue = prevOptionsRef.current?.[prev]?.value;
+        if (prevValue) {
+          const newIdx = config.options.findIndex((o) => o.value === prevValue);
+          if (newIdx >= 0) return newIdx;
+        }
+        return Math.min(prev, Math.max(0, config.options.length - 1));
+      });
     }
+    prevOptionsRef.current = config.options;
   }, [visible, config]);
 
   useKeyboard((evt) => {

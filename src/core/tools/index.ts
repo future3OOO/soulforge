@@ -326,7 +326,7 @@ export function buildTools(
           .boolean()
           .optional()
           .describe(
-            "Skip repo map fast-path. Only use after confirming the repo map result was incomplete or stale.",
+            "Skip soul map fast-path. Only use after confirming the soul map result was incomplete or stale.",
           ),
       }),
       execute: deferExecute((args) => {
@@ -348,7 +348,7 @@ export function buildTools(
           .boolean()
           .optional()
           .describe(
-            "Skip repo map fast-path. Only use after confirming the repo map result was incomplete or stale.",
+            "Skip soul map fast-path. Only use after confirming the soul map result was incomplete or stale.",
           ),
       }),
       execute: deferExecute((args) => {
@@ -475,7 +475,7 @@ export function buildTools(
           .boolean()
           .optional()
           .describe(
-            "Skip repo map fast-path. Only use after confirming the repo map result was incomplete or stale.",
+            "Skip soul map fast-path. Only use after confirming the soul map result was incomplete or stale.",
           ),
       }),
       execute: deferExecute((args) => {
@@ -611,7 +611,7 @@ export function buildTools(
           .boolean()
           .optional()
           .describe(
-            "Skip repo map fast-path. Only use after confirming the repo map result was incomplete or stale.",
+            "Skip soul map fast-path. Only use after confirming the soul map result was incomplete or stale.",
           ),
       }),
       execute: deferExecute((args) => {
@@ -924,7 +924,7 @@ export function buildSubagentExploreTools(opts?: {
           .boolean()
           .optional()
           .describe(
-            "Skip repo map fast-path. Only use after confirming the repo map result was incomplete or stale.",
+            "Skip soul map fast-path. Only use after confirming the soul map result was incomplete or stale.",
           ),
       }),
       execute: deferExecute(async (args) => {
@@ -947,7 +947,7 @@ export function buildSubagentExploreTools(opts?: {
           .boolean()
           .optional()
           .describe(
-            "Skip repo map fast-path. Only use after confirming the repo map result was incomplete or stale.",
+            "Skip soul map fast-path. Only use after confirming the soul map result was incomplete or stale.",
           ),
       }),
       execute: deferExecute((args) => {
@@ -998,7 +998,7 @@ export function buildSubagentExploreTools(opts?: {
           .boolean()
           .optional()
           .describe(
-            "Skip repo map fast-path. Only use after confirming the repo map result was incomplete or stale.",
+            "Skip soul map fast-path. Only use after confirming the soul map result was incomplete or stale.",
           ),
       }),
       execute: deferExecute((args) => {
@@ -1039,7 +1039,7 @@ export function buildSubagentExploreTools(opts?: {
           .boolean()
           .optional()
           .describe(
-            "Skip repo map fast-path. Only use after confirming the repo map result was incomplete or stale.",
+            "Skip soul map fast-path. Only use after confirming the soul map result was incomplete or stale.",
           ),
       }),
       execute: deferExecute((args) => {

@@ -70,7 +70,7 @@ const CMD_DEFS: Array<{ cmd: string; ic: string; desc: string }> = [
   { cmd: "/quit", ic: "quit", desc: "Exit SoulForge" },
   { cmd: "/reasoning", ic: "brain", desc: "Show or hide reasoning content" },
   { cmd: "/rename", ic: "pencil", desc: "Rename current tab" },
-  { cmd: "/repo-map", ic: "tree", desc: "Repo map settings (AST index)" },
+  { cmd: "/repo-map", ic: "tree", desc: "Soul map settings (AST index)" },
   { cmd: "/restart", ic: "ghost", desc: "Full restart" },
   { cmd: "/router", ic: "router", desc: "Assign models per task type" },
   { cmd: "/sessions", ic: "clock_alt", desc: "Browse & restore sessions" },

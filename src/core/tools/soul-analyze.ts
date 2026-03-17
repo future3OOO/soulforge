@@ -15,7 +15,7 @@ interface SoulAnalyzeArgs {
 export const soulAnalyzeTool = {
   name: "soul_analyze",
   description:
-    "AST and repo-map powered codebase analysis. Zero LLM token cost — all computed locally from the indexed database.\n" +
+    "AST and soul-map powered codebase analysis. Zero LLM token cost — all computed locally from the indexed database.\n" +
     "Actions:\n" +
     "- identifier_frequency: top N most referenced identifiers across the codebase (which files use them). " +
     "Answers 'most reused variable' instantly. Optional name param to check a specific identifier.\n" +
@@ -30,7 +30,7 @@ export const soulAnalyzeTool = {
       if (!repoMap?.isReady) {
         return {
           success: false,
-          output: "Repo map not ready. Run scan first.",
+          output: "Soul map not ready. Run scan first.",
           error: "not ready",
         };
       }
@@ -163,7 +163,7 @@ function fileProfile(repoMap: RepoMap, cwd: string, file: string | undefined): T
   const symbols = repoMap.getFileSymbols(relPath);
 
   if (deps.length === 0 && dependents.length === 0 && symbols.length === 0) {
-    return { success: true, output: `"${relPath}" not found in repo map index.` };
+    return { success: true, output: `"${relPath}" not found in soul map index.` };
   }
 
   const lines = [`File profile: ${relPath}\n`];

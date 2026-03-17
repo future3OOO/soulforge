@@ -115,7 +115,7 @@ export function tryInterceptGlob(
 
   const fileList = matches.map((p) => `  ${relative(cwd, p)}`).join("\n");
   const output =
-    `REPO MAP — ${String(matches.length)} indexed file${matches.length === 1 ? "" : "s"} match "${args.pattern}":\n${fileList}\n` +
+    `SOUL MAP — ${String(matches.length)} indexed file${matches.length === 1 ? "" : "s"} match "${args.pattern}":\n${fileList}\n` +
     `Use read_file or read_code on these paths directly — dispatch is not needed. Glob was skipped.`;
 
   return { intercepted: true, success: true, output, repoMapHit: true };
@@ -157,7 +157,7 @@ export function tryInterceptDiscoverPattern(
   if (exactMatches.length === 0 && substringMatches.length === 0 && fileMatches.length === 0)
     return null;
 
-  const parts: string[] = [`REPO MAP — discover "${args.query}":`];
+  const parts: string[] = [`SOUL MAP — discover "${args.query}":`];
 
   if (exactMatches.length > 0) {
     parts.push(`\nExact symbols (${String(exactMatches.length)}):`);
@@ -220,10 +220,10 @@ export function tryInterceptGrep(
 
     const output =
       exactMatches.length === 1
-        ? `REPO MAP — "${symbolName}" is indexed at ${bestRel} (${bestMatch.kind}). ` +
+        ? `SOUL MAP — "${symbolName}" is indexed at ${bestRel} (${bestMatch.kind}). ` +
           `Use ${readHint} to read it directly. ` +
-          `Grep was skipped — the repo map already knows this symbol's location.`
-        : `REPO MAP — "${symbolName}" found in ${String(exactMatches.length)} files:\n${matchList}\n` +
+          `Grep was skipped — the soul map already knows this symbol's location.`
+        : `SOUL MAP — "${symbolName}" found in ${String(exactMatches.length)} files:\n${matchList}\n` +
           `Use read_code with the correct file path. Grep was skipped.`;
 
     return { intercepted: true, success: true, output, repoMapHit: true };
@@ -234,7 +234,7 @@ export function tryInterceptGrep(
   if (substringMatches.length > 0) {
     const matchList = formatSubstringMatches(substringMatches, cwd);
     const output =
-      `REPO MAP — no exact symbol "${symbolName}", but ${String(substringMatches.length)} symbol${substringMatches.length === 1 ? "" : "s"} contain it:\n${matchList}\n` +
+      `SOUL MAP — no exact symbol "${symbolName}", but ${String(substringMatches.length)} symbol${substringMatches.length === 1 ? "" : "s"} contain it:\n${matchList}\n` +
       `Use read_code with the correct symbol name and file path. Grep was skipped.`;
 
     return { intercepted: true, success: true, output, repoMapHit: true };
@@ -271,10 +271,10 @@ export function tryInterceptNavigate(
 
     const output =
       exactMatches.length === 1
-        ? `REPO MAP — "${symbolName}" is indexed at ${bestRel} (${bestMatch.kind}). ` +
+        ? `SOUL MAP — "${symbolName}" is indexed at ${bestRel} (${bestMatch.kind}). ` +
           `Use ${readHint} directly. ` +
           `${args.action} was skipped.`
-        : `REPO MAP — "${symbolName}" found in ${String(exactMatches.length)} files:\n${matchList}\n` +
+        : `SOUL MAP — "${symbolName}" found in ${String(exactMatches.length)} files:\n${matchList}\n` +
           `Use read_code with the correct file. ${args.action} was skipped.`;
 
     return { intercepted: true, success: true, output, repoMapHit: true };
@@ -285,7 +285,7 @@ export function tryInterceptNavigate(
   if (substringMatches.length > 0) {
     const matchList = formatSubstringMatches(substringMatches, cwd);
     const output =
-      `REPO MAP — no exact symbol "${symbolName}", but ${String(substringMatches.length)} symbol${substringMatches.length === 1 ? "" : "s"} contain it:\n${matchList}\n` +
+      `SOUL MAP — no exact symbol "${symbolName}", but ${String(substringMatches.length)} symbol${substringMatches.length === 1 ? "" : "s"} contain it:\n${matchList}\n` +
       `Use read_code with the correct symbol name and file path. ${args.action} was skipped.`;
 
     return { intercepted: true, success: true, output, repoMapHit: true };

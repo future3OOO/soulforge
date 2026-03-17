@@ -84,27 +84,32 @@ export function PlanReviewPrompt({
     if (typing) {
       if (evt.name === "escape") {
         setTyping(false);
+        evt.stopPropagation();
       }
       return;
     }
 
     if (evt.name === "escape") {
       onCancel();
+      evt.stopPropagation();
       return;
     }
 
     if (evt.name === "up") {
       setSelectedIdx((prev) => (prev > 0 ? prev - 1 : options.length - 1));
+      evt.stopPropagation();
       return;
     }
     if (evt.name === "down" || evt.name === "tab") {
       setSelectedIdx((prev) => (prev + 1) % options.length);
+      evt.stopPropagation();
       return;
     }
 
     if (evt.name === "return") {
       const opt = options[selectedIdx];
       if (!opt) return;
+      evt.stopPropagation();
       switch (opt.id) {
         case "implement":
           onAccept();

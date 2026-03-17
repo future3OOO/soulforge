@@ -17,7 +17,7 @@ export const soulImpactTool = {
   createExecute: (repoMap?: RepoMap) => {
     return async (args: SoulImpactArgs): Promise<ToolResult> => {
       if (!repoMap?.isReady) {
-        return { success: false, output: "Repo map not ready.", error: "not ready" };
+        return { success: false, output: "Soul map not ready.", error: "not ready" };
       }
 
       if (isForbidden(args.file) !== null) {
@@ -105,7 +105,7 @@ function showBlastRadius(repoMap: RepoMap, relPath: string): ToolResult {
   const symbols = repoMap.getFileSymbols(relPath);
 
   if (dependents.length === 0 && cochanges.length === 0 && symbols.length === 0) {
-    return { success: true, output: `"${relPath}" not found in repo map index.` };
+    return { success: true, output: `"${relPath}" not found in soul map index.` };
   }
 
   const allAffected = new Set<string>();

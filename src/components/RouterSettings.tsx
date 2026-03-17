@@ -21,7 +21,7 @@ const SLOTS: SlotItem[] = [
   { key: "exploration", label: "Exploration", desc: "explore subagent" },
   { key: "webSearch", label: "Web Search", desc: "browser & web search tasks" },
   { key: "compact", label: "Compact", desc: "context compaction summarizer" },
-  { key: "semantic", label: "Semantic", desc: "repo map summary generation" },
+  { key: "semantic", label: "Semantic", desc: "soul map summary generation" },
   { key: "trivial", label: "Trivial", desc: "single-file reads, small edits (fast/cheap)" },
   { key: "desloppify", label: "De-sloppify", desc: "cleanup pass after code agents" },
   { key: "verify", label: "Verify", desc: "adversarial review after code agents" },

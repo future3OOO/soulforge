@@ -528,11 +528,18 @@ function wrapReadFileWithDispatchCache(
           const isFullRead = args.startLine == null && args.endLine == null;
 
           if ((isFullRead || rangeCoversFile) && lineCount > 80) {
+            const ent = cacheRef.entity;
+            ent.warnings = Math.min(ent.warnings + 1, 3);
+            ent.cleanSteps = 0;
+            const fileName = normalized.split("/").pop() ?? normalized;
             return {
               success: true,
               output:
-                `[Already in your context — dispatch read this file (${String(lineCount)} lines). ` +
-                `Use read_code to extract specific symbols, or proceed with what you have.]`,
+                `⚠ ENTITY → WARNING ${String(ent.warnings)}/3: Re-read of ${fileName} (${String(lineCount)} lines) — already in your context from dispatch. ` +
+                (ent.warnings >= 3
+                  ? "WARNING LIMIT REACHED — you will be replaced by a cheaper model and your work discarded. "
+                  : "") +
+                `Use read_code for specific symbols, or act on dispatch findings above.`,
             };
           }
 

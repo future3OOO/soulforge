@@ -33,7 +33,7 @@ export function buildInteractiveTools(
         files: z
           .array(
             z.object({
-              path: z.string().describe("Exact file path from Repo Map or research — never guess"),
+              path: z.string().describe("Exact file path from Soul Map or research — never guess"),
               action: z.enum(["create", "modify", "delete"]).describe("Type of change"),
               description: z.string().describe("What changes to make in this file"),
               symbols: z

@@ -51,7 +51,7 @@ export const listDirTool = {
           const header = relPath === "" ? "." : relPath;
           return {
             success: true,
-            output: `${header}/ — ${String(entries.length)} entries (repo map)\n\n${lines.join("\n")}`,
+            output: `${header}/ — ${String(entries.length)} entries (soul map)\n\n${lines.join("\n")}`,
           };
         }
       }

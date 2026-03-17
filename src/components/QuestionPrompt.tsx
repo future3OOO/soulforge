@@ -24,6 +24,7 @@ export function QuestionPrompt({ question, isActive }: Props) {
     if (typing) {
       if (evt.name === "escape") {
         setTyping(false);
+        evt.stopPropagation();
       }
       return;
     }
@@ -34,6 +35,7 @@ export function QuestionPrompt({ question, isActive }: Props) {
         const next = cur > 0 ? cur - 1 : totalOptions - 1;
         return next === totalOptions - 1 ? OTHER_IDX : next;
       });
+      evt.stopPropagation();
       return;
     }
     if (evt.name === "down") {
@@ -42,9 +44,11 @@ export function QuestionPrompt({ question, isActive }: Props) {
         const next = (cur + 1) % totalOptions;
         return next === totalOptions - 1 ? OTHER_IDX : next;
       });
+      evt.stopPropagation();
       return;
     }
     if (evt.name === "return") {
+      evt.stopPropagation();
       if (selectedIdx === OTHER_IDX) {
         setTyping(true);
         setInputValue("");
@@ -58,6 +62,7 @@ export function QuestionPrompt({ question, isActive }: Props) {
     }
     if (evt.name === "escape" && question.allowSkip) {
       question.resolve("__skipped__");
+      evt.stopPropagation();
     }
   });
 

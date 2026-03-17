@@ -534,8 +534,7 @@ function renderSegments(
       );
     }
     if (seg.type === "reasoning") {
-      const rKey = `${seg.id}-${reasoningExpanded ? "exp" : "col"}`;
-      return <ReasoningBlock key={rKey} content={seg.content} expanded={reasoningExpanded} />;
+      return <ReasoningBlock key={seg.id} content={seg.content} expanded={reasoningExpanded} />;
     }
     if (seg.type === "plan") {
       const doneSteps = seg.plan.steps.filter((s) => s.status === "done").length;

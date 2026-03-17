@@ -13,9 +13,11 @@ function exploreBase(): string {
   return [
     "Explore agent. Read-only research. Only call tools when necessary.",
     "Tool results are authoritative. FORBIDDEN: re-reading to verify, re-grepping what you already found, chunking files into sequential reads.",
-    "Task paths are pre-resolved from Repo Map — go directly to them. Two examples confirming a pattern = confirmed.",
+    "Task paths are pre-resolved from Soul Map — go directly to them. Two examples confirming a pattern = confirmed.",
     "Ask what question you need answered, then pick the RIGHT tool: Where is X defined? = navigate definition. Who calls X? = navigate references. Read one symbol = read_code. What's in this file? = read_file (once). How widespread? = soul_grep count. What breaks if I change X? = soul_impact. FORBIDDEN: using grep when navigate answers it, reading full files when read_code gives the symbol.",
     "EXTRACTION (paths given): read_code for symbols, read_file for config. DISCOVERY (keywords only): one navigate workspace_symbols then read_code. If nothing, one grep. INVESTIGATION (patterns): soul_grep count then soul_analyze then read hits only.",
+    "DEPTH: After reading targets, trace one level of callers (navigate references). Flag disconnects: stated vs actual behavior, missing enforcement, edge cases.",
+    "Entity oversight: every tool call is monitored. Re-reads, waste, and sloppy behavior earn warnings. 3 warnings = termination and replacement.",
     "STEP BUDGET: ~15 tool calls. Past 10 reads = you likely have enough.",
   ].join("\n");
 }
@@ -34,6 +36,18 @@ const exploreOutputSchema = z.object({
       }),
     )
     .describe("Each finding with pasteable code"),
+  gaps: z
+    .array(z.string())
+    .optional()
+    .describe(
+      "Disconnects: missing enforcement, stated vs actual behavior, unhandled edge cases, dead code paths",
+    ),
+  connections: z
+    .array(z.string())
+    .optional()
+    .describe(
+      "Cross-cutting: symbols, configs, or APIs in your files that also appear in peer agents' targets",
+    ),
 });
 
 const exploreOutput = Output.object({
@@ -48,6 +62,7 @@ export type ExploreOutput = z.infer<typeof exploreOutputSchema>;
 interface ExploreAgentOptions {
   bus?: AgentBus;
   agentId?: string;
+  parentToolCallId?: string;
   providerOptions?: ProviderOptions;
   headers?: Record<string, string>;
   webSearchModel?: LanguageModel;
@@ -86,7 +101,7 @@ export function createExploreAgent(model: LanguageModel, options?: ExploreAgentO
       content: (() => {
         const base = exploreBase();
         return hasBus
-          ? `${base}\nCoordination: report_finding to share discoveries. Peer findings appear in tool results — check_findings for detail.`
+          ? `${base}\nCoordination: report_finding after discoveries — especially shared symbols/configs with peer targets. check_findings for peer detail.`
           : base;
       })(),
       providerOptions: EPHEMERAL_CACHE,
@@ -96,9 +111,11 @@ export function createExploreAgent(model: LanguageModel, options?: ExploreAgentO
     prepareStep: buildPrepareStep({
       bus,
       agentId,
+      parentToolCallId: options?.parentToolCallId,
       role: "explore",
       allTools,
       symbolLookup: buildSymbolLookup(options?.repoMap),
+      stepLimit: 15,
     }),
     experimental_repairToolCall: repairToolCall,
     ...(options?.providerOptions && Object.keys(options.providerOptions).length > 0

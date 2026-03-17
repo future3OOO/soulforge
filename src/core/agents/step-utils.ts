@@ -3,6 +3,7 @@ import type { PrepareStepFunction, StopCondition } from "ai";
 import { EPHEMERAL_CACHE } from "../llm/provider-options.js";
 import { renderTaskList } from "../tools/task-list.js";
 import type { AgentBus } from "./agent-bus.js";
+import { emitSubagentStep } from "./subagent-events.js";
 
 export type SymbolLookup = (
   absPath: string,
@@ -11,9 +12,11 @@ export type SymbolLookup = (
 export interface PrepareStepOptions {
   bus?: AgentBus;
   agentId?: string;
+  parentToolCallId?: string;
   role: import("./agent-bus.js").AgentRole;
   allTools: Record<string, unknown>;
   symbolLookup?: SymbolLookup;
+  stepLimit?: number;
 }
 
 const READ_TOOLS = new Set([
@@ -39,6 +42,8 @@ const CONTEXT_TRIM_THRESHOLD_EXPLORE = 50_000;
 const CONTEXT_TRIM_THRESHOLD_CODE = 80_000;
 const BUDGET_WARNING_THRESHOLD_EXPLORE = 60_000;
 const BUDGET_WARNING_THRESHOLD_CODE = 120_000;
+const OUTPUT_NUDGE_THRESHOLD_EXPLORE = 55_000;
+const OUTPUT_NUDGE_THRESHOLD_CODE = 110_000;
 // Cache-aware pruning: only compact old tool results when context exceeds this threshold.
 // Below this, caching handles the cost better than pruning (prefix stays stable → cache hits).
 const PRUNE_THRESHOLD_EXPLORE = 35_000;
@@ -228,7 +233,24 @@ function semanticPrune(messages: ModelMessage[], pathMap?: Map<string, string>):
     }
   }
 
-  if (firstEditIdx.size === 0 && !messages.some((m) => m.role === "tool")) return messages;
+  // Build a map of file path → index of LAST read (for re-read stubbing)
+  const lastReadIdx = new Map<string, number>();
+  if (pathMap) {
+    for (let i = messages.length - 1; i >= 0; i--) {
+      const msg = messages[i];
+      if (!msg || msg.role !== "tool" || typeof msg.content === "string") continue;
+      if (!Array.isArray(msg.content)) continue;
+      for (const part of msg.content) {
+        if (part.type !== "tool-result") continue;
+        if (part.toolName !== "read_file" && part.toolName !== "read_code") continue;
+        const filePath = pathMap.get(part.toolCallId);
+        if (filePath && !lastReadIdx.has(filePath)) lastReadIdx.set(filePath, i);
+      }
+    }
+  }
+
+  if (firstEditIdx.size === 0 && lastReadIdx.size === 0 && !messages.some((m) => m.role === "tool"))
+    return messages;
 
   return messages.map((msg, idx) => {
     if (msg.role !== "tool" || typeof msg.content === "string") return msg;
@@ -238,28 +260,38 @@ function semanticPrune(messages: ModelMessage[], pathMap?: Map<string, string>):
     const newContent = msg.content.map((part) => {
       if (part.type !== "tool-result") return part;
 
-      // 1. Prune read results for files that were LATER edited (read before edit only)
       if (part.toolName === "read_file" || part.toolName === "read_code") {
-        const text = extractText(part.output);
-        if (text.length > 200 && pathMap) {
-          const filePath = pathMap.get(part.toolCallId);
-          if (filePath) {
-            const editIdx = firstEditIdx.get(filePath);
-            if (editIdx !== undefined && idx < editIdx) {
+        const filePath = pathMap?.get(part.toolCallId);
+        if (filePath) {
+          // 1. Prune read results for files that were LATER edited
+          const editIdx = firstEditIdx.get(filePath);
+          if (editIdx !== undefined && idx < editIdx) {
+            const text = extractText(part.output);
+            if (text.length > 200) {
               changed = true;
               return {
                 ...part,
-                output: {
-                  type: "text" as const,
-                  value: "[pruned — file edited since this read]",
-                },
+                output: { type: "text" as const, value: "[pruned — file edited since this read]" },
+              };
+            }
+          }
+
+          // 2. Prune read results for files that were LATER re-read (keep latest only)
+          const lastIdx = lastReadIdx.get(filePath);
+          if (lastIdx !== undefined && idx < lastIdx) {
+            const text = extractText(part.output);
+            if (text.length > 200) {
+              changed = true;
+              return {
+                ...part,
+                output: { type: "text" as const, value: "[re-read]" },
               };
             }
           }
         }
       }
 
-      // 2. Prune canceled plan results immediately
+      // 3. Prune canceled plan results immediately
       if (part.toolName === "plan") {
         const text = extractText(part.output);
         if (text.includes("canceled") || text.includes("cancelled")) {
@@ -394,26 +426,31 @@ function compactOldToolResults(
 export function buildPrepareStep({
   bus,
   agentId,
+  parentToolCallId,
   role,
   allTools,
   symbolLookup,
+  stepLimit,
   // biome-ignore lint/suspicious/noExplicitAny: TOOLS generic is invariant — tool-agnostic functions use <any> (same as SDK's stepCountIs/hasToolCall)
 }: PrepareStepOptions): PrepareStepFunction<any> {
   const allToolNames = Object.keys(allTools);
   const readOnlyNames = allToolNames.filter((n) => READ_TOOLS.has(n));
   const trimThreshold =
     role === "explore" ? CONTEXT_TRIM_THRESHOLD_EXPLORE : CONTEXT_TRIM_THRESHOLD_CODE;
+  const entity = { warnings: 0, prevReReadCount: 0, cleanSteps: 0 };
+  const ENTITY_MAX_WARNINGS = 3;
+  const ENTITY_REWARD_INTERVAL = 3;
 
   return ({ stepNumber, steps, messages }) => {
     const result: {
-      toolChoice?: "required" | "auto";
+      toolChoice?: "required" | "auto" | "none";
       activeTools?: string[];
       system?: string;
       messages?: ModelMessage[];
     } = {};
 
     // Capture path map BEFORE sanitization wipes malformed inputs
-    const pathMap = symbolLookup ? buildToolCallPathMap(messages) : undefined;
+    const pathMap = buildToolCallPathMap(messages);
 
     // Sanitize non-dict tool-call inputs to prevent Anthropic API rejections
     let sanitizedMessages: ModelMessage[] | undefined;
@@ -456,12 +493,49 @@ export function buildPrepareStep({
       }
     }
 
-    // Semantic pruning: stale reads + canceled plans (runs from step 1)
+    // Semantic pruning: stale reads + canceled plans + re-read stubbing (runs from step 1)
     if (stepNumber >= 1) {
       let msgs = result.messages ?? messages;
       msgs = semanticPrune(msgs, pathMap);
       msgs = stripOldEditArgs(msgs, msgs.length - KEEP_RECENT_MESSAGES);
       result.messages = msgs;
+    }
+
+    // Entity: detect re-reads (per-occurrence) and issue warnings / rewards
+    if (stepNumber >= 1 && pathMap.size > 0) {
+      const fileReadCounts = new Map<string, number>();
+      for (const filePath of pathMap.values()) {
+        fileReadCounts.set(filePath, (fileReadCounts.get(filePath) ?? 0) + 1);
+      }
+      let totalReReads = 0;
+      const reReadFiles: string[] = [];
+      for (const [file, count] of fileReadCounts) {
+        if (count > 1) {
+          totalReReads += count - 1;
+          reReadFiles.push(file.split("/").pop() ?? file);
+        }
+      }
+      const newViolations = totalReReads - entity.prevReReadCount;
+      entity.prevReReadCount = totalReReads;
+
+      if (newViolations > 0) {
+        entity.warnings = Math.min(entity.warnings + newViolations, ENTITY_MAX_WARNINGS);
+        entity.cleanSteps = 0;
+        const files = reReadFiles.join(", ");
+        const warn =
+          entity.warnings >= ENTITY_MAX_WARNINGS
+            ? `⛔ ENTITY → WARNING ${String(entity.warnings)}/${String(ENTITY_MAX_WARNINGS)}: Re-read of ${files}. WARNING LIMIT REACHED — you will be replaced by a cheaper model and your work discarded. Use read_code with symbol names.`
+            : `⚠ ENTITY → WARNING ${String(entity.warnings)}/${String(ENTITY_MAX_WARNINGS)}: Unnecessary re-read of ${files}. Use read_code with symbol names instead of re-reading entire files.`;
+        result.system = `${result.system ?? ""}\n${warn}`.trim();
+      } else if (entity.warnings > 0) {
+        entity.cleanSteps++;
+        if (entity.cleanSteps >= ENTITY_REWARD_INTERVAL) {
+          entity.warnings--;
+          entity.cleanSteps = 0;
+          const msg = `✓ ENTITY: Good behavior noted. Warning level reduced to ${String(entity.warnings)}/${String(ENTITY_MAX_WARNINGS)}.`;
+          result.system = `${result.system ?? ""}\n${msg}`.trim();
+        }
+      }
     }
 
     const totalTokens = steps.reduce((sum, s) => {
@@ -506,6 +580,41 @@ export function buildPrepareStep({
     const taskBlock = renderTaskList();
     if (taskBlock) {
       result.system = `${result.system ?? ""}\n\n${taskBlock}`.trim();
+    }
+
+    // Nudge structured output before stopWhen fires (vercel/ai#13075).
+    // prepareStep runs BEFORE each step — removing tools forces a text-only
+    // response, so the agent stops with finishReason:'stop' and Output.object()
+    // parses the text successfully. stopWhen is the safety net, not the enforcer.
+    const outputNudge =
+      role === "explore" ? OUTPUT_NUDGE_THRESHOLD_EXPLORE : OUTPUT_NUDGE_THRESHOLD_CODE;
+    const atStepLimit = stepLimit != null && stepNumber >= stepLimit - 2;
+    const atTokenLimit = totalTokens > outputNudge;
+    if (atStepLimit || atTokenLimit) {
+      if (parentToolCallId) {
+        emitSubagentStep({
+          parentToolCallId,
+          toolName: "_nudge",
+          args: atStepLimit ? "step limit" : "token limit",
+          state: "done",
+          agentId,
+        });
+      }
+      const msgs = result.messages ?? messages;
+      result.messages = [
+        ...msgs,
+        {
+          role: "user" as const,
+          content: [
+            {
+              type: "text" as const,
+              text: "Stop calling tools. Produce your structured output now with all findings gathered so far.",
+            },
+          ],
+        },
+      ];
+      result.toolChoice = "none";
+      result.activeTools = [];
     }
 
     return Object.keys(result).length > 0 ? result : undefined;

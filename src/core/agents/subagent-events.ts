@@ -51,6 +51,7 @@ export interface AgentStatsEvent {
   parentToolCallId: string;
   agentId: string;
   toolUses: number;
+  stepCount: number;
   tokenUsage: { input: number; output: number; total: number };
   cacheHits: number;
 }

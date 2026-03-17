@@ -1,6 +1,6 @@
 import type { ProviderOptions } from "@ai-sdk/provider-utils";
 import type { LanguageModel } from "ai";
-import { tool } from "ai";
+import { NoOutputGeneratedError, tool } from "ai";
 import { z } from "zod";
 import { logBackgroundError } from "../../stores/errors.js";
 import type { AgentFeatures } from "../../types/index.js";
@@ -19,8 +19,15 @@ import { createCodeAgent } from "./code.js";
 import { createExploreAgent } from "./explore.js";
 import { emitAgentStats, emitMultiAgentEvent, emitSubagentStep } from "./subagent-events.js";
 
+export interface EntityState {
+  warnings: number;
+  lastWarningStep: number;
+  cleanSteps: number;
+}
+
 export interface SharedCacheRef {
   current: SharedCache | undefined;
+  entity: EntityState;
   updateFile(path: string, content: string): void;
 }
 
@@ -66,7 +73,7 @@ function formatToolArgs(toolCall: { toolName: string; input?: unknown }): string
 }
 
 function buildStepCallbacks(parentToolCallId: string, agentId?: string) {
-  const acc = { toolUses: 0, input: 0, output: 0, cacheRead: 0 };
+  const acc = { toolUses: 0, stepCount: 0, input: 0, output: 0, cacheRead: 0 };
 
   return {
     experimental_onToolCallStart: (event: { toolCall?: { toolName: string; input?: unknown } }) => {
@@ -111,6 +118,7 @@ function buildStepCallbacks(parentToolCallId: string, agentId?: string) {
         inputTokenDetails?: { cacheReadTokens?: number };
       };
     }) => {
+      acc.stepCount++;
       acc.toolUses += step.toolCalls?.length ?? 0;
       acc.input += step.usage?.inputTokens ?? 0;
       acc.output += step.usage?.outputTokens ?? 0;
@@ -120,6 +128,7 @@ function buildStepCallbacks(parentToolCallId: string, agentId?: string) {
           parentToolCallId,
           agentId,
           toolUses: acc.toolUses,
+          stepCount: acc.stepCount,
           tokenUsage: { input: acc.input, output: acc.output, total: acc.input + acc.output },
           cacheHits: acc.cacheRead,
         });
@@ -154,6 +163,8 @@ interface DoneToolResult {
   filesEdited?: Array<{ file: string; changes: string }>;
   filesExamined?: string[];
   keyFindings?: Array<{ file: string; detail: string; lineNumbers?: string }>;
+  gaps?: string[];
+  connections?: string[];
   verified?: boolean;
   verificationOutput?: string;
 }
@@ -372,6 +383,12 @@ function formatDoneResult(done: DoneToolResult): string {
       ),
     );
   }
+  if (done.gaps && done.gaps.length > 0) {
+    parts.push("\nGaps:", ...done.gaps.map((g) => `  - ${g}`));
+  }
+  if (done.connections && done.connections.length > 0) {
+    parts.push("\nConnections:", ...done.connections.map((c) => `  - ${c}`));
+  }
   if (done.verified != null) {
     parts.push(`\nVerified: ${done.verified ? "yes" : "no"}`);
     if (done.verificationOutput) parts.push(done.verificationOutput);
@@ -487,6 +504,7 @@ async function runDesloppify(
       { ...desloppifyTask, tier: "standard" },
       { ...models, codingModel: models.desloppifyModel },
       bus,
+      parentToolCallId,
     );
 
     const callbacks = buildStepCallbacks(parentToolCallId, "desloppify");
@@ -615,7 +633,12 @@ async function runVerifier(
 
     bus.registerTasks([verifyTask]);
 
-    const { agent } = createAgent(verifyTask, { ...models, explorationModel: reviewModel }, bus);
+    const { agent } = createAgent(
+      verifyTask,
+      { ...models, explorationModel: reviewModel },
+      bus,
+      parentToolCallId,
+    );
 
     const callbacks = buildStepCallbacks(parentToolCallId, "verifier");
     // biome-ignore lint/suspicious/noExplicitAny: output schema may throw
@@ -756,6 +779,7 @@ function createAgent(
   task: AgentTask,
   models: SubagentModels,
   bus: AgentBus,
+  parentToolCallId?: string,
   // biome-ignore lint/suspicious/noExplicitAny: explore/code agents have different tool generics
 ): { agent: any; modelId: string; tier: string } {
   const useExplore =
@@ -766,6 +790,7 @@ function createAgent(
   const opts = {
     bus,
     agentId: task.agentId,
+    parentToolCallId,
     providerOptions: subagentProviderOptions,
     headers: models.headers,
     webSearchModel: models.webSearchModel,
@@ -889,7 +914,7 @@ async function runAgentTask(
     }
 
     try {
-      const { agent } = createAgent(task, models, bus);
+      const { agent } = createAgent(task, models, bus, parentToolCallId);
       const callbacks = buildStepCallbacks(parentToolCallId, task.agentId);
 
       // biome-ignore lint/suspicious/noExplicitAny: agent.generate result type varies with Output generic
@@ -902,8 +927,9 @@ async function runAgentTask(
         });
       } catch (genErr: unknown) {
         // Output schema can throw NoOutputGeneratedError if the model fails to
-        // produce valid structured JSON after the tool loop. The steps are done —
-        // extract them from the error and synthesize results.
+        // produce valid structured JSON after the tool loop. In AI SDK v6, this
+        // error has NO .steps property (vercel/ai#13075), so we synthesize from
+        // bus data (files read, findings) as a fallback.
         const errWithSteps = genErr as { steps?: unknown[]; text?: string; totalUsage?: unknown };
         if (errWithSteps.steps && Array.isArray(errWithSteps.steps)) {
           result = {
@@ -912,12 +938,21 @@ async function runAgentTask(
             steps: errWithSteps.steps,
             totalUsage: errWithSteps.totalUsage ?? { inputTokens: 0, outputTokens: 0 },
           };
-          // Log the output schema failure for /errors
-          const { logBackgroundError } = await import("../../stores/errors.js");
           logBackgroundError(
             task.agentId,
             `Output schema failed: ${genErr instanceof Error ? genErr.message : String(genErr)}`,
           );
+        } else if (NoOutputGeneratedError.isInstance(genErr)) {
+          result = {
+            text: "",
+            output: undefined,
+            steps: [],
+            totalUsage: {
+              inputTokens: callbacks._acc.input,
+              outputTokens: callbacks._acc.output,
+            },
+          };
+          logBackgroundError(task.agentId, `Output schema failed (no steps): ${genErr.message}`);
         } else {
           throw genErr;
         }
@@ -947,6 +982,8 @@ async function runAgentTask(
             summary?: string;
             filesExamined?: string[];
             keyFindings?: Array<{ file: string; detail: string }>;
+            gaps?: string[];
+            connections?: string[];
           }
         | undefined;
       if (outputData?.summary && outputData.keyFindings && outputData.keyFindings.length > 0) {
@@ -954,6 +991,8 @@ async function runAgentTask(
           summary: outputData.summary,
           filesExamined: outputData.filesExamined,
           keyFindings: outputData.keyFindings,
+          gaps: outputData.gaps,
+          connections: outputData.connections,
         };
         calledDone = true;
       }
@@ -1012,6 +1051,7 @@ async function runAgentTask(
   const errMsg =
     `Failed after ${String(MAX_RETRIES)} attempts. ` +
     `Last error: ${lastError instanceof Error ? lastError.message : String(lastError)}`;
+  logBackgroundError(task.agentId, errMsg);
 
   const agentResult: BusAgentResult = {
     agentId: task.agentId,
@@ -1044,6 +1084,7 @@ async function runAgentTask(
 export function buildSubagentTools(models: SubagentModels) {
   const cacheRef: SharedCacheRef = models.sharedCacheRef ?? {
     current: undefined,
+    entity: { warnings: 0, lastWarningStep: 0, cleanSteps: 0 },
     updateFile() {},
   };
 
@@ -1053,11 +1094,11 @@ export function buildSubagentTools(models: SubagentModels) {
   return {
     dispatch: tool({
       description:
-        "Dispatch parallel subagents. Provide a contract listing ALL files you need — the system verifies them against the Repo Map and rejects hallucinated paths. " +
-        "If you need ≤6 files, the system rejects dispatch and tells you to read directly (with Repo Map symbol info). " +
-        "BEFORE dispatching: can you answer from the Repo Map + ≤5 direct tool calls? If yes, don't dispatch. " +
-        'Task format: "Read [symbol] from [path]. Return full implementation." Every task MUST name specific files and symbols. ' +
-        "Include line numbers from the Repo Map when available. " +
+        "Dispatch parallel subagents. Provide a contract listing ALL files you need — the system verifies them against the Soul Map and rejects hallucinated paths. " +
+        "If you need ≤6 files, the system rejects dispatch and tells you to read directly (with Soul Map symbol info). " +
+        "BEFORE dispatching: can you answer from the Soul Map + ≤5 direct tool calls? If yes, don't dispatch. " +
+        'Task format: "Read [symbol] from [path]. Trace callers, flag gaps." Every task MUST name specific files and symbols. ' +
+        "Include line numbers from the Soul Map when available. " +
         "Split by file ownership, not concept. explore: read-only. code: edits (distinct files per agent). " +
         "Web search: ONE focused query per task.",
       inputSchema: z.object({
@@ -1072,7 +1113,7 @@ export function buildSubagentTools(models: SubagentModels) {
               targetFiles: z
                 .array(z.string())
                 .describe(
-                  "Exact file paths from the Repo Map that this task targets. Web search tasks use ['web'].",
+                  "Exact file paths from the Soul Map that this task targets. Web search tasks use ['web'].",
                 ),
               role: z
                 .enum(["explore", "code", "investigate"])
@@ -1106,7 +1147,7 @@ export function buildSubagentTools(models: SubagentModels) {
               .array(z.string())
               .min(1)
               .describe(
-                "ALL file paths you need across all tasks. Must be exact paths from the Repo Map. The system verifies these exist before approving dispatch.",
+                "ALL file paths you need across all tasks. Must be exact paths from the Soul Map. The system verifies these exist before approving dispatch.",
               ),
             reason: z
               .string()
@@ -1117,7 +1158,7 @@ export function buildSubagentTools(models: SubagentModels) {
           })
           .describe(
             "REQUIRED. List every file you need and justify why dispatch is necessary. " +
-              "The system verifies files against the Repo Map and rejects hallucinated paths. " +
+              "The system verifies files against the Soul Map and rejects hallucinated paths. " +
               "If you need ≤6 files, the system will tell you to read them directly.",
           ),
       }),
@@ -1126,12 +1167,12 @@ export function buildSubagentTools(models: SubagentModels) {
         try {
           const WEB_MARKER = "web";
 
-          // Contract verification — validate files against Repo Map before proceeding
+          // Contract verification — validate files against Soul Map before proceeding
           if (!rawArgs.contract && !rawArgs.force) {
             return (
               "⛔ dispatch [rejected → no contract]\n" +
               "Provide a contract listing ALL files you need (contract.filesNeeded) and why dispatch is needed (contract.reason). " +
-              "The system verifies files against the Repo Map before approving. " +
+              "The system verifies files against the Soul Map before approving. " +
               "If you need ≤6 files, read them directly instead of dispatching."
             );
           }
@@ -1147,7 +1188,7 @@ export function buildSubagentTools(models: SubagentModels) {
               const norm = normalizePath(file);
               if (norm === "web") continue;
 
-              // Tier 1: Repo Map (most reliable — has symbols, line ranges)
+              // Tier 1: Soul Map (most reliable — has symbols, line ranges)
               if (repoMap) {
                 const symbols = repoMap.getFileSymbolRanges(norm);
                 if (symbols.length > 0) {
@@ -1175,7 +1216,7 @@ export function buildSubagentTools(models: SubagentModels) {
                 `⛔ dispatch [rejected → hallucinated files]\n` +
                 `${String(hallucinated.length)} file(s) in your contract don't exist:\n` +
                 hallucinated.map((f) => `  ✗ \`${f}\``).join("\n") +
-                `\nCheck the Repo Map for correct paths. Use soul_find if you're unsure of a filename.`
+                `\nCheck the Soul Map for correct paths. Use soul_find if you're unsure of a filename.`
               );
             }
 
@@ -1224,7 +1265,7 @@ export function buildSubagentTools(models: SubagentModels) {
               }
             }
 
-            // Threshold: ≤6 files → reject with enriched Repo Map info
+            // Threshold: ≤6 files → reject with enriched Soul Map info
             const totalFiles = verified.length + onDiskOnly.length;
             const MAX_DIRECT_FILES = 6;
             if (totalFiles > 0 && totalFiles <= MAX_DIRECT_FILES) {
@@ -1244,7 +1285,7 @@ export function buildSubagentTools(models: SubagentModels) {
                 fileList.push(`  \`${f}\``);
               }
               for (const f of onDiskOnly) {
-                fileList.push(`  \`${f}\` (not in Repo Map — use read_file)`);
+                fileList.push(`  \`${f}\` (not in Soul Map — use read_file)`);
               }
               return (
                 `⛔ dispatch [rejected → read directly]\n` +
@@ -1263,7 +1304,7 @@ export function buildSubagentTools(models: SubagentModels) {
 
               const hasFilePaths = t.targetFiles.some((f) => f.includes("/") || f.includes("."));
               if (!hasFilePaths) {
-                return `⛔ dispatch [rejected → invalid targetFiles]\nTask "${t.id ?? "?"}" has no valid file paths in targetFiles. Every non-web task must reference specific files from the Repo Map. Got: [${t.targetFiles.join(", ")}]`;
+                return `⛔ dispatch [rejected → invalid targetFiles]\nTask "${t.id ?? "?"}" has no valid file paths in targetFiles. Every non-web task must reference specific files from the Soul Map. Got: [${t.targetFiles.join(", ")}]`;
               }
             }
           }
@@ -1392,8 +1433,8 @@ export function buildSubagentTools(models: SubagentModels) {
             const webTasks = args.tasks.filter(
               (t) => t.targetFiles.length === 1 && t.targetFiles[0]?.toLowerCase() === WEB_MARKER,
             );
-            if (webTasks.length > 2) {
-              return `⛔ dispatch [rejected → too many web tasks]\n${String(webTasks.length)} web search tasks is excessive (max 2). Check the conversation for URLs the user already shared (use fetch_page) and previous search results before searching again. Set force: true only after confirming existing context lacks the answer.`;
+            if (webTasks.length > 4) {
+              return `⛔ dispatch [rejected → too many web tasks]\n${String(webTasks.length)} web search tasks is excessive (max 4). Check the conversation for URLs the user already shared (use fetch_page) and previous search results before searching again. Set force: true only after confirming existing context lacks the answer.`;
             }
 
             // Gate: reject small dispatches — faster to do directly
@@ -1595,6 +1636,7 @@ export function buildSubagentTools(models: SubagentModels) {
             if (waiter) waiter();
           };
 
+          const doneResults = new Map<string, DoneToolResult | null>();
           const promises = tasks.map((task, idx) => {
             const hasDeps = task.dependsOn && task.dependsOn.length > 0;
             const jitter = Math.random() * STAGGER_MS;
@@ -1603,7 +1645,15 @@ export function buildSubagentTools(models: SubagentModels) {
             const run = async () => {
               await acquireConcurrencySlot();
               try {
-                await runAgentTask(task, models, bus, toolCallId, tasks.length, combinedAbort);
+                const { doneResult } = await runAgentTask(
+                  task,
+                  models,
+                  bus,
+                  toolCallId,
+                  tasks.length,
+                  combinedAbort,
+                );
+                doneResults.set(task.agentId, doneResult);
               } finally {
                 releaseConcurrencySlot();
               }
@@ -1647,6 +1697,24 @@ export function buildSubagentTools(models: SubagentModels) {
             sections.push(
               `\n### ${status} Agent: ${r.agentId} (${r.role})${doneTag}\nTask: ${r.task}\n\n${r.result}\n\n---`,
             );
+          }
+
+          const allGaps: string[] = [];
+          const allConnections: string[] = [];
+          for (const [agentId, done] of doneResults) {
+            if (done?.gaps) allGaps.push(...done.gaps.map((g) => `[${agentId}] ${g}`));
+            if (done?.connections)
+              allConnections.push(...done.connections.map((c) => `[${agentId}] ${c}`));
+          }
+          if (allGaps.length > 0 || allConnections.length > 0) {
+            const crossCut: string[] = ["\n### Cross-Cutting Analysis"];
+            if (allGaps.length > 0) {
+              crossCut.push("**Gaps:**", ...allGaps.map((g) => `- ${g}`));
+            }
+            if (allConnections.length > 0) {
+              crossCut.push("**Connections:**", ...allConnections.map((c) => `- ${c}`));
+            }
+            sections.push(crossCut.join("\n"));
           }
 
           if (failed.length > 0) {

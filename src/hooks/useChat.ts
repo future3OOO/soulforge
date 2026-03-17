@@ -407,6 +407,7 @@ export function useChat({
     (() => {
       const ref: SharedCacheRef = {
         current: undefined,
+        entity: { warnings: 0, lastWarningStep: 0, cleanSteps: 0 },
         updateFile(absPath: string, content: string) {
           if (!ref.current) return;
           const prefix = cwd.endsWith("/") ? cwd : `${cwd}/`;

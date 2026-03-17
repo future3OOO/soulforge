@@ -60,7 +60,7 @@ function tryRepoMapCount(repoMap: RepoMap, pattern: string): ToolResult | null {
 
   const symbols = repoMap.findSymbols(pattern);
   const lines = [
-    `${pattern}: referenced in ${String(match.fileCount)} files (from repo map index)`,
+    `${pattern}: referenced in ${String(match.fileCount)} files (from soul map index)`,
   ];
 
   if (symbols.length > 0) {
