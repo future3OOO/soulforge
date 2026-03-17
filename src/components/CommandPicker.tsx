@@ -249,7 +249,7 @@ export function CommandPicker({ visible, config, onClose }: Props) {
           <PopupRow w={innerW}>
             <text fg="#555" bg={POPUP_BG}>
               {scrollOffset > 0 ? "↑ " : "  "}
-              {cursor + 1}/{config.options.length}
+              {String(cursor + 1)}/{String(config.options.length)}
               {scrollOffset + maxVisible < config.options.length ? " ↓" : ""}
             </text>
           </PopupRow>

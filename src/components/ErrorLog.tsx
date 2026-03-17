@@ -337,9 +337,9 @@ export function ErrorLog({ visible, messages, onClose }: Props) {
             <PopupRow w={innerW}>
               <text fg="#555" bg={POPUP_BG}>
                 {detailScrollOffset > 0 ? "\u2191 " : "  "}
-                {detailScrollOffset + 1}-
-                {Math.min(detailScrollOffset + maxDetailLines, detailLines.length)}/
-                {detailLines.length}
+                {String(detailScrollOffset + 1)}-
+                {String(Math.min(detailScrollOffset + maxDetailLines, detailLines.length))}/
+                {String(detailLines.length)}
                 {detailScrollOffset + maxDetailLines < detailLines.length ? " \u2193" : ""}
               </text>
             </PopupRow>
@@ -472,7 +472,7 @@ export function ErrorLog({ visible, messages, onClose }: Props) {
           <PopupRow w={innerW}>
             <text fg="#555" bg={POPUP_BG}>
               {scrollOffset > 0 ? "\u2191 " : "  "}
-              {cursor + 1}/{filtered.length}
+              {String(cursor + 1)}/{String(filtered.length)}
               {scrollOffset + maxListVisible < filtered.length ? " \u2193" : ""}
             </text>
           </PopupRow>
