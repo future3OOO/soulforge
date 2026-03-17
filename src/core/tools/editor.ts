@@ -197,13 +197,11 @@ export const editorReadTool = {
       const buffer = await nvim.api.buffer;
       const start = args.startLine != null ? args.startLine - 1 : 0;
       const end = args.endLine ?? -1;
-      const lines: string[] = await buffer.getLines({
-        start,
-        end,
-        strictIndexing: false,
-      });
+      const [lines, bufName] = await Promise.all([
+        buffer.getLines({ start, end, strictIndexing: false }) as Promise<string[]>,
+        nvim.api.request("nvim_buf_get_name", [0]),
+      ]);
 
-      const bufName = await nvim.api.request("nvim_buf_get_name", [0]);
       if (typeof bufName === "string" && bufName) {
         emitFileRead(resolve(bufName));
       }
@@ -242,11 +240,12 @@ export const editorEditTool = {
       });
       await nvim.api.command("write");
 
-      const bufName = await nvim.api.request("nvim_buf_get_name", [0]);
+      const [bufName, allLines] = await Promise.all([
+        nvim.api.request("nvim_buf_get_name", [0]),
+        buffer.getLines({ start: 0, end: -1, strictIndexing: false }) as Promise<string[]>,
+      ]);
       if (typeof bufName === "string" && bufName) {
-        const absPath = resolve(bufName);
-        const allLines = await buffer.getLines({ start: 0, end: -1, strictIndexing: false });
-        emitFileEdited(absPath, allLines.join("\n"));
+        emitFileEdited(resolve(bufName), allLines.join("\n"));
       }
 
       const count = replacementLines.length;

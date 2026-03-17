@@ -19,8 +19,18 @@ interface ServerCandidate {
 }
 
 const SERVER_CANDIDATES: Record<string, ServerCandidate[]> = {
-  typescript: [{ command: "typescript-language-server", args: ["--stdio"] }],
-  javascript: [{ command: "typescript-language-server", args: ["--stdio"] }],
+  typescript: [
+    { command: "typescript-language-server", args: ["--stdio"] },
+    { command: "biome", args: ["lsp-proxy"] },
+    { command: "deno", args: ["lsp"] },
+    { command: "vscode-eslint-language-server", args: ["--stdio"] },
+  ],
+  javascript: [
+    { command: "typescript-language-server", args: ["--stdio"] },
+    { command: "biome", args: ["lsp-proxy"] },
+    { command: "deno", args: ["lsp"] },
+    { command: "vscode-eslint-language-server", args: ["--stdio"] },
+  ],
   python: [
     { command: "pyright-langserver", args: ["--stdio"] },
     { command: "pylsp", args: [] },
@@ -34,11 +44,37 @@ const SERVER_CANDIDATES: Record<string, ServerCandidate[]> = {
   php: [{ command: "intelephense", args: ["--stdio"] }],
   zig: [{ command: "zls", args: [] }],
   bash: [{ command: "bash-language-server", args: ["start"] }],
-  css: [{ command: "vscode-css-language-server", args: ["--stdio"] }],
-  html: [{ command: "vscode-html-language-server", args: ["--stdio"] }],
-  json: [{ command: "vscode-json-language-server", args: ["--stdio"] }],
+  css: [
+    { command: "vscode-css-language-server", args: ["--stdio"] },
+    { command: "biome", args: ["lsp-proxy"] },
+    { command: "tailwindcss-language-server", args: ["--stdio"] },
+  ],
+  html: [
+    { command: "vscode-html-language-server", args: ["--stdio"] },
+    { command: "emmet-language-server", args: ["--stdio"] },
+  ],
+  json: [
+    { command: "vscode-json-language-server", args: ["--stdio"] },
+    { command: "biome", args: ["lsp-proxy"] },
+  ],
   yaml: [{ command: "yaml-language-server", args: ["--stdio"] }],
+  toml: [{ command: "taplo", args: ["lsp", "stdio"] }],
   dockerfile: [{ command: "docker-langserver", args: ["--stdio"] }],
+  java: [{ command: "jdtls", args: [] }],
+  kotlin: [{ command: "kotlin-language-server", args: [] }],
+  scala: [{ command: "metals", args: [] }],
+  csharp: [
+    { command: "csharp-ls", args: [] },
+    { command: "OmniSharp", args: ["--languageserver"] },
+  ],
+  swift: [{ command: "sourcekit-lsp", args: [] }],
+  dart: [{ command: "dart", args: ["language-server", "--protocol=lsp"] }],
+  elixir: [
+    { command: "elixir-ls", args: [] },
+    { command: "expert", args: [] },
+  ],
+  ocaml: [{ command: "ocamllsp", args: [] }],
+  vue: [{ command: "vue-language-server", args: ["--stdio"] }],
 };
 
 /** Mason installs LSP servers here */

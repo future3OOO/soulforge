@@ -68,6 +68,7 @@ export interface TabInstanceProps {
 }
 
 const MAX_RENDERED = 60;
+const SCROLLBOX_STYLE = { contentOptions: { justifyContent: "flex-end" as const } };
 
 export function TabInstance({
   tabId,
@@ -221,13 +222,23 @@ export function TabInstance({
 
   const hasContent = nonSystemCount > 0 || isStreaming;
 
-  const { codeExpanded, changesExpanded } = useUIStore(
-    useShallow((s) => ({ codeExpanded: s.codeExpanded, changesExpanded: s.changesExpanded })),
+  const {
+    codeExpanded,
+    changesExpanded,
+    chatStyle,
+    editorSplit,
+    showReasoning,
+    reasoningExpanded,
+  } = useUIStore(
+    useShallow((s) => ({
+      codeExpanded: s.codeExpanded,
+      changesExpanded: s.changesExpanded,
+      chatStyle: s.chatStyle,
+      editorSplit: s.editorSplit,
+      showReasoning: s.showReasoning,
+      reasoningExpanded: s.reasoningExpanded,
+    })),
   );
-  const chatStyle = useUIStore((s) => s.chatStyle);
-  const editorSplit = useUIStore((s) => s.editorSplit);
-  const showReasoning = useUIStore((s) => s.showReasoning);
-  const reasoningExpanded = useUIStore((s) => s.reasoningExpanded);
 
   const showPlanProgress = !!chat.activePlan;
   const tasks = useTaskList();
@@ -327,7 +338,7 @@ export function TabInstance({
               flexGrow={1}
               flexShrink={1}
               minHeight={0}
-              style={{ contentOptions: { justifyContent: "flex-end" } }}
+              style={SCROLLBOX_STYLE}
             >
               <CodeExpandedProvider value={codeExpanded}>
                 {hiddenCount > 0 && (

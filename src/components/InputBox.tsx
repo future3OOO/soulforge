@@ -472,14 +472,14 @@ export function InputBox({
   // Read ref width as state so layout changes trigger re-render
   const [measuredWidth, setMeasuredWidth] = useState(0);
   const measuredWidthRef = useRef(0);
-  // biome-ignore lint/correctness/useExhaustiveDependencies: reads from ref after every render to pick up layout width
+  // biome-ignore lint/correctness/useExhaustiveDependencies: re-measure layout width when terminal resizes
   useEffect(() => {
     const w = containerRef.current?.width ?? 0;
     if (w > 0 && w !== measuredWidthRef.current) {
       measuredWidthRef.current = w;
       setMeasuredWidth(w);
     }
-  });
+  }, [termWidth]);
   const contentWidth = useMemo(
     () => Math.max(10, measuredWidth > 0 ? measuredWidth - 6 : termWidth - 8),
     [measuredWidth, termWidth],

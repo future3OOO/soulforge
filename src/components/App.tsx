@@ -72,6 +72,19 @@ function truncate(str: string, max: number): string {
 
 const ABORT_ON_LOADING = new Set(["/clear", "/compact", "/plan"]);
 
+const DEFAULT_TASK_ROUTER = {
+  planning: null,
+  coding: null,
+  exploration: null,
+  webSearch: null,
+  compact: null,
+  semantic: null,
+  trivial: null,
+  desloppify: null,
+  verify: null,
+  default: null,
+};
+
 const SHUTDOWN_SPINNER = ["⠋", "⠙", "⠹", "⠸", "⠼", "⠴", "⠦", "⠧", "⠇", "⠏"];
 
 const SHUTDOWN_STEPS = [
@@ -333,17 +346,25 @@ export function App({
     editorSplit: editorSplitRef.current,
   });
 
-  const { modals, routerSlotPicking, commandPickerConfig, infoPopupConfig, suspended } = useUIStore(
+  const {
+    modals,
+    routerSlotPicking,
+    commandPickerConfig,
+    infoPopupConfig,
+    suspended,
+    isModalOpen,
+    editorSplit,
+  } = useUIStore(
     useShallow((s) => ({
       modals: s.modals,
       routerSlotPicking: s.routerSlotPicking,
       commandPickerConfig: s.commandPickerConfig,
       infoPopupConfig: s.infoPopupConfig,
       suspended: s.suspended,
+      isModalOpen: selectIsAnyModalOpen(s),
+      editorSplit: s.editorSplit,
     })),
   );
-  const isModalOpen = useUIStore(selectIsAnyModalOpen);
-  const editorSplit = useUIStore((s) => s.editorSplit);
 
   // Stable close handlers — cached in ref so memo'd children see stable refs
   const closerCache = useRef<Partial<Record<ModalName, () => void>>>({});
@@ -1196,18 +1217,7 @@ export function App({
           useUIStore.getState().openModal("llmSelector");
         }}
         onClearSlot={(slot) => {
-          const current = effectiveConfig.taskRouter ?? {
-            planning: null,
-            coding: null,
-            exploration: null,
-            webSearch: null,
-            compact: null,
-            semantic: null,
-            trivial: null,
-            desloppify: null,
-            verify: null,
-            default: null,
-          };
+          const current = effectiveConfig.taskRouter ?? DEFAULT_TASK_ROUTER;
           const updated = { ...current, [slot]: null };
           saveToScope({ taskRouter: updated }, routerScope);
         }}

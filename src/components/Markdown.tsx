@@ -9,6 +9,15 @@ interface Props {
   streaming?: boolean;
 }
 
+const TABLE_OPTIONS = {
+  widthMode: "content" as const,
+  wrapMode: "word" as const,
+  borders: true,
+  borderStyle: "rounded" as const,
+  borderColor: "#333",
+  cellPadding: 0,
+};
+
 export const Markdown = memo(function Markdown({ text, streaming }: Props) {
   const syntaxStyle = getSyntaxStyle();
   const tsClient = getTSClient();
@@ -20,14 +29,7 @@ export const Markdown = memo(function Markdown({ text, streaming }: Props) {
       treeSitterClient={tsClient}
       conceal
       streaming={streaming}
-      tableOptions={{
-        widthMode: "content",
-        wrapMode: "word",
-        borders: true,
-        borderStyle: "rounded",
-        borderColor: "#333",
-        cellPadding: 0,
-      }}
+      tableOptions={TABLE_OPTIONS}
     />
   );
 });

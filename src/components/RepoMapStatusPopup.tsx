@@ -41,27 +41,26 @@ export function RepoMapStatusPopup({ visible, onClose }: Props) {
   const [, setRenderTick] = useState(0);
   const spinnerRef = useRef(0);
 
-  useEffect(
-    () =>
-      useRepoMapStore.subscribe((s) => {
-        const prev = stateRef.current;
-        stateRef.current = s;
-        if (
-          s.status !== prev.status ||
-          s.files !== prev.files ||
-          s.symbols !== prev.symbols ||
-          s.edges !== prev.edges ||
-          s.dbSizeBytes !== prev.dbSizeBytes ||
-          s.scanError !== prev.scanError ||
-          s.semanticStatus !== prev.semanticStatus ||
-          s.semanticCount !== prev.semanticCount ||
-          s.semanticModel !== prev.semanticModel
-        ) {
-          setRenderTick((n) => n + 1);
-        }
-      }),
-    [],
-  );
+  useEffect(() => {
+    if (!visible) return;
+    return useRepoMapStore.subscribe((s) => {
+      const prev = stateRef.current;
+      stateRef.current = s;
+      if (
+        s.status !== prev.status ||
+        s.files !== prev.files ||
+        s.symbols !== prev.symbols ||
+        s.edges !== prev.edges ||
+        s.dbSizeBytes !== prev.dbSizeBytes ||
+        s.scanError !== prev.scanError ||
+        s.semanticStatus !== prev.semanticStatus ||
+        s.semanticCount !== prev.semanticCount ||
+        s.semanticModel !== prev.semanticModel
+      ) {
+        setRenderTick((n) => n + 1);
+      }
+    });
+  }, [visible]);
 
   useEffect(() => {
     if (!visible) return;
