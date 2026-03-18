@@ -612,6 +612,23 @@ export const projectTool = {
 
       const cmdLabel = `[${args.action}] ${command}`;
       if (exitCode === 0) {
+        const warningMatch = output.match(/Found (\d+) warning/);
+        const errorMatch = output.match(/Found (\d+) error/);
+        const warnCount = warningMatch ? Number(warningMatch[1]) : 0;
+        const errCount = errorMatch ? Number(errorMatch[1]) : 0;
+        if (warnCount > 0 || errCount > 0) {
+          const issues = [
+            errCount > 0 ? `${String(errCount)} errors` : "",
+            warnCount > 0 ? `${String(warnCount)} warnings` : "",
+          ]
+            .filter(Boolean)
+            .join(", ");
+          return {
+            success: false,
+            output: `${cmdLabel} — has ${issues}. Fix them or run with fix: true to auto-fix.\n${truncated}`,
+            error: issues,
+          };
+        }
         return {
           success: true,
           output: `${cmdLabel} — passed.\n${truncated}`,
