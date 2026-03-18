@@ -1,6 +1,6 @@
 import { TextAttributes } from "@opentui/core";
 import { useTerminalDimensions } from "@opentui/react";
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { icon, providerIcon } from "../core/icons.js";
 import type { ProviderStatus } from "../core/llm/provider.js";
 import type { PrerequisiteStatus } from "../core/setup/prerequisites.js";
@@ -76,10 +76,16 @@ export function LandingPage({ bootProviders, bootPrereqs }: LandingPageProps) {
   const showWordmark = columns >= 35;
   const wordmarkW = showWordmark ? (WORDMARK[0]?.length ?? 0) : 0;
 
-  const activeProviders = bootProviders.filter((p) => p.available);
-  const inactiveProviders = bootProviders.filter((p) => !p.available);
-  const missingRequired = bootPrereqs.filter((p) => !p.installed && p.prerequisite.required);
-  const allToolsOk = bootPrereqs.every((p) => p.installed || !p.prerequisite.required);
+  const activeProviders = useMemo(() => bootProviders.filter((p) => p.available), [bootProviders]);
+  const inactiveProviders = useMemo(() => bootProviders.filter((p) => !p.available), [bootProviders]);
+  const missingRequired = useMemo(
+    () => bootPrereqs.filter((p) => !p.installed && p.prerequisite.required),
+    [bootPrereqs],
+  );
+  const allToolsOk = useMemo(
+    () => bootPrereqs.every((p) => p.installed || !p.prerequisite.required),
+    [bootPrereqs],
+  );
   const anyProvider = activeProviders.length > 0;
 
   const maxProviderWidth = Math.floor(columns * 0.6);

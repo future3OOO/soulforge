@@ -11,6 +11,8 @@ export function getNvimInstance(): NvimInstance | null {
   return instance;
 }
 
+const NVIM_READ_TIMEOUT = 3000;
+
 export async function readBufferContent(filePath: string): Promise<string> {
   const nvim = instance as
     | (NvimInstance & {
@@ -19,8 +21,9 @@ export async function readBufferContent(filePath: string): Promise<string> {
     | null;
   if (nvim) {
     try {
-      const result = await nvim.api.executeLua(
-        `
+      const result = await Promise.race([
+        nvim.api.executeLua(
+          `
         local path = select(1, ...)
         for _, buf in ipairs(vim.api.nvim_list_bufs()) do
           if vim.api.nvim_buf_is_loaded(buf) then
@@ -33,8 +36,10 @@ export async function readBufferContent(filePath: string): Promise<string> {
         end
         return nil
         `,
-        [filePath],
-      );
+          [filePath],
+        ),
+        new Promise<null>((r) => setTimeout(() => r(null), NVIM_READ_TIMEOUT)),
+      ]);
       if (typeof result === "string") return result;
     } catch {
       // Fall through to disk read

@@ -407,7 +407,7 @@ export const LlmSelector = memo(function LlmSelector({
             <PopupRow w={innerW}>
               <text fg="#555" bg={POPUP_BG}>
                 {subScrollOffset > 0 ? "↑ " : "  "}
-                {subproviderCursor + 1}/{subProviders.length}
+                {String(subproviderCursor + 1)}/{String(subProviders.length)}
                 {subScrollOffset + maxVisible < subProviders.length ? " ↓" : ""}
               </text>
             </PopupRow>
@@ -536,7 +536,7 @@ export const LlmSelector = memo(function LlmSelector({
           <PopupRow w={innerW}>
             <text fg="#555" bg={POPUP_BG}>
               {modelScrollOffset > 0 ? "↑ " : "  "}
-              {modelCursor + 1}/{currentModels.length}
+              {String(modelCursor + 1)}/{String(currentModels.length)}
               {modelScrollOffset + maxVisible < currentModels.length ? " ↓" : ""}
             </text>
           </PopupRow>

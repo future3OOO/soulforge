@@ -1,6 +1,6 @@
 import { TextAttributes } from "@opentui/core";
 import { useTerminalDimensions } from "@opentui/react";
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import type { ChatMessage } from "../types/index.js";
 
 const DISMISS_DELAY = 5000;
@@ -140,23 +140,31 @@ export function SystemBanner({ messages, expanded = false }: Props) {
 
   const fadeFactor = phase === "exit" ? fadeStep / FADE_STEPS : 0;
 
-  const fadeTarget = "#111";
-  const fAccent = lerpColor(accentColor, fadeTarget, fadeFactor);
-  const fText = lerpColor(textColor, fadeTarget, fadeFactor);
-  const fIcon = lerpColor(iconColor, fadeTarget, fadeFactor);
-  const fDim = lerpColor(dimColor, fadeTarget, fadeFactor);
-  const fBg = lerpColor(bgColor, "#000", fadeFactor);
+  const { fAccent, fText, fIcon, fDim, fBg } = useMemo(() => {
+    const fadeTarget = "#111";
+    return {
+      fAccent: lerpColor(accentColor, fadeTarget, fadeFactor),
+      fText: lerpColor(textColor, fadeTarget, fadeFactor),
+      fIcon: lerpColor(iconColor, fadeTarget, fadeFactor),
+      fDim: lerpColor(dimColor, fadeTarget, fadeFactor),
+      fBg: lerpColor(bgColor, "#000", fadeFactor),
+    };
+  }, [fadeFactor, bgColor, accentColor, textColor, iconColor, dimColor]);
 
   const displayText = phase === "enter" ? firstLine.slice(0, revealCount) : firstLine;
   const showCursor = phase === "enter";
 
   const icon = err ? "✗" : "⚡";
 
-  const time = new Date(current.timestamp).toLocaleTimeString("en-US", {
-    hour12: true,
-    hour: "numeric",
-    minute: "2-digit",
-  });
+  const time = useMemo(
+    () =>
+      new Date(current.timestamp).toLocaleTimeString("en-US", {
+        hour12: true,
+        hour: "numeric",
+        minute: "2-digit",
+      }),
+    [current.timestamp],
+  );
 
   const showExpanded = expanded && multiLine && phase !== "enter";
   const bannerHeight = showExpanded ? 1 + extraLines.length : 1;

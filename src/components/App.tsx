@@ -537,8 +537,8 @@ export function App({
 
   const getWorkspaceSnapshot = useCallback(
     (): WorkspaceSnapshot =>
-      workspaceSnapshotRef.current?.() ?? { forgeMode, tabStates: [], activeTabId: "" },
-    [forgeMode],
+      workspaceSnapshotRef.current?.() ?? { forgeMode: "default" as const, tabStates: [], activeTabId: "" },
+    [],
   );
 
   const addSystemMessage = useCallback((msg: string) => {
@@ -554,18 +554,28 @@ export function App({
     contextManager.refreshGitContext();
   }, [git, contextManager]);
 
+  const shutdownPhaseRef = useRef(shutdownPhase);
+  shutdownPhaseRef.current = shutdownPhase;
+  const exitTimersRef = useRef<ReturnType<typeof setTimeout>[]>([]);
+
   const handleExit = useCallback(() => {
-    if (shutdownPhase >= 0) return;
+    if (shutdownPhaseRef.current >= 0) return;
     setShutdownPhase(0);
 
-    setTimeout(() => {
+    const schedule = (fn: () => void, ms: number) => {
+      const t = setTimeout(fn, ms);
+      exitTimersRef.current.push(t);
+      return t;
+    };
+
+    schedule(() => {
       // Abort all active tabs
       for (const tab of tabMgrRef.current.tabs) {
         tabMgrRef.current.getChat(tab.id)?.abort();
       }
       setShutdownPhase(1);
 
-      setTimeout(() => {
+      schedule(() => {
         try {
           const activeChat = tabMgrRef.current.getActiveChat();
           const hasUserMessages = activeChat?.messages.some(
@@ -594,9 +604,9 @@ export function App({
         }
         setShutdownPhase(2);
 
-        setTimeout(() => {
+        schedule(() => {
           setShutdownPhase(3);
-          setTimeout(() => {
+          schedule(() => {
             renderer.destroy();
             try {
               contextManager.dispose();
@@ -611,7 +621,7 @@ export function App({
         }, 350);
       }, 300);
     }, 250);
-  }, [shutdownPhase, cwd, sessionManager, contextManager, renderer]);
+  }, [cwd, sessionManager, contextManager, renderer]);
 
   // ─── Session restore on mount ───
   const hasRestoredRef = useRef(false);
@@ -635,10 +645,10 @@ export function App({
     }
   }, []);
 
-  // Track exit session from active tab
+  // Track exit session from active tab — only re-run when active tab changes
   const [activeModelForHeader, setActiveModelForHeader] = useState(effectiveConfig.defaultModel);
   const activeChatRef = useRef<ChatInstance | null>(null);
-  // biome-ignore lint/correctness/useExhaustiveDependencies: intentionally runs every render to keep activeChatRef in sync
+  // biome-ignore lint/correctness/useExhaustiveDependencies: derived from activeTabId — stable trigger
   useEffect(() => {
     const chat = tabMgr.getActiveChat();
     activeChatRef.current = chat;
@@ -649,7 +659,7 @@ export function App({
       );
       setExitSessionId(hasContent ? chat.sessionId : null);
     }
-  });
+  }, [tabMgr.activeTabId]);
 
   // biome-ignore lint/correctness/useExhaustiveDependencies: narrow trigger — only re-run on tab count/active changes
   useEffect(() => {
@@ -1161,7 +1171,7 @@ export function App({
 
       <SkillSearch
         visible={modals.skillSearch}
-        contextManager={contextManager}
+        contextManager={tabMgr.getActiveChat()?.contextManager ?? contextManager}
         onClose={getCloser("skillSearch")}
         onSystemMessage={addSystemMessage}
       />

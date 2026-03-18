@@ -166,7 +166,7 @@ export function RouterSettings({
           <PopupRow w={innerW}>
             <text fg="#555" bg={POPUP_BG}>
               {scrollOffset > 0 ? "↑ " : "  "}
-              {cursor + 1}/{SLOTS.length}
+              {String(cursor + 1)}/{String(SLOTS.length)}
               {scrollOffset + maxVisible < SLOTS.length ? " ↓" : ""}
             </text>
           </PopupRow>

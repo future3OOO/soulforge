@@ -60,7 +60,7 @@ function stripBookkeepingTools(messages: ModelMessage[]): ModelMessage[] {
 
   if (stripIds.size === 0) return messages;
 
-  return messages
+  const result = messages
     .map((msg) => {
       if (!Array.isArray(msg.content)) return msg;
 
@@ -103,6 +103,27 @@ function stripBookkeepingTools(messages: ModelMessage[]): ModelMessage[] {
       return msg;
     })
     .filter(Boolean) as ModelMessage[];
+
+  // Guard: stripping may leave a trailing assistant-only message (text without tool calls)
+  // when the model mixed text + bookkeeping tool calls in one response and all tool results
+  // were also stripped. This would cause "does not support assistant message prefill" errors.
+  const last = result[result.length - 1];
+  if (last?.role === "assistant") {
+    const hasToolCall =
+      Array.isArray(last.content) &&
+      last.content.some(
+        (p) =>
+          typeof p === "object" &&
+          p !== null &&
+          "type" in p &&
+          (p as { type: string }).type === "tool-call",
+      );
+    if (!hasToolCall) {
+      result.pop();
+    }
+  }
+
+  return result;
 }
 
 function hasToolCall(messages: ModelMessage[], toolName: string): boolean {

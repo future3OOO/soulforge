@@ -1,4 +1,5 @@
 import { create } from "zustand";
+import { subscribeWithSelector } from "zustand/middleware";
 import type { CommandPickerConfig } from "../components/CommandPicker.js";
 import type { InfoPopupConfig } from "../components/InfoPopup.js";
 import type { ChatStyle, TaskRouter } from "../types/index.js";
@@ -83,7 +84,8 @@ interface UIState {
   cycleEditorSplit: () => void;
 }
 
-export const useUIStore = create<UIState>()((set) => ({
+export const useUIStore = create<UIState>()(
+  subscribeWithSelector((set) => ({
   modals: { ...INITIAL_MODALS },
   routerSlotPicking: null,
   commandPickerConfig: null,
@@ -143,7 +145,8 @@ export const useUIStore = create<UIState>()((set) => ({
       const idx = splits.indexOf(s.editorSplit);
       return { editorSplit: splits[(idx + 1) % splits.length] ?? 60 };
     }),
-}));
+  })),
+);
 
 export const selectIsAnyModalOpen = (s: UIState): boolean => Object.values(s.modals).some(Boolean);
 

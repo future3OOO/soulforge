@@ -8,7 +8,7 @@ plugin({
       const source = await Bun.file(path).text();
       const result = transformSync(source, {
         filename: path,
-        plugins: [["babel-plugin-react-compiler", {}]],
+        plugins: [["babel-plugin-react-compiler", { target: "19" }]],
         parserOpts: { plugins: ["typescript", "jsx"] },
       });
       return { contents: result?.code ?? source, loader };

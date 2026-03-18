@@ -240,7 +240,7 @@ export function GitMenu({
           <PopupRow w={innerW}>
             <text fg="#555" bg={POPUP_BG}>
               {scrollOffset > 0 ? "↑ " : "  "}
-              {cursor + 1}/{MENU_ITEMS.length}
+              {String(cursor + 1)}/{String(MENU_ITEMS.length)}
               {scrollOffset + maxVisible < MENU_ITEMS.length ? " ↓" : ""}
             </text>
           </PopupRow>

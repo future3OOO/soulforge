@@ -148,6 +148,16 @@ export function ContextBar({ contextManager }: Props) {
     return useStatusBarStore.subscribe(computeTarget);
   }, [computeTarget]);
 
+  // Cleanup flash timer on unmount
+  useEffect(() => {
+    return () => {
+      if (flashTimerRef.current) {
+        clearTimeout(flashTimerRef.current);
+        flashTimerRef.current = null;
+      }
+    };
+  }, []);
+
   useEffect(() => {
     const timer = setInterval(() => {
       const target = targetRef.current;

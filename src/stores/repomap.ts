@@ -1,4 +1,5 @@
 import { create } from "zustand";
+import { subscribeWithSelector } from "zustand/middleware";
 
 export type RepoMapStatus = "off" | "scanning" | "ready" | "error";
 export type SemanticStatus = "off" | "generating" | "ready" | "error";
@@ -41,7 +42,8 @@ function flushScanThrottle(set: (partial: Partial<RepoMapState>) => void) {
   set(patch);
 }
 
-export const useRepoMapStore = create<RepoMapState>()((set) => ({
+export const useRepoMapStore = create<RepoMapState>()(
+  subscribeWithSelector((set) => ({
   status: "off",
   files: 0,
   symbols: 0,
@@ -78,4 +80,27 @@ export const useRepoMapStore = create<RepoMapState>()((set) => ({
   setSemanticCount: (semanticCount) => set({ semanticCount }),
   setSemanticProgress: (semanticProgress) => set({ semanticProgress }),
   setSemanticModel: (semanticModel) => set({ semanticModel }),
-}));
+})),
+);
+
+export function resetRepoMapStore(): void {
+  if (_scanThrottleTimer) {
+    clearTimeout(_scanThrottleTimer);
+    _scanThrottleTimer = null;
+  }
+  _pendingScanProgress = "";
+  _pendingStats = null;
+  useRepoMapStore.setState({
+    status: "off",
+    files: 0,
+    symbols: 0,
+    edges: 0,
+    dbSizeBytes: 0,
+    scanProgress: "",
+    scanError: "",
+    semanticStatus: "off",
+    semanticCount: 0,
+    semanticProgress: "",
+    semanticModel: "",
+  });
+}

@@ -607,7 +607,7 @@ export const LspInstallSearch = memo(function LspInstallSearch({
           <PopupRow w={innerW}>
             <text fg="#555" bg={POPUP_BG}>
               {scrollOffset > 0 ? "↑ " : "  "}
-              {cursor + 1}/{items.length}
+              {String(cursor + 1)}/{String(items.length)}
               {scrollOffset + maxVisible < items.length ? " ↓" : ""}
             </text>
           </PopupRow>

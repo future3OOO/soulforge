@@ -625,34 +625,32 @@ function applyMultiAgentEvent(
   if (event.type === "dispatch-start") {
     const newTotal = event.totalAgents ?? fallbackTotal;
     // Clear stale seeds — dispatch may have merged tasks (7 raw → 5 actual)
-    const agents = new Map(s.agents);
-    if (newTotal < agents.size) {
-      for (const [key, info] of agents) {
-        if (info.state === "pending") agents.delete(key);
+    if (newTotal < s.agents.size) {
+      for (const [key, info] of s.agents) {
+        if (info.state === "pending") s.agents.delete(key);
       }
     }
-    return { ...s, totalAgents: newTotal, agents };
+    return { ...s, totalAgents: newTotal };
   }
   if (event.type === "agent-start" && event.agentId) {
-    const next = new Map(s.agents);
     // Remove seed entry if it exists (seed IDs may differ from runtime IDs)
-    const existing = next.get(event.agentId);
+    const existing = s.agents.get(event.agentId);
     if (!existing) {
       // Try to find and replace a pending seed by matching agentId pattern
-      for (const [key, info] of next) {
-        if (info.state === "pending" && !next.has(event.agentId)) {
+      for (const [key, info] of s.agents) {
+        if (info.state === "pending" && !s.agents.has(event.agentId)) {
           // Match seed to real agent: same task prefix or same position
           const seedTask = info.task.slice(0, 30);
           const eventTask = (event.task ?? "").slice(0, 30);
           if (seedTask && eventTask && seedTask === eventTask) {
-            next.delete(key);
+            s.agents.delete(key);
             break;
           }
         }
       }
     }
     const prev_info = existing ?? {};
-    next.set(event.agentId, {
+    s.agents.set(event.agentId, {
       ...prev_info,
       role: event.role ?? "explore",
       task: event.task ?? "",
@@ -660,11 +658,10 @@ function applyMultiAgentEvent(
       modelId: event.modelId,
       tier: event.tier,
     });
-    return { ...s, totalAgents: total, agents: next };
+    return { ...s, totalAgents: total };
   }
   if (event.type === "agent-done" && event.agentId) {
-    const next = new Map(s.agents);
-    const existing = next.get(event.agentId);
+    const existing = s.agents.get(event.agentId);
     const stats = {
       toolUses: event.toolUses,
       tokenUsage: event.tokenUsage,
@@ -672,9 +669,9 @@ function applyMultiAgentEvent(
       calledDone: event.calledDone,
     };
     if (existing) {
-      next.set(event.agentId, { ...existing, state: "done", ...stats });
+      s.agents.set(event.agentId, { ...existing, state: "done", ...stats });
     } else {
-      next.set(event.agentId, {
+      s.agents.set(event.agentId, {
         role: event.role ?? "explore",
         task: event.task ?? "",
         state: "done",
@@ -684,23 +681,21 @@ function applyMultiAgentEvent(
     return {
       ...s,
       totalAgents: total,
-      agents: next,
       findingCount: event.findingCount ?? s.findingCount,
     };
   }
   if (event.type === "agent-error" && event.agentId) {
-    const next = new Map(s.agents);
-    const existing = next.get(event.agentId);
+    const existing = s.agents.get(event.agentId);
     if (existing) {
-      next.set(event.agentId, { ...existing, state: "error" });
+      s.agents.set(event.agentId, { ...existing, state: "error" });
     } else {
-      next.set(event.agentId, {
+      s.agents.set(event.agentId, {
         role: event.role ?? "explore",
         task: event.task ?? "",
         state: "error",
       });
     }
-    return { ...s, totalAgents: total, agents: next };
+    return { ...s, totalAgents: total };
   }
   return s;
 }

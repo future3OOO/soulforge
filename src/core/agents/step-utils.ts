@@ -19,32 +19,12 @@ export interface PrepareStepOptions {
   contextWindow?: number;
 }
 
-const READ_TOOLS = new Set([
-  "read_file",
-  "read_code",
-  "grep",
-  "glob",
-  "navigate",
-  "analyze",
-  "web_search",
-  "fetch_page",
-  "soul_grep",
-  "soul_find",
-  "soul_analyze",
-  "soul_impact",
-  "check_findings",
-  "check_peers",
-  "check_agent_result",
-  "done",
-]);
-
 // Context-proportional thresholds (fraction of model's context window).
 // Agents run until done naturally; these are guardrails as context fills up.
-const PRUNE_PCT = 0.5;
-const BUDGET_WARNING_PCT = 0.7;
 const OUTPUT_NUDGE_PCT = 0.8;
 const HARD_STOP_PCT = 0.9;
 const DEFAULT_CONTEXT_WINDOW = 200_000;
+const MAX_SUBAGENT_CONTEXT = 200_000;
 
 const KEEP_RECENT_MESSAGES = 4;
 
@@ -431,21 +411,16 @@ export function buildPrepareStep({
   bus,
   agentId,
   parentToolCallId,
-  role,
-  allTools,
-  symbolLookup,
+  role: _role,
+  allTools: _allTools,
+  symbolLookup: _symbolLookup,
   contextWindow: ctxWindow,
 }: PrepareStepOptions): PrepareStepResult {
-  const cw = ctxWindow ?? DEFAULT_CONTEXT_WINDOW;
-  const pruneThreshold = Math.floor(cw * PRUNE_PCT);
-  const warnThreshold = Math.floor(cw * BUDGET_WARNING_PCT);
+  const cw = Math.min(ctxWindow ?? DEFAULT_CONTEXT_WINDOW, MAX_SUBAGENT_CONTEXT);
   const nudgeThreshold = Math.floor(cw * OUTPUT_NUDGE_PCT);
   const hardStop = Math.floor(cw * HARD_STOP_PCT);
-  const allToolNames = Object.keys(allTools);
-  const readOnlyNames = allToolNames.filter((n) => READ_TOOLS.has(n));
-  const entity = { warnings: 0, prevReReadCount: 0, cleanSteps: 0 };
+  const entity = { warnings: 0, prevReReadCount: 0 };
   const ENTITY_MAX_WARNINGS = 3;
-  const ENTITY_REWARD_INTERVAL = 3;
 
   let nudgeFired = false;
 
@@ -502,26 +477,29 @@ export function buildPrepareStep({
       }
     }
 
-    // Semantic pruning: stale reads + canceled plans + re-read stubbing (runs from step 1)
+    // Entity: detect re-reads via content hashing — runs BEFORE semantic prune because
+    // prune replaces duplicates with "[re-read]" stubs which would prevent hash matching.
     if (stepNumber >= 1) {
-      let msgs = result.messages ?? messages;
-      msgs = semanticPrune(msgs, pathMap);
-      msgs = stripOldEditArgs(msgs, msgs.length - KEEP_RECENT_MESSAGES);
-      result.messages = msgs;
-    }
-
-    // Entity: detect re-reads (per-occurrence) and issue warnings / rewards
-    if (stepNumber >= 1 && pathMap.size > 0) {
-      const fileReadCounts = new Map<string, number>();
-      for (const filePath of pathMap.values()) {
-        fileReadCounts.set(filePath, (fileReadCounts.get(filePath) ?? 0) + 1);
-      }
+      const contentHashes = new Set<number>();
       let totalReReads = 0;
-      const reReadFiles: string[] = [];
-      for (const [file, count] of fileReadCounts) {
-        if (count > 1) {
-          totalReReads += count - 1;
-          reReadFiles.push(file.split("/").pop() ?? file);
+      const reReadTools: string[] = [];
+      const msgs = result.messages ?? messages;
+      for (const msg of msgs) {
+        if (msg.role !== "tool" || typeof msg.content === "string") continue;
+        if (!Array.isArray(msg.content)) continue;
+        for (const part of msg.content) {
+          if (typeof part !== "object" || part === null) continue;
+          if (!("type" in part) || (part as { type: string }).type !== "tool-result") continue;
+          const text = extractText((part as { output?: unknown }).output);
+          if (text.length <= 200) continue;
+          const hash = Number(Bun.hash(text));
+          if (contentHashes.has(hash)) {
+            totalReReads++;
+            const tn = (part as { toolName?: string }).toolName;
+            if (tn && !reReadTools.includes(tn)) reReadTools.push(tn);
+          } else {
+            contentHashes.add(hash);
+          }
         }
       }
       const newViolations = totalReReads - entity.prevReReadCount;
@@ -529,49 +507,52 @@ export function buildPrepareStep({
 
       if (newViolations > 0) {
         entity.warnings = Math.min(entity.warnings + newViolations, ENTITY_MAX_WARNINGS);
-        entity.cleanSteps = 0;
-        const files = reReadFiles.join(", ");
-        const warn =
-          entity.warnings >= ENTITY_MAX_WARNINGS
-            ? `⛔ ENTITY → WARNING ${String(entity.warnings)}/${String(ENTITY_MAX_WARNINGS)}: Re-read of ${files}. WARNING LIMIT REACHED — you will be replaced by a cheaper model and your work discarded. Use read_code with symbol names.`
-            : `⚠ ENTITY → WARNING ${String(entity.warnings)}/${String(ENTITY_MAX_WARNINGS)}: Unnecessary re-read of ${files}. Use read_code with symbol names instead of re-reading entire files.`;
-        result.system = `${result.system ?? ""}\n${warn}`.trim();
-      } else if (entity.warnings > 0) {
-        entity.cleanSteps++;
-        if (entity.cleanSteps >= ENTITY_REWARD_INTERVAL) {
-          entity.warnings--;
-          entity.cleanSteps = 0;
-          const msg = `✓ ENTITY: Good behavior noted. Warning level reduced to ${String(entity.warnings)}/${String(ENTITY_MAX_WARNINGS)}.`;
-          result.system = `${result.system ?? ""}\n${msg}`.trim();
+        const tools = reReadTools.join(", ");
+        if (entity.warnings >= ENTITY_MAX_WARNINGS) {
+          nudgeFired = true;
+          if (parentToolCallId) {
+            emitSubagentStep({
+              parentToolCallId,
+              toolName: "_nudge",
+              args: "duplicate content",
+              state: "done",
+              agentId,
+            });
+          }
+          const nudgeMsgs = result.messages ?? messages;
+          result.messages = [
+            ...nudgeMsgs,
+            {
+              role: "user" as const,
+              content: [
+                {
+                  type: "text" as const,
+                  text: `Duplicate content limit reached (${tools}). Stop calling tools. Produce your structured output now with all findings gathered so far.`,
+                },
+              ],
+            },
+          ];
+          result.toolChoice = "none";
+          result.activeTools = [];
+        } else {
+          const warn = `⚠ ENTITY → WARNING ${String(entity.warnings)}/${String(ENTITY_MAX_WARNINGS)}: Duplicate content detected (${tools}). You already have this content — use read_code for specific symbols or act on what you have.`;
+          result.system = `${result.system ?? ""}\n${warn}`.trim();
         }
       }
+    }
+
+    // Semantic pruning: stale reads + canceled plans + re-read stubbing (runs AFTER entity check)
+    if (stepNumber >= 1) {
+      let msgs = result.messages ?? messages;
+      msgs = semanticPrune(msgs, pathMap);
+      msgs = stripOldEditArgs(msgs, msgs.length - KEEP_RECENT_MESSAGES);
+      result.messages = msgs;
     }
 
     // Use the last step's input tokens as actual context size (not cumulative sum).
     // Each step re-sends the full message history, so inputTokens reflects real context window usage.
     const lastStep = steps.length > 0 ? steps[steps.length - 1] : undefined;
     const contextSize = lastStep?.usage.inputTokens ?? 0;
-
-    // Pruning: compact old tool results to one-line summaries once context grows past 100k.
-    // Below this, caching handles cost better than pruning (stable prefix → cache hits).
-    if (stepNumber >= 3 && contextSize > pruneThreshold) {
-      result.messages = compactOldToolResults(result.messages ?? messages, symbolLookup, pathMap);
-    }
-
-    if (contextSize > pruneThreshold) {
-      if (bus && agentId) {
-        result.system = buildBusSummary(bus, agentId, role);
-      }
-    }
-
-    if (contextSize > warnThreshold) {
-      if (role === "explore") {
-        result.activeTools = [...readOnlyNames];
-      }
-      const existing = result.system ?? "";
-      result.system =
-        `${existing}\nContext is filling up. Focus on completing your current task.`.trim();
-    }
 
     if (bus && agentId) {
       const unseen = bus.drainUnseenFindings(agentId);
@@ -633,43 +614,6 @@ export function buildPrepareStep({
   };
 
   return { prepareStep, tokenStop };
-}
-
-function buildBusSummary(bus: AgentBus, agentId: string, role: string): string {
-  const parts: string[] = [
-    "--- Context recovery (old tool results were pruned to save tokens) ---",
-  ];
-
-  const myReads = bus.getFilesRead(agentId).get(agentId);
-  if (myReads && myReads.length > 0) {
-    parts.push(`Files you already read: ${myReads.join(", ")}`);
-  }
-
-  if (role === "code") {
-    const myEdits = bus.getEditedFiles(agentId);
-    if (myEdits.size > 0) {
-      parts.push(`Files you edited: ${[...myEdits.keys()].join(", ")}`);
-    }
-  }
-
-  const peerReads = bus.getFilesRead();
-  const peerFiles: string[] = [];
-  for (const [peerId, files] of peerReads) {
-    if (peerId !== agentId && files.length > 0) {
-      peerFiles.push(`${peerId}: ${files.join(", ")}`);
-    }
-  }
-  if (peerFiles.length > 0) {
-    parts.push(`Peers' files (cached — your reads will be instant): ${peerFiles.join("; ")}`);
-  }
-
-  const toolSummaries = bus.getToolResultSummary();
-  if (toolSummaries.length > 0) {
-    const display = toolSummaries.slice(0, 20);
-    parts.push(`Cached tool results (re-calls will be instant): ${display.join("; ")}`);
-  }
-
-  return parts.length > 1 ? parts.join("\n") : "";
 }
 
 export function buildSymbolLookup(repoMap?: {

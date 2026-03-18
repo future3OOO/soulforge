@@ -1,5 +1,6 @@
 import { execFile } from "node:child_process";
 import { create } from "zustand";
+import { subscribeWithSelector } from "zustand/middleware";
 import { getIntelligenceChildPids } from "../core/intelligence/index.js";
 import { getProxyPid } from "../core/proxy/lifecycle.js";
 
@@ -45,37 +46,49 @@ interface StatusBarState {
   setV2Slots: (n: number) => void;
 }
 
-export const useStatusBarStore = create<StatusBarState>()((set) => ({
-  tokenUsage: { ...ZERO_USAGE },
-  contextTokens: 0,
-  contextWindow: 200_000,
-  chatChars: 0,
-  subagentChars: 0,
-  rssMB: Math.round(process.memoryUsage().rss / 1024 / 1024),
-  compacting: false,
-  compactElapsed: 0,
-  compactionStrategy: "v1",
-  v2Slots: 0,
+export const useStatusBarStore = create<StatusBarState>()(
+  subscribeWithSelector((set) => ({
+    tokenUsage: { ...ZERO_USAGE },
+    contextTokens: 0,
+    contextWindow: 200_000,
+    chatChars: 0,
+    subagentChars: 0,
+    rssMB: Math.round(process.memoryUsage().rss / 1024 / 1024),
+    compacting: false,
+    compactElapsed: 0,
+    compactionStrategy: "v1",
+    v2Slots: 0,
 
-  setTokenUsage: (usage) => set({ tokenUsage: usage }),
-  resetTokenUsage: () => set({ tokenUsage: { ...ZERO_USAGE } }),
-  setContext: (contextTokens, chatChars) => set({ contextTokens, chatChars, subagentChars: 0 }),
-  setContextWindow: (tokens) => set({ contextWindow: tokens }),
-  setSubagentChars: (chars) => set({ subagentChars: chars }),
-  setRssMB: (mb) => set({ rssMB: mb }),
-  setCompacting: (v) => set({ compacting: v, compactElapsed: 0 }),
-  setCompactElapsed: (s) => set({ compactElapsed: s }),
-  setCompactionStrategy: (s) => set({ compactionStrategy: s }),
-  setV2Slots: (n) => set({ v2Slots: n }),
-}));
+    setTokenUsage: (usage) => set({ tokenUsage: usage }),
+    resetTokenUsage: () => set({ tokenUsage: { ...ZERO_USAGE } }),
+    setContext: (contextTokens, chatChars) => set({ contextTokens, chatChars, subagentChars: 0 }),
+    setContextWindow: (tokens) => set({ contextWindow: tokens }),
+    setSubagentChars: (chars) => set({ subagentChars: chars }),
+    setRssMB: (mb) => set({ rssMB: mb }),
+    setCompacting: (v) => set({ compacting: v, compactElapsed: 0 }),
+    setCompactElapsed: (s) => set({ compactElapsed: s }),
+    setCompactionStrategy: (s) => set({ compactionStrategy: s }),
+    setV2Slots: (n) => set({ v2Slots: n }),
+  })),
+);
 
 export function resetStatusBarStore(): void {
+  if (memPollTimer) {
+    clearInterval(memPollTimer);
+    memPollTimer = null;
+    memPollStarted = false;
+  }
   useStatusBarStore.setState({
     tokenUsage: { ...ZERO_USAGE },
     contextTokens: 0,
+    contextWindow: 200_000,
     chatChars: 0,
     subagentChars: 0,
+    rssMB: Math.round(process.memoryUsage().rss / 1024 / 1024),
     compacting: false,
+    compactElapsed: 0,
+    compactionStrategy: "v1",
+    v2Slots: 0,
   });
 }
 
@@ -132,10 +145,11 @@ function getChildRssKB(pids: number[]): Promise<number> {
 }
 
 let memPollStarted = false;
+let memPollTimer: ReturnType<typeof setInterval> | null = null;
 export function startMemoryPoll(intervalMs = 2000) {
   if (memPollStarted) return;
   memPollStarted = true;
-  setInterval(() => {
+  memPollTimer = setInterval(() => {
     const mainMB = process.memoryUsage().rss / 1024 / 1024;
     const childPids = collectChildPids();
     if (childPids.length === 0) {

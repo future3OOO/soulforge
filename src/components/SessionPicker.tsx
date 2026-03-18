@@ -264,7 +264,7 @@ export function SessionPicker({ visible, cwd, onClose, onRestore, onSystemMessag
           <PopupRow w={innerW}>
             <text fg="#555" bg={POPUP_BG}>
               {scrollOffset > 0 ? "↑ " : "  "}
-              {cursor + 1}/{filtered.length}
+              {String(cursor + 1)}/{String(filtered.length)}
               {scrollOffset + maxVisible < filtered.length ? " ↓" : ""}
             </text>
           </PopupRow>

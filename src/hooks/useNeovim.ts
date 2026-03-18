@@ -146,10 +146,12 @@ export function useNeovim(
         setError(null);
 
         // Detect when neovim exits (user runs :q, :qa, etc.)
+        // Always null the global instance — even after unmount — to prevent
+        // readBufferContent from calling RPC on a dead process (hangs forever).
         nvim.process.on("close", () => {
-          if (!mountedRef.current) return;
           nvimRef.current = null;
           setNvimInstance(null);
+          if (!mountedRef.current) return;
           setReady(false);
           onExitRef.current?.();
         });

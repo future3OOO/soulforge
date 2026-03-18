@@ -1,5 +1,5 @@
 import { TextAttributes } from "@opentui/core";
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { providerIcon } from "../core/icons.js";
 import type { ProviderStatus } from "../core/llm/provider.js";
 import { BRAND_TEXT } from "./splash.js";
@@ -77,52 +77,56 @@ export function Banner({ providers, activeModel }: Props) {
   const revealingLine =
     !animDone && frame >= REVEAL_START && revealedCount <= BANNER_HEIGHT ? revealedCount - 1 : -1;
 
-  const sparkleMap = new Map<string, { char: string; color: string }>();
-  if (!animDone) {
-    const rng = mulberry32(frame * 7919);
-    const sparkleChars = ["✦", "✧", "·", "∘"];
-    const count = frame < REVEAL_START ? frame * 4 : Math.max(0, 4 - (frame - REVEAL_END));
+  const { renderedLines } = useMemo(() => {
+    const sparkleMap = new Map<string, { char: string; color: string }>();
+    if (!animDone) {
+      const rng = mulberry32(frame * 7919);
+      const sparkleChars = ["✦", "✧", "·", "∘"];
+      const count = frame < REVEAL_START ? frame * 4 : Math.max(0, 4 - (frame - REVEAL_END));
 
-    for (let i = 0; i < count; i++) {
-      const row = Math.floor(rng() * BANNER_HEIGHT);
-      const col = Math.floor(rng() * BANNER_WIDTH);
-      const ci = Math.floor(rng() * sparkleChars.length);
-      sparkleMap.set(`${row},${col}`, {
-        char: sparkleChars[ci] ?? "·",
-        color: rng() > 0.5 ? "#9B30FF" : "#6A0DAD",
-      });
-    }
-  }
-
-  const renderedLines: Seg[][] = [];
-
-  for (let row = 0; row < BANNER_HEIGHT; row++) {
-    const segs: Seg[] = [];
-
-    if (row >= revealedCount && !animDone) {
-      for (let col = 0; col < BANNER_WIDTH; col++) {
-        const sparkle = sparkleMap.get(`${row},${col}`);
-        if (sparkle) {
-          pushSeg(segs, sparkle.char, sparkle.color, false);
-        } else {
-          pushSeg(segs, " ", "#111", false);
-        }
+      for (let i = 0; i < count; i++) {
+        const row = Math.floor(rng() * BANNER_HEIGHT);
+        const col = Math.floor(rng() * BANNER_WIDTH);
+        const ci = Math.floor(rng() * sparkleChars.length);
+        sparkleMap.set(`${row},${col}`, {
+          char: sparkleChars[ci] ?? "·",
+          color: rng() > 0.5 ? "#9B30FF" : "#6A0DAD",
+        });
       }
-      renderedLines.push(segs);
-      continue;
     }
 
-    const line = PADDED[row] ?? "";
-    const isRevealing = row === revealingLine;
-    const color = isRevealing ? REVEAL_COLOR : BANNER_COLOR;
+    const lines: Seg[][] = [];
 
-    for (let col = 0; col < line.length; col++) {
-      const char = line[col] ?? " ";
-      pushSeg(segs, char, color, isRevealing);
+    for (let row = 0; row < BANNER_HEIGHT; row++) {
+      const segs: Seg[] = [];
+
+      if (row >= revealedCount && !animDone) {
+        for (let col = 0; col < BANNER_WIDTH; col++) {
+          const sparkle = sparkleMap.get(`${row},${col}`);
+          if (sparkle) {
+            pushSeg(segs, sparkle.char, sparkle.color, false);
+          } else {
+            pushSeg(segs, " ", "#111", false);
+          }
+        }
+        lines.push(segs);
+        continue;
+      }
+
+      const line = PADDED[row] ?? "";
+      const isRevealing = row === revealingLine;
+      const color = isRevealing ? REVEAL_COLOR : BANNER_COLOR;
+
+      for (let col = 0; col < line.length; col++) {
+        const char = line[col] ?? " ";
+        pushSeg(segs, char, color, isRevealing);
+      }
+
+      lines.push(segs);
     }
 
-    renderedLines.push(segs);
-  }
+    return { renderedLines: lines };
+  }, [frame, animDone, revealedCount, revealingLine]);
 
   const showSubtitle = frame >= REVEAL_END || animDone;
   const showHealth = frame >= SETTLE_FRAME || animDone;

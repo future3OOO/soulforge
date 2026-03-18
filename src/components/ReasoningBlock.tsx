@@ -20,7 +20,8 @@ function ThinkingSpinner() {
 }
 
 export function ReasoningBlock({ content, expanded, isStreaming }: Props) {
-  const lineCount = content.split("\n").length;
+  const lines = content.split("\n");
+  const lineCount = lines.length;
 
   if (!expanded) {
     if (isStreaming) {
@@ -33,7 +34,7 @@ export function ReasoningBlock({ content, expanded, isStreaming }: Props) {
         </box>
       );
     }
-    const firstLine = (content.split("\n")[0] ?? "").trim();
+    const firstLine = (lines[0] ?? "").trim();
     const preview = firstLine.length > 60 ? `${firstLine.slice(0, 57)}...` : firstLine;
     return (
       <box height={1} flexShrink={0}>

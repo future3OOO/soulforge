@@ -106,9 +106,9 @@ const TOOLS = {
 	done: {},
 };
 
-// Steps with enough context (last step inputTokens) to trigger pruning (100k) but below nudge (160k)
+// Steps with enough context (last step inputTokens) to trigger pruning (70%=140k) but below nudge (80%=160k)
 const STEPS_ABOVE_PRUNE_THRESHOLD = [
-	{ usage: { inputTokens: 110_000, outputTokens: 5_000 } },
+	{ usage: { inputTokens: 145_000, outputTokens: 5_000 } },
 ];
 const STEPS_ABOVE_CODE_PRUNE = STEPS_ABOVE_PRUNE_THRESHOLD;
 
@@ -133,8 +133,13 @@ function callPrepareStep(
 		| undefined;
 }
 
+// Helper: call compactOldToolResults directly (pruning was removed from prepareStep)
+function callCompact(msgs: ModelMessage[], symbolLookup?: (absPath: string) => Array<{ name: string; kind: string; isExported: boolean }>): ModelMessage[] {
+	return compactOldToolResults(msgs, symbolLookup);
+}
+
 // ---------------------------------------------------------------------------
-// pruning rules
+// pruning rules (compactOldToolResults standalone)
 // ---------------------------------------------------------------------------
 
 describe("pruning rules", () => {
@@ -145,42 +150,19 @@ describe("pruning rules", () => {
 			]),
 			toolResult([{ id: "1", name: "read_file", output: LONG_CONTENT }]),
 		];
-		const result = callPrepareStep(
-			{ role: "explore", allTools: TOOLS },
-			{ stepNumber: 3, messages: msgs, steps: STEPS_ABOVE_PRUNE_THRESHOLD },
-		);
-		expect(resultText(result!.messages!, 1)).toBe(LONG_CONTENT);
+		const result = callCompact(msgs);
+		expect(resultText(result, 1)).toBe(LONG_CONTENT);
 	});
 
-	it("does not compact at step 2 even with enough messages", () => {
+	it("compacts old tool results", () => {
 		const msgs = buildPaddedConversation({
 			id: "1",
 			name: "read_file",
 			input: { path: "/a.ts" },
 			output: LONG_CONTENT,
 		});
-		const result = callPrepareStep(
-			{ role: "explore", allTools: TOOLS },
-			{ stepNumber: 2, messages: msgs },
-		);
-		expect(result?.messages).toBeDefined();
-		const hasAnyPruned = JSON.stringify(result!.messages).includes("[pruned]");
-		expect(hasAnyPruned).toBe(false);
-	});
-
-	it("compacts at step 3 when messages exceed threshold", () => {
-		const msgs = buildPaddedConversation({
-			id: "1",
-			name: "read_file",
-			input: { path: "/a.ts" },
-			output: LONG_CONTENT,
-		});
-		const result = callPrepareStep(
-			{ role: "explore", allTools: TOOLS },
-			{ stepNumber: 3, messages: msgs, steps: STEPS_ABOVE_PRUNE_THRESHOLD },
-		);
-		expect(result?.messages).toBeDefined();
-		expect(resultText(result!.messages!, 1)).toContain("[pruned]");
+		const result = callCompact(msgs);
+		expect(resultText(result, 1)).toContain("[pruned]");
 	});
 
 	it("preserves recent messages within KEEP_RECENT_MESSAGES window", () => {
@@ -190,12 +172,9 @@ describe("pruning rules", () => {
 			input: { path: "/a.ts" },
 			output: LONG_CONTENT,
 		});
-		const result = callPrepareStep(
-			{ role: "explore", allTools: TOOLS },
-			{ stepNumber: 3, messages: msgs, steps: STEPS_ABOVE_PRUNE_THRESHOLD },
-		);
-		const lastToolIdx = result!.messages!.length - 1;
-		expect(resultText(result!.messages!, lastToolIdx)).toBe(LONG_CONTENT);
+		const result = callCompact(msgs);
+		const lastToolIdx = result.length - 1;
+		expect(resultText(result, lastToolIdx)).toBe(LONG_CONTENT);
 	});
 
 	it("preserves short results (<= 200 chars)", () => {
@@ -205,11 +184,8 @@ describe("pruning rules", () => {
 			input: { path: "/a.ts" },
 			output: "short",
 		});
-		const result = callPrepareStep(
-			{ role: "explore", allTools: TOOLS },
-			{ stepNumber: 3, messages: msgs, steps: STEPS_ABOVE_PRUNE_THRESHOLD },
-		);
-		expect(resultText(result!.messages!, 1)).toBe("short");
+		const result = callCompact(msgs);
+		expect(resultText(result, 1)).toBe("short");
 	});
 });
 
@@ -225,11 +201,8 @@ describe("summary formats", () => {
 			input: { path: "/a.ts" },
 			output: LONG_CONTENT,
 		});
-		const result = callPrepareStep(
-			{ role: "explore", allTools: TOOLS },
-			{ stepNumber: 3, messages: msgs, steps: STEPS_ABOVE_PRUNE_THRESHOLD },
-		);
-		expect(resultText(result!.messages!, 1)).toBe("[pruned] 100 lines");
+		const result = callCompact(msgs);
+		expect(resultText(result, 1)).toBe("[pruned] 100 lines");
 	});
 
 	it("read_file with symbols: exact format", () => {
@@ -246,11 +219,8 @@ describe("summary formats", () => {
 			input: { path: "/a.ts" },
 			output: LONG_CONTENT,
 		});
-		const result = callPrepareStep(
-			{ role: "explore", allTools: TOOLS, symbolLookup },
-			{ stepNumber: 3, messages: msgs, steps: STEPS_ABOVE_PRUNE_THRESHOLD },
-		);
-		expect(resultText(result!.messages!, 1)).toBe(
+		const result = callCompact(msgs, symbolLookup);
+		expect(resultText(result, 1)).toBe(
 			"[pruned] 100 lines — exports: Foo, bar",
 		);
 	});
@@ -262,11 +232,8 @@ describe("summary formats", () => {
 			input: { file: "/a.ts" },
 			output: LONG_CONTENT,
 		});
-		const result = callPrepareStep(
-			{ role: "explore", allTools: TOOLS },
-			{ stepNumber: 3, messages: msgs, steps: STEPS_ABOVE_PRUNE_THRESHOLD },
-		);
-		expect(resultText(result!.messages!, 1)).toBe("[pruned] 100 lines");
+		const result = callCompact(msgs);
+		expect(resultText(result, 1)).toBe("[pruned] 100 lines");
 	});
 
 	it("grep: includes pattern in summary", () => {
@@ -277,11 +244,8 @@ describe("summary formats", () => {
 			input: { pattern: "x" },
 			output: grepOutput,
 		});
-		const result = callPrepareStep(
-			{ role: "explore", allTools: TOOLS },
-			{ stepNumber: 3, messages: msgs, steps: STEPS_ABOVE_PRUNE_THRESHOLD },
-		);
-		const text = resultText(result!.messages!, 1);
+		const result = callCompact(msgs);
+		const text = resultText(result, 1);
 		expect(text).toStartWith("[pruned] 42 matches");
 		expect(text).toContain('"x"');
 	});
@@ -297,11 +261,8 @@ describe("summary formats", () => {
 			input: { pattern: "**/*.ts" },
 			output: globOutput,
 		});
-		const result = callPrepareStep(
-			{ role: "explore", allTools: TOOLS },
-			{ stepNumber: 3, messages: msgs, steps: STEPS_ABOVE_PRUNE_THRESHOLD },
-		);
-		const text = resultText(result!.messages!, 1);
+		const result = callCompact(msgs);
+		const text = resultText(result, 1);
 		expect(text).toStartWith("[pruned] 25 files");
 		expect(text).toContain("**/*.ts");
 	});
@@ -314,11 +275,8 @@ describe("summary formats", () => {
 			input: { command: "ls -la src/" },
 			output,
 		});
-		const result = callPrepareStep(
-			{ role: "explore", allTools: { ...TOOLS, shell: {} } },
-			{ stepNumber: 3, messages: msgs, steps: STEPS_ABOVE_PRUNE_THRESHOLD },
-		);
-		const text = resultText(result!.messages!, 1);
+		const result = callCompact(msgs);
+		const text = resultText(result, 1);
 		expect(text).toStartWith("[pruned]");
 		expect(text).toContain("ls -la src/");
 	});
@@ -334,11 +292,8 @@ describe("summary formats", () => {
 			input: {},
 			output,
 		});
-		const result = callPrepareStep(
-			{ role: "explore", allTools: { ...TOOLS, dispatch: {} } },
-			{ stepNumber: 3, messages: msgs, steps: STEPS_ABOVE_PRUNE_THRESHOLD },
-		);
-		const text = resultText(result!.messages!, 1);
+		const result = callCompact(msgs);
+		const text = resultText(result, 1);
 		expect(text).toStartWith("[pruned] dispatch completed");
 		expect(text).toContain("edited: src/a.ts, src/b.ts");
 		expect(text).toContain("3/3 agents");
@@ -352,11 +307,8 @@ describe("summary formats", () => {
 			input: {},
 			output,
 		});
-		const result = callPrepareStep(
-			{ role: "explore", allTools: { ...TOOLS, dispatch: {} } },
-			{ stepNumber: 3, messages: msgs, steps: STEPS_ABOVE_PRUNE_THRESHOLD },
-		);
-		const text = resultText(result!.messages!, 1);
+		const result = callCompact(msgs);
+		const text = resultText(result, 1);
 		expect(text).toStartWith("[pruned] dispatch completed");
 		expect(text).toContain("My Dispatch");
 		expect(text).toContain("2/2 agents");
@@ -377,11 +329,8 @@ describe("summary formats", () => {
 				input: {},
 				output,
 			});
-			const result = callPrepareStep(
-				{ role: "explore", allTools: { ...TOOLS, [toolName]: {} } },
-				{ stepNumber: 3, messages: msgs, steps: STEPS_ABOVE_PRUNE_THRESHOLD },
-			);
-			const text = resultText(result!.messages!, 1);
+			const result = callCompact(msgs);
+			const text = resultText(result, 1);
 			expect(text).toMatch(/^\[pruned\] \d+ lines, \d+ chars$/);
 		}
 	});
@@ -418,11 +367,8 @@ describe("summary formats", () => {
 				toolResult([{ id, name: "read_file", output: LONG_CONTENT }]),
 			);
 		}
-		const result = callPrepareStep(
-			{ role: "explore", allTools: { ...TOOLS, shell: {} } },
-			{ stepNumber: 3, messages: msgs, steps: STEPS_ABOVE_PRUNE_THRESHOLD },
-		);
-		expect(resultText(result!.messages!, 1)).toContain("[pruned]");
+		const result = callCompact(msgs);
+		expect(resultText(result, 1)).toContain("[pruned]");
 	});
 
 	it("handles {output: string} format from extractText", () => {
@@ -457,11 +403,8 @@ describe("summary formats", () => {
 				toolResult([{ id, name: "read_file", output: LONG_CONTENT }]),
 			);
 		}
-		const result = callPrepareStep(
-			{ role: "explore", allTools: { ...TOOLS, shell: {} } },
-			{ stepNumber: 3, messages: msgs, steps: STEPS_ABOVE_PRUNE_THRESHOLD },
-		);
-		expect(resultText(result!.messages!, 1)).toContain("[pruned]");
+		const result = callCompact(msgs);
+		expect(resultText(result, 1)).toContain("[pruned]");
 	});
 });
 
@@ -478,11 +421,8 @@ describe("preservation rules", () => {
 				input: { path: "/a.ts" },
 				output: LONG_CONTENT,
 			});
-			const result = callPrepareStep(
-				{ role: "code", allTools: { ...TOOLS, [toolName]: {} } },
-				{ stepNumber: 3, messages: msgs, steps: STEPS_ABOVE_PRUNE_THRESHOLD },
-			);
-			expect(resultText(result!.messages!, 1)).toBe(LONG_CONTENT);
+			const result = callCompact(msgs);
+			expect(resultText(result, 1)).toBe(LONG_CONTENT);
 		}
 	});
 
@@ -493,11 +433,8 @@ describe("preservation rules", () => {
 			input: {},
 			output: LONG_CONTENT,
 		});
-		const result = callPrepareStep(
-			{ role: "explore", allTools: TOOLS },
-			{ stepNumber: 3, messages: msgs, steps: STEPS_ABOVE_PRUNE_THRESHOLD },
-		);
-		expect(resultText(result!.messages!, 1)).toBe(LONG_CONTENT);
+		const result = callCompact(msgs);
+		expect(resultText(result, 1)).toBe(LONG_CONTENT);
 	});
 
 	it("multi-part tool result: prunes read_file, keeps edit_file in same message", () => {
@@ -559,12 +496,9 @@ describe("preservation rules", () => {
 			);
 		}
 
-		const result = callPrepareStep(
-			{ role: "code", allTools: TOOLS },
-			{ stepNumber: 3, messages: msgs, steps: STEPS_ABOVE_CODE_PRUNE },
-		);
-		expect(resultText(result!.messages!, 1, 0)).toBe("[pruned] 100 lines");
-		expect(resultText(result!.messages!, 1, 1)).toBe(LONG_CONTENT);
+		const result = callCompact(msgs);
+		expect(resultText(result, 1, 0)).toBe("[pruned] 100 lines");
+		expect(resultText(result, 1, 1)).toBe(LONG_CONTENT);
 	});
 });
 
@@ -589,11 +523,8 @@ describe("symbol enrichment", () => {
 			input: { path: "/big.ts" },
 			output: LONG_CONTENT,
 		});
-		const result = callPrepareStep(
-			{ role: "explore", allTools: TOOLS, symbolLookup },
-			{ stepNumber: 3, messages: msgs, steps: STEPS_ABOVE_PRUNE_THRESHOLD },
-		);
-		const text = resultText(result!.messages!, 1);
+		const result = callCompact(msgs, symbolLookup);
+		const text = resultText(result, 1);
 		expect(text).toContain("Sym0");
 		expect(text).toContain("Sym7");
 		expect(text).toContain("+4");
@@ -610,11 +541,8 @@ describe("symbol enrichment", () => {
 			input: { path: "/a.ts" },
 			output: LONG_CONTENT,
 		});
-		const result = callPrepareStep(
-			{ role: "explore", allTools: TOOLS, symbolLookup },
-			{ stepNumber: 3, messages: msgs, steps: STEPS_ABOVE_PRUNE_THRESHOLD },
-		);
-		expect(resultText(result!.messages!, 1)).toBe("[pruned] 100 lines");
+		const result = callCompact(msgs, symbolLookup);
+		expect(resultText(result, 1)).toBe("[pruned] 100 lines");
 	});
 
 	it("resolves read_code 'file' input key", () => {
@@ -628,11 +556,8 @@ describe("symbol enrichment", () => {
 			input: { file: "/models.ts", target: "interface" },
 			output: LONG_CONTENT,
 		});
-		const result = callPrepareStep(
-			{ role: "explore", allTools: TOOLS, symbolLookup },
-			{ stepNumber: 3, messages: msgs, steps: STEPS_ABOVE_PRUNE_THRESHOLD },
-		);
-		expect(resultText(result!.messages!, 1)).toBe(
+		const result = callCompact(msgs, symbolLookup);
+		expect(resultText(result, 1)).toBe(
 			"[pruned] 100 lines — exports: User",
 		);
 	});
@@ -648,11 +573,8 @@ describe("symbol enrichment", () => {
 			input: { filePath: "/utils.ts" },
 			output: LONG_CONTENT,
 		});
-		const result = callPrepareStep(
-			{ role: "explore", allTools: TOOLS, symbolLookup },
-			{ stepNumber: 3, messages: msgs, steps: STEPS_ABOVE_PRUNE_THRESHOLD },
-		);
-		expect(resultText(result!.messages!, 1)).toBe(
+		const result = callCompact(msgs, symbolLookup);
+		expect(resultText(result, 1)).toBe(
 			"[pruned] 100 lines — exports: helper",
 		);
 	});
@@ -670,11 +592,8 @@ describe("symbol enrichment", () => {
 			output: LONG_CONTENT,
 		});
 
-		const result = callPrepareStep(
-			{ role: "explore", allTools: TOOLS, symbolLookup },
-			{ stepNumber: 3, messages: msgs, steps: STEPS_ABOVE_PRUNE_THRESHOLD },
-		);
-		expect(resultText(result!.messages!, 1)).toContain("exports: Foo");
+		const result = callCompact(msgs, symbolLookup);
+		expect(resultText(result, 1)).toContain("exports: Foo");
 	});
 
 	it("symbol lookup with malformed input falls back to no symbols", () => {
@@ -719,14 +638,9 @@ describe("symbol enrichment", () => {
 			);
 		}
 
-		const result = callPrepareStep(
-			{ role: "explore", allTools: TOOLS, symbolLookup },
-			{ stepNumber: 3, messages: msgs, steps: STEPS_ABOVE_PRUNE_THRESHOLD },
-		);
-		const summary = resultText(result!.messages!, 1);
+		const result = callCompact(msgs, symbolLookup);
+		const summary = resultText(result, 1);
 		expect(summary).toBe("[pruned] 100 lines");
-		const part = (result!.messages![0]!.content as Array<{ input: unknown }>)[0];
-		expect(part?.input).toEqual({});
 	});
 });
 
@@ -743,7 +657,7 @@ describe("buildPrepareStep — step gating", () => {
 		expect(result?.toolChoice).toBe("required");
 	});
 
-	it("returns messages on step 1 with empty messages (semantic prune runs)", () => {
+	it("returns result on step 1 with empty messages (semantic prune runs)", () => {
 		const result = callPrepareStep(
 			{ role: "explore", allTools: TOOLS },
 			{ stepNumber: 1, messages: [] },
@@ -787,27 +701,8 @@ describe("buildPrepareStep — cache control", () => {
 // buildPrepareStep — token budgets
 // ---------------------------------------------------------------------------
 
-describe("buildPrepareStep — token budgets (unified thresholds)", () => {
-	it("warns at 140k tokens", () => {
-		const result = callPrepareStep(
-			{ role: "explore", allTools: TOOLS },
-			{ stepNumber: 1, messages: [], steps: makeSteps(141_000) },
-		);
-		expect(result?.system).toContain("Context is filling up");
-		expect(result?.activeTools).toBeDefined();
-		expect(result?.activeTools).not.toContain("edit_file");
-	});
-
-	it("code: warns at 140k without restricting tools", () => {
-		const result = callPrepareStep(
-			{ role: "code", allTools: TOOLS },
-			{ stepNumber: 1, messages: [], steps: makeSteps(141_000) },
-		);
-		expect(result?.system).toContain("Context is filling up");
-		expect(result?.activeTools).toBeUndefined();
-	});
-
-	it("nudges structured output at 160k tokens", () => {
+describe("buildPrepareStep — token budgets", () => {
+	it("nudges structured output at 80% of context (160k for 200k)", () => {
 		const result = callPrepareStep(
 			{ role: "explore", allTools: TOOLS },
 			{ stepNumber: 1, messages: [], steps: makeSteps(161_000) },
@@ -818,7 +713,7 @@ describe("buildPrepareStep — token budgets (unified thresholds)", () => {
 		expect(text).toContain("structured output");
 	});
 
-	it("no nudge below 160k", () => {
+	it("no nudge below 80% of context", () => {
 		const result = callPrepareStep(
 			{ role: "explore", allTools: TOOLS },
 			{ stepNumber: 5, messages: [], steps: makeSteps(150_000) },
@@ -826,7 +721,7 @@ describe("buildPrepareStep — token budgets (unified thresholds)", () => {
 		expect(result?.activeTools).not.toEqual([]);
 	});
 
-	it("no warning below 140k", () => {
+	it("no system message below nudge threshold", () => {
 		const result = callPrepareStep(
 			{ role: "explore", allTools: TOOLS },
 			{ stepNumber: 1, messages: [], steps: makeSteps(10_000) },

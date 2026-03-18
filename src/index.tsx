@@ -1,6 +1,6 @@
 import { type createCliRenderer as CreateCliRenderer, TextAttributes } from "@opentui/core";
 import type { createRoot as CreateRoot } from "@opentui/react";
-import { useCallback, useEffect, useState } from "react";
+import { startTransition, useCallback, useEffect, useState } from "react";
 import type { App as AppComponent } from "./components/App.js";
 import { BRAND_PURPLE, BRAND_RED, garble } from "./components/splash.js";
 import type { ContextManager } from "./core/context/manager.js";
@@ -100,41 +100,47 @@ const RESTART_STEPS = [
 const RESTART_SPINNER = ["⠋", "⠙", "⠹", "⠸", "⠼", "⠴", "⠦", "⠧", "⠇", "⠏"];
 
 function RestartSplash({ onComplete }: { onComplete: () => void }) {
-  const [phase, setPhase] = useState(0);
   const ghost = icon("ghost");
-  const [ghostFrame, setGhostFrame] = useState(ghost);
-  const [typeIdx, setTypeIdx] = useState(0);
-  const [wordmark, setWordmark] = useState(garble("SOULFORGE"));
-  const [spinIdx, setSpinIdx] = useState(0);
   const label = "Restarting";
+
+  const [anim, setAnim] = useState({
+    phase: 0,
+    ghostFrame: ghost,
+    typeIdx: 0,
+    wordmark: garble("SOULFORGE"),
+    spinIdx: 0,
+  });
 
   useEffect(() => {
     let step = 0;
     const timer = setInterval(() => {
       step++;
-      setSpinIdx((s) => s + 1);
-      // Ghost fade out: frames 1-4
-      if (step === 1) setGhostFrame("▓");
-      if (step === 2) setGhostFrame("▒");
-      if (step === 3) setGhostFrame("░");
-      if (step === 4) setGhostFrame(" ");
-      // Ghost fade in: frames 6-9
-      if (step === 6) setGhostFrame("░");
-      if (step === 7) setGhostFrame("▒");
-      if (step === 8) setGhostFrame("▓");
-      if (step === 9) setGhostFrame(ghost);
-      // Typewriter: frames 10+
-      if (step >= 10 && step <= 10 + label.length) {
-        setTypeIdx(step - 10);
-      }
-      // Status steps
-      if (step === 10 + label.length + 2) setPhase(1);
-      if (step === 10 + label.length + 5) setPhase(2);
-      if (step === 10 + label.length + 8) setPhase(3);
-      // Wordmark glitch
-      if (step === 10 + label.length + 11) setWordmark(garble("SOULFORGE"));
-      if (step === 10 + label.length + 12) setWordmark("SOULFORGE");
-      if (step === 10 + label.length + 13) setWordmark(garble("SOULFORGE"));
+      setAnim((prev) => {
+        const next = { ...prev, spinIdx: prev.spinIdx + 1 };
+        // Ghost fade out: frames 1-4
+        if (step === 1) next.ghostFrame = "▓";
+        if (step === 2) next.ghostFrame = "▒";
+        if (step === 3) next.ghostFrame = "░";
+        if (step === 4) next.ghostFrame = " ";
+        // Ghost fade in: frames 6-9
+        if (step === 6) next.ghostFrame = "░";
+        if (step === 7) next.ghostFrame = "▒";
+        if (step === 8) next.ghostFrame = "▓";
+        if (step === 9) next.ghostFrame = ghost;
+        // Typewriter: frames 10+
+        if (step >= 10 && step <= 10 + label.length) {
+          next.typeIdx = step - 10;
+        }
+        // Status steps
+        if (step === 10 + label.length + 2) next.phase = 1;
+        if (step === 10 + label.length + 5) next.phase = 2;
+        if (step === 10 + label.length + 8) next.phase = 3;
+        // Wordmark glitch
+        if (step === 10 + label.length + 11) next.wordmark = garble("SOULFORGE");
+        if (step === 10 + label.length + 12) next.wordmark = "SOULFORGE";
+        if (step === 10 + label.length + 13) next.wordmark = garble("SOULFORGE");
+        return next;
+      });
       // Done
       if (step === 10 + label.length + 16) {
         clearInterval(timer);
@@ -144,14 +150,14 @@ function RestartSplash({ onComplete }: { onComplete: () => void }) {
     return () => clearInterval(timer);
   }, [onComplete, ghost]);
 
-  const visibleLabel = label.slice(0, typeIdx);
-  const cursor = typeIdx < label.length ? "█" : "";
-  const spin = RESTART_SPINNER[spinIdx % RESTART_SPINNER.length];
+  const visibleLabel = label.slice(0, anim.typeIdx);
+  const cursor = anim.typeIdx < label.length ? "█" : "";
+  const spin = RESTART_SPINNER[anim.spinIdx % RESTART_SPINNER.length];
 
   return (
     <box flexDirection="column" flexGrow={1} justifyContent="center" alignItems="center">
       <text fg={BRAND_PURPLE} attributes={TextAttributes.BOLD}>
-        {ghostFrame}
+        {anim.ghostFrame}
       </text>
       <box height={1} />
       <text>
@@ -162,8 +168,8 @@ function RestartSplash({ onComplete }: { onComplete: () => void }) {
       <text fg="#333">{"─".repeat(30)}</text>
       <box height={1} />
       {RESTART_STEPS.map((step, i) => {
-        if (i > phase) return null;
-        const done = i < phase;
+        if (i > anim.phase) return null;
+        const done = i < anim.phase;
         return (
           <box key={step} gap={1} flexDirection="row">
             <text fg={done ? "#4a7" : BRAND_PURPLE}>{done ? "✓" : spin}</text>
@@ -173,7 +179,7 @@ function RestartSplash({ onComplete }: { onComplete: () => void }) {
       })}
       <box height={1} />
       <text fg={BRAND_PURPLE} attributes={TextAttributes.BOLD}>
-        {wordmark}
+        {anim.wordmark}
       </text>
     </box>
   );
@@ -230,10 +236,13 @@ function AppRoot({ opts }: { opts: StartOptions }) {
       setFreshProviders(newProviders);
       setFreshPrereqs(newPrereqs);
     } catch {}
-    setContextManager(undefined);
-    setExitSessionId(null);
-    setAppKey((k) => k + 1);
-    setRestarting(false);
+    // Batch all state updates to avoid 7 separate re-renders after await
+    startTransition(() => {
+        setContextManager(undefined);
+        setExitSessionId(null);
+        setAppKey((k) => k + 1);
+        setRestarting(false);
+      });
   }, []);
 
   if (restarting) {

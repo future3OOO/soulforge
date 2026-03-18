@@ -1,3 +1,5 @@
+import { memo } from "react";
+
 interface AnimatedBorderProps {
   active: boolean;
   children: React.ReactNode;
@@ -7,7 +9,11 @@ interface AnimatedBorderProps {
 const ACTIVE_COLOR = "#FF0040";
 const IDLE_COLOR = "#222";
 
-export function AnimatedBorder({ active, children, idleColor = IDLE_COLOR }: AnimatedBorderProps) {
+export const AnimatedBorder = memo(function AnimatedBorder({
+  active,
+  children,
+  idleColor = IDLE_COLOR,
+}: AnimatedBorderProps) {
   return (
     <box
       flexGrow={1}
@@ -20,4 +26,4 @@ export function AnimatedBorder({ active, children, idleColor = IDLE_COLOR }: Ani
       {children}
     </box>
   );
-}
+});

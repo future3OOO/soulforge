@@ -392,7 +392,7 @@ export const SkillSearch = memo(function SkillSearch({
               <PopupRow w={innerW}>
                 <text fg="#555" bg={POPUP_BG}>
                   {scrollOffset > 0 ? "↑ " : "  "}
-                  {cursor + 1}/{displayResults.length}
+                  {String(cursor + 1)}/{String(displayResults.length)}
                   {scrollOffset + maxVisible < displayResults.length ? " ↓" : ""}
                 </text>
               </PopupRow>
@@ -491,7 +491,7 @@ export const SkillSearch = memo(function SkillSearch({
               <PopupRow w={innerW}>
                 <text fg="#555" bg={POPUP_BG}>
                   {scrollOffset > 0 ? "↑ " : "  "}
-                  {cursor + 1}/{filteredInstalled.length}
+                  {String(cursor + 1)}/{String(filteredInstalled.length)}
                   {scrollOffset + maxVisible < filteredInstalled.length ? " ↓" : ""}
                 </text>
               </PopupRow>
@@ -538,7 +538,7 @@ export const SkillSearch = memo(function SkillSearch({
               <PopupRow w={innerW}>
                 <text fg="#555" bg={POPUP_BG}>
                   {scrollOffset > 0 ? "↑ " : "  "}
-                  {cursor + 1}/{filteredActive.length}
+                  {String(cursor + 1)}/{String(filteredActive.length)}
                   {scrollOffset + maxVisible < filteredActive.length ? " ↓" : ""}
                 </text>
               </PopupRow>

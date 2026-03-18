@@ -191,7 +191,7 @@ export function EditorSettings({ visible, settings, initialScope, onUpdate, onCl
           <PopupRow w={innerW}>
             <text fg="#555" bg={POPUP_BG}>
               {scrollOffset > 0 ? "↑ " : "  "}
-              {cursor + 1}/{ITEMS.length}
+              {String(cursor + 1)}/{String(ITEMS.length)}
               {scrollOffset + maxVisible < ITEMS.length ? " ↓" : ""}
             </text>
           </PopupRow>

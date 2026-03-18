@@ -183,8 +183,9 @@ export function InfoPopup({ visible, config, onClose }: Props) {
           <PopupRow w={innerW}>
             <text fg="#555" bg={POPUP_BG}>
               {scrollOffset > 0 ? "↑ " : "  "}
-              {scrollOffset + 1}-{Math.min(scrollOffset + maxVisible, config.lines.length)}/
-              {config.lines.length}
+              {String(scrollOffset + 1)}-
+              {String(Math.min(scrollOffset + maxVisible, config.lines.length))}/
+              {String(config.lines.length)}
               {scrollOffset + maxVisible < config.lines.length ? " ↓" : ""}
             </text>
           </PopupRow>

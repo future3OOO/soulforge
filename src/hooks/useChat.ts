@@ -2,7 +2,7 @@ import { readFileSync } from "node:fs";
 import { join } from "node:path";
 import type { ModelMessage, StreamTextResult, TextPart, ToolCallPart, ToolSet } from "ai";
 import { generateText } from "ai";
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { startTransition, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { StreamSegment } from "../components/StreamSegmentList.js";
 import type { LiveToolCall } from "../components/ToolCallDisplay.js";
 import { createForgeAgent } from "../core/agents/index.js";
@@ -220,6 +220,7 @@ export interface ChatInstance {
   pendingPlanReview: PendingPlanReview | null;
   setPendingPlanReview: React.Dispatch<React.SetStateAction<PendingPlanReview | null>>;
   snapshot: (label: string) => TabState;
+  contextManager: ContextManager;
 }
 
 export function useChat({
@@ -255,102 +256,116 @@ export function useChat({
   const lastFlushedToolCalls = useRef<LiveToolCall[]>([]);
   const lastFlushedStreamingChars = useRef(0);
   const flushStreamState = useCallback(() => {
-    if (segmentsDirty.current) {
-      const buf = streamSegmentsBuffer.current;
-      const prev = lastFlushedSegments.current;
-      let changed = buf.length !== prev.length;
-      const next: StreamSegment[] = new Array(buf.length);
-      for (let i = 0; i < buf.length; i++) {
-        const s = buf[i] as StreamSegment;
-        const p = prev[i];
-        if (p && s.type === p.type) {
-          let same = false;
-          if (s.type === "text" && p.type === "text") {
-            same = s.content === p.content;
-          } else if (s.type === "reasoning" && p.type === "reasoning") {
-            same = s.content === p.content && s.id === p.id && s.done === p.done;
-          } else if (s.type === "tools" && p.type === "tools") {
-            same =
-              s.callIds.length === p.callIds.length &&
-              s.callIds.every((id, j) => id === p.callIds[j]);
+    startTransition(() => {
+      if (segmentsDirty.current) {
+        const buf = streamSegmentsBuffer.current;
+        const prev = lastFlushedSegments.current;
+        let changed = buf.length !== prev.length;
+        const next: StreamSegment[] = new Array(buf.length);
+        for (let i = 0; i < buf.length; i++) {
+          const s = buf[i] as StreamSegment;
+          const p = prev[i];
+          if (p && s.type === p.type) {
+            let same = false;
+            if (s.type === "text" && p.type === "text") {
+              same = s.content === p.content;
+            } else if (s.type === "reasoning" && p.type === "reasoning") {
+              same = s.content === p.content && s.id === p.id && s.done === p.done;
+            } else if (s.type === "tools" && p.type === "tools") {
+              same =
+                s.callIds.length === p.callIds.length &&
+                s.callIds.every((id, j) => id === p.callIds[j]);
+            }
+            if (same) {
+              next[i] = p;
+              continue;
+            }
           }
-          if (same) {
+          changed = true;
+          next[i] = s.type === "tools" ? { ...s, callIds: [...s.callIds] } : { ...s };
+        }
+        if (changed) {
+          lastFlushedSegments.current = next;
+          setStreamSegments(next);
+        }
+        segmentsDirty.current = false;
+      }
+      if (toolCallsDirty.current) {
+        const buf = liveToolCallsBuffer.current;
+        const prev = lastFlushedToolCalls.current;
+        let changed = buf.length !== prev.length;
+        const next: LiveToolCall[] = new Array(buf.length);
+        for (let i = 0; i < buf.length; i++) {
+          const tc = buf[i] as LiveToolCall;
+          const p = prev[i];
+          if (
+            p &&
+            tc.id === p.id &&
+            tc.toolName === p.toolName &&
+            tc.state === p.state &&
+            tc.args === p.args &&
+            tc.result === p.result &&
+            tc.error === p.error
+          ) {
             next[i] = p;
             continue;
           }
+          changed = true;
+          next[i] = { ...tc };
         }
-        changed = true;
-        next[i] = s.type === "tools" ? { ...s, callIds: [...s.callIds] } : { ...s };
-      }
-      if (changed) {
-        lastFlushedSegments.current = next;
-        setStreamSegments(next);
-      }
-      segmentsDirty.current = false;
-    }
-    if (toolCallsDirty.current) {
-      const buf = liveToolCallsBuffer.current;
-      const prev = lastFlushedToolCalls.current;
-      let changed = buf.length !== prev.length;
-      const next: LiveToolCall[] = new Array(buf.length);
-      for (let i = 0; i < buf.length; i++) {
-        const tc = buf[i] as LiveToolCall;
-        const p = prev[i];
-        if (
-          p &&
-          tc.id === p.id &&
-          tc.toolName === p.toolName &&
-          tc.state === p.state &&
-          tc.args === p.args &&
-          tc.result === p.result &&
-          tc.error === p.error
-        ) {
-          next[i] = p;
-          continue;
+        if (changed) {
+          lastFlushedToolCalls.current = next;
+          setLiveToolCalls(next);
         }
-        changed = true;
-        next[i] = { ...tc };
+        toolCallsDirty.current = false;
       }
-      if (changed) {
-        lastFlushedToolCalls.current = next;
-        setLiveToolCalls(next);
+      const tu = pendingTokenUsage.current;
+      if (tu) {
+        setTokenUsageRaw(tu);
+        if (visibleRef.current) useStatusBarStore.getState().setTokenUsage(tu);
+        pendingTokenUsage.current = null;
       }
-      toolCallsDirty.current = false;
-    }
-    const tu = pendingTokenUsage.current;
-    if (tu) {
-      setTokenUsageRaw(tu);
-      if (visibleRef.current) useStatusBarStore.getState().setTokenUsage(tu);
-      pendingTokenUsage.current = null;
-    }
-    const ct = pendingContextTokens.current;
-    if (ct !== null) {
-      setContextTokens(ct);
-      pendingContextTokens.current = null;
-    }
-    const so = pendingLastStepOutput.current;
-    if (so !== null) {
-      setLastStepOutput(so);
-      pendingLastStepOutput.current = null;
-    }
-    const nextChars = streamingCharsRef.current + toolCharsRef.current;
-    if (nextChars !== lastFlushedStreamingChars.current) {
-      lastFlushedStreamingChars.current = nextChars;
-      setStreamingChars(nextChars);
-    }
+      const ct = pendingContextTokens.current;
+      if (ct !== null) {
+        setContextTokens(ct);
+        pendingContextTokens.current = null;
+      }
+      const so = pendingLastStepOutput.current;
+      if (so !== null) {
+        setLastStepOutput(so);
+        pendingLastStepOutput.current = null;
+      }
+      const nextChars = streamingCharsRef.current + toolCharsRef.current;
+      if (nextChars !== lastFlushedStreamingChars.current) {
+        lastFlushedStreamingChars.current = nextChars;
+        setStreamingChars(nextChars);
+      }
+    });
   }, []);
 
   const flushMicrotaskQueued = useRef(false);
+  const flushMicrotaskTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const lastFlushTime = useRef(0);
   const queueMicrotaskFlush = useCallback(() => {
     if (flushMicrotaskQueued.current) return;
     flushMicrotaskQueued.current = true;
-    setTimeout(() => {
+    flushMicrotaskTimer.current = setTimeout(() => {
       flushMicrotaskQueued.current = false;
+      flushMicrotaskTimer.current = null;
       lastFlushTime.current = Date.now();
       flushStreamState();
     }, 0);
   }, [flushStreamState]);
+
+  // Clean up pending microtask flush on unmount
+  useEffect(() => {
+    return () => {
+      if (flushMicrotaskTimer.current) {
+        clearTimeout(flushMicrotaskTimer.current);
+        flushMicrotaskTimer.current = null;
+      }
+    };
+  }, []);
 
   // Interactive state
   const abortRef = useRef<AbortController | null>(null);
@@ -393,11 +408,13 @@ export function useChat({
   }, [coAuthorCommits]);
 
   // Sync context window size to contextManager + status bar store
+  const contextManagerRef = useRef(contextManager);
+  contextManagerRef.current = contextManager;
   useEffect(() => {
     const windowTokens = getModelContextWindow(activeModel);
-    contextManager.setContextWindow(windowTokens);
+    contextManagerRef.current.setContextWindow(windowTokens);
     if (visible) useStatusBarStore.getState().setContextWindow(windowTokens);
-  }, [activeModel, contextManager, visible]);
+  }, [activeModel, visible]);
 
   const [tokenUsage, setTokenUsageRaw] = useState<TokenUsage>(
     initialState?.tokenUsage ?? { ...ZERO_USAGE },
@@ -2193,5 +2210,6 @@ export function useChat({
     pendingPlanReview,
     setPendingPlanReview,
     snapshot,
+    contextManager,
   };
 }

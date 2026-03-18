@@ -1,7 +1,7 @@
 import { existsSync, unlinkSync } from "node:fs";
 import { join } from "node:path";
 import type { ScrollBoxRenderable } from "@opentui/core";
-import { useCallback, useEffect, useMemo, useRef } from "react";
+import { memo, useCallback, useEffect, useMemo, useRef } from "react";
 import { useShallow } from "zustand/react/shallow";
 import { ContextManager, type SharedContextResources } from "../core/context/manager.js";
 import { icon } from "../core/icons.js";
@@ -70,7 +70,7 @@ export interface TabInstanceProps {
 const MAX_RENDERED = 60;
 const SCROLLBOX_STYLE = { contentOptions: { justifyContent: "flex-end" as const } };
 
-export function TabInstance({
+export const TabInstance = memo(function TabInstance({
   tabId,
   visible,
   effectiveConfig,
@@ -163,7 +163,7 @@ export function TabInstance({
     openEditor,
     onSuspend,
     initialState,
-    getWorkspaceSnapshot: () => getWorkspaceSnapshot(),
+    getWorkspaceSnapshot,
     visible,
   });
 
@@ -302,6 +302,28 @@ export function TabInstance({
     } catch {}
   }, [cwd, chat.sessionId]);
 
+  const onAcceptPlan = useCallback(() => {
+    chat.pendingPlanReview?.resolve("execute");
+    cleanupPlanFile();
+  }, [chat.pendingPlanReview, cleanupPlanFile]);
+
+  const onClearAndImplementPlan = useCallback(() => {
+    chat.pendingPlanReview?.resolve("clear_execute");
+    cleanupPlanFile();
+  }, [chat.pendingPlanReview, cleanupPlanFile]);
+
+  const onRevisePlan = useCallback(
+    (feedback: string) => {
+      chat.pendingPlanReview?.resolve(feedback);
+    },
+    [chat.pendingPlanReview],
+  );
+
+  const onCancelPlan = useCallback(() => {
+    chat.pendingPlanReview?.resolve("cancel");
+    cleanupPlanFile();
+  }, [chat.pendingPlanReview, cleanupPlanFile]);
+
   const handleInputSubmit = useCallback(
     async (input: string) => {
       if (input.startsWith("/")) {
@@ -401,22 +423,11 @@ export function TabInstance({
             isActive={isFocused}
             plan={chat.pendingPlanReview.plan}
             planFile={chat.pendingPlanReview.planFile}
-            onAccept={() => {
-              chat.pendingPlanReview?.resolve("execute");
-              cleanupPlanFile();
-            }}
-            onClearAndImplement={() => {
-              chat.pendingPlanReview?.resolve("clear_execute");
-              cleanupPlanFile();
-            }}
-            onRevise={(feedback) => {
-              chat.pendingPlanReview?.resolve(feedback);
-            }}
-            onCancel={() => {
-              chat.pendingPlanReview?.resolve("cancel");
-              cleanupPlanFile();
-            }}
-          />
+            onAccept={onAcceptPlan}
+              onClearAndImplement={onClearAndImplementPlan}
+              onRevise={onRevisePlan}
+            onCancel={onCancelPlan}
+            />
         </box>
       ) : chat.pendingQuestion ? (
         <>
@@ -484,4 +495,4 @@ export function TabInstance({
       )}
     </box>
   );
-}
+});

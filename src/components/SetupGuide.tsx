@@ -348,7 +348,7 @@ export function SetupGuide({ visible, onClose, onSystemMessage }: Props) {
               <PopupRow w={innerW}>
                 <text fg="#555" bg={POPUP_BG}>
                   {scrollOffset > 0 ? "↑ " : "  "}
-                  {cursor + 1}/{statuses.length}
+                  {String(cursor + 1)}/{String(statuses.length)}
                   {scrollOffset + maxVisible < statuses.length ? " ↓" : ""}
                 </text>
               </PopupRow>
@@ -406,7 +406,7 @@ export function SetupGuide({ visible, onClose, onSystemMessage }: Props) {
               <PopupRow w={innerW}>
                 <text fg="#555" bg={POPUP_BG}>
                   {fontScrollOffset > 0 ? "↑ " : "  "}
-                  {fontCursor + 1}/{NERD_FONTS.length}
+                  {String(fontCursor + 1)}/{String(NERD_FONTS.length)}
                   {fontScrollOffset + maxVisible < NERD_FONTS.length ? " ↓" : ""}
                 </text>
               </PopupRow>

@@ -87,7 +87,11 @@ export function LoadingStatus({ isLoading, isCompacting, queueCount }: LoadingSt
     completedTimeRef.current = null;
   }
 
-  if (!isLoading && wasLoadingRef.current && loadingStartRef.current > 0) {
+  wasLoadingRef.current = isLoading;
+
+  // Move the "completed" timer into a useEffect so it doesn't fire during render
+  useEffect(() => {
+    if (isLoading || !loadingStartRef.current) return;
     const finalSec = Math.floor((Date.now() - loadingStartRef.current) / 1000);
     if (finalSec > 0) {
       completedTimeRef.current = formatElapsed(finalSec);
@@ -100,8 +104,7 @@ export function LoadingStatus({ isLoading, isCompacting, queueCount }: LoadingSt
         } catch {}
       }, COMPLETED_DISPLAY_MS);
     }
-  }
-  wasLoadingRef.current = isLoading;
+  }, [isLoading]);
 
   useEffect(() => {
     if (!showBusy) {

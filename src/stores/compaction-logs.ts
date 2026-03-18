@@ -1,4 +1,5 @@
 import { create } from "zustand";
+import { subscribeWithSelector } from "zustand/middleware";
 
 export type CompactionEventKind = "compact" | "strategy-change" | "auto-trigger" | "error";
 
@@ -20,29 +21,35 @@ export interface CompactionLogEntry {
 
 type LogExtra = Omit<CompactionLogEntry, "id" | "kind" | "message" | "timestamp">;
 
+const MAX_ENTRIES = 200;
+
 type CompactionLogState = {
   entries: CompactionLogEntry[];
   push: (kind: CompactionEventKind, message: string, extra?: LogExtra) => void;
   clear: () => void;
 };
 
-export const useCompactionLogStore = create<CompactionLogState>()((set) => ({
-  entries: [],
-  push: (kind, message, extra) =>
-    set((s) => ({
-      entries: [
-        ...s.entries,
-        {
+export const useCompactionLogStore = create<CompactionLogState>()(
+  subscribeWithSelector((set) => ({
+    entries: [],
+    push: (kind, message, extra) =>
+      set((s) => {
+        const entry = {
           id: crypto.randomUUID(),
           kind,
           message,
           timestamp: Date.now(),
           ...extra,
-        },
-      ],
-    })),
-  clear: () => set({ entries: [] }),
-}));
+        };
+        const entries =
+          s.entries.length >= MAX_ENTRIES
+            ? [...s.entries.slice(-(MAX_ENTRIES - 1)), entry]
+            : [...s.entries, entry];
+        return { entries };
+      }),
+    clear: () => set({ entries: [] }),
+  })),
+);
 
 export function logCompaction(kind: CompactionEventKind, message: string, extra?: LogExtra): void {
   useCompactionLogStore.getState().push(kind, message, extra);

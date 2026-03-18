@@ -121,8 +121,10 @@ export const DiffView = memo(function DiffView({
             <span fg={ERROR_COLOR}> {errorMessage ?? "failed"}</span>
           ) : computed ? (
             <>
-              {computed.added > 0 ? <span fg={ADD_COLOR}> +{computed.added}</span> : null}
-              {computed.removed > 0 ? <span fg={REMOVE_COLOR}> -{computed.removed}</span> : null}
+              {computed.added > 0 ? <span fg={ADD_COLOR}> +{String(computed.added)}</span> : null}
+              {computed.removed > 0 ? (
+                <span fg={REMOVE_COLOR}> -{String(computed.removed)}</span>
+              ) : null}
             </>
           ) : null}
         </text>
@@ -152,8 +154,10 @@ export const DiffView = memo(function DiffView({
           <span fg={HEADER_PATH}>{filePath}</span>
           {success && computed ? (
             <>
-              {computed.added > 0 ? <span fg={ADD_COLOR}> +{computed.added}</span> : null}
-              {computed.removed > 0 ? <span fg={REMOVE_COLOR}> -{computed.removed}</span> : null}
+              {computed.added > 0 ? <span fg={ADD_COLOR}> +{String(computed.added)}</span> : null}
+              {computed.removed > 0 ? (
+                <span fg={REMOVE_COLOR}> -{String(computed.removed)}</span>
+              ) : null}
             </>
           ) : null}
         </text>
@@ -164,7 +168,9 @@ export const DiffView = memo(function DiffView({
         </box>
       ) : isLarge ? (
         <box paddingX={1}>
-          <text fg={COLLAPSED_COLOR}>{computed.added + computed.removed} lines changed</text>
+          <text fg={COLLAPSED_COLOR}>
+            {String(computed.added + computed.removed)} lines changed
+          </text>
         </box>
       ) : unifiedDiff ? (
         <diff

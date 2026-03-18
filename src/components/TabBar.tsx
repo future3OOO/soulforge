@@ -1,5 +1,5 @@
 import { TextAttributes } from "@opentui/core";
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { icon } from "../core/icons.js";
 import type { Tab, TabActivity } from "../hooks/useTabs.js";
 
@@ -19,10 +19,16 @@ const SPINNER_FRAMES = ["⠋", "⠙", "⠹", "⠸", "⠼", "⠴", "⠦", "⠧", 
 export function TabBar({ tabs, activeTabId, onSwitch: _onSwitch, getActivity }: TabBarProps) {
   const [spinFrame, setSpinFrame] = useState(0);
 
-  const hasLoading = tabs.some((t) => {
-    const a = getActivity(t.id);
-    return a.isLoading && t.id !== activeTabId;
-  });
+  // Cache all activities once per render — avoids double getActivity calls
+  const activities = useMemo(
+    () => new Map(tabs.map((t) => [t.id, getActivity(t.id)])),
+    [tabs, getActivity],
+  );
+
+  const hasLoading = useMemo(
+    () => tabs.some((t) => t.id !== activeTabId && activities.get(t.id)?.isLoading),
+    [tabs, activeTabId, activities],
+  );
 
   useEffect(() => {
     if (!hasLoading) return;
@@ -37,17 +43,17 @@ export function TabBar({ tabs, activeTabId, onSwitch: _onSwitch, getActivity }: 
         const isActive = tab.id === activeTabId;
         const label = truncateLabel(tab.label, 20);
         const num = String(i + 1);
-        const activity = getActivity(tab.id);
+        const activity = activities.get(tab.id);
 
         let indicator = "";
         let indicatorColor = "";
-        if (activity.isLoading) {
+        if (activity?.isLoading) {
           indicator = `${SPINNER_FRAMES[spinFrame] ?? "⠋"} `;
           indicatorColor = "#8B5CF6";
-        } else if (activity.hasUnread) {
+        } else if (activity?.hasUnread) {
           indicator = "● ";
           indicatorColor = "#b87333";
-        } else if (activity.hasError) {
+        } else if (activity?.hasError) {
           indicator = "● ";
           indicatorColor = "#a55";
         }

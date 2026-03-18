@@ -2,7 +2,7 @@ import { TextAttributes } from "@opentui/core";
 import { useEffect, useState } from "react";
 import { icon } from "../core/icons.js";
 import { onTaskChange, type Task, type TaskStatus } from "../core/tools/task-list.js";
-import { Spinner } from "./shared.js";
+import { SPINNER_FRAMES, useSpinnerFrame } from "./shared.js";
 
 const STATUS_ICONS: Record<TaskStatus, string> = {
   done: "✓",
@@ -25,6 +25,11 @@ interface TaskListProps {
   nested?: boolean;
 }
 
+function InlineSpinner({ color }: { color: string }) {
+  const frame = useSpinnerFrame();
+  return <span fg={color}>{SPINNER_FRAMES[frame % SPINNER_FRAMES.length]}</span>;
+}
+
 export function TaskList({ tasks, nested }: TaskListProps) {
   if (tasks.length === 0) return null;
 
@@ -34,7 +39,7 @@ export function TaskList({ tasks, nested }: TaskListProps) {
     <box key={String(task.id)} height={1} flexDirection="row">
       <text>
         {task.status === "in-progress" ? (
-          <Spinner color={STATUS_COLORS["in-progress"]} />
+          <InlineSpinner color={STATUS_COLORS["in-progress"]} />
         ) : (
           <span fg={STATUS_COLORS[task.status]}>{STATUS_ICONS[task.status]}</span>
         )}

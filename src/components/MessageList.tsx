@@ -508,6 +508,15 @@ function renderSegments(
   showReasoning = true,
   reasoningExpanded = false,
 ) {
+  // Precompute: find first tools index so we can check hasToolsBefore in O(1)
+  let firstToolsIdx = -1;
+  for (let k = 0; k < segments.length; k++) {
+    if (segments[k]!.type === "tools") {
+      firstToolsIdx = k;
+      break;
+    }
+  }
+
   let lastVisibleType: string | null = null;
   return segments.map((seg, i) => {
     if (seg.type === "reasoning" && !showReasoning) return null;
@@ -517,7 +526,7 @@ function renderSegments(
 
     if (seg.type === "text") {
       const isLastSegment = i === segments.length - 1;
-      const hasToolsBefore = segments.some((s, j) => j < i && s.type === "tools");
+      const hasToolsBefore = firstToolsIdx >= 0 && firstToolsIdx < i;
       const isFinalAnswer = isLastSegment && hasToolsBefore && seg.content.trim().length > 20;
       return (
         // biome-ignore lint/suspicious/noArrayIndexKey: stable segment order

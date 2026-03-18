@@ -43,7 +43,7 @@ export function HealthCheck() {
                     ✓ {providerIcon(p.id)} <span fg="#4a7">{p.name}</span>
                   </text>
                 ))}
-                {extra > 0 && <text fg="#555">+{extra}</text>}
+                {extra > 0 && <text fg="#555">+{String(extra)}</text>}
                 {active.length === 0 && <text fg="#555">none configured</text>}
               </>
             );

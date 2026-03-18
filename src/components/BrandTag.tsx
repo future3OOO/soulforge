@@ -26,53 +26,69 @@ function plainLength(segs: BrandSegment[]): number {
 
 type Phase = "hold" | "erase" | "type" | "pause";
 
+interface BrandState {
+  phraseIdx: number;
+  visibleChars: number;
+  phase: Phase;
+}
+
 export function BrandTag() {
-  const [phraseIdx, setPhraseIdx] = useState(0);
-  const [visibleChars, setVisibleChars] = useState(0);
-  const [phase, setPhase] = useState<Phase>("type");
+  const [state, setState] = useState<BrandState>({
+    phraseIdx: 0,
+    visibleChars: 0,
+    phase: "type",
+  });
   const timerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
+  const { phraseIdx, visibleChars, phase } = state;
   const phrase = PHRASES[phraseIdx] ?? PHRASES[0] ?? [];
   const totalChars = plainLength(phrase);
   const animating = phase === "erase" || phase === "type" || phase === "pause";
 
   useEffect(() => {
     if (phase === "hold") {
-      timerRef.current = setTimeout(() => setPhase("erase"), HOLD_MS);
-      return () => {
-        if (timerRef.current) clearTimeout(timerRef.current);
-      };
+      timerRef.current = setTimeout(
+        () => setState((s) => ({ ...s, phase: "erase" })),
+        HOLD_MS,
+      );
+      return () => { if (timerRef.current) clearTimeout(timerRef.current); };
     }
 
     if (phase === "erase") {
       if (visibleChars <= 0) {
-        setPhraseIdx((i) => (i + 1) % PHRASES.length);
-        setVisibleChars(0);
-        setPhase("pause");
+        setState((s) => ({
+          ...s,
+          phraseIdx: (s.phraseIdx + 1) % PHRASES.length,
+          visibleChars: 0,
+          phase: "pause",
+        }));
         return;
       }
-      timerRef.current = setTimeout(() => setVisibleChars((v) => v - 1), ERASE_MS);
-      return () => {
-        if (timerRef.current) clearTimeout(timerRef.current);
-      };
+      timerRef.current = setTimeout(
+        () => setState((s) => ({ ...s, visibleChars: s.visibleChars - 1 })),
+        ERASE_MS,
+      );
+      return () => { if (timerRef.current) clearTimeout(timerRef.current); };
     }
 
     if (phase === "pause") {
-      timerRef.current = setTimeout(() => setPhase("type"), 200);
-      return () => {
-        if (timerRef.current) clearTimeout(timerRef.current);
-      };
+      timerRef.current = setTimeout(
+        () => setState((s) => ({ ...s, phase: "type" })),
+        200,
+      );
+      return () => { if (timerRef.current) clearTimeout(timerRef.current); };
     }
 
     // phase === "type"
     if (visibleChars >= totalChars) {
-      setPhase("hold");
+      setState((s) => ({ ...s, phase: "hold" }));
       return;
     }
-    timerRef.current = setTimeout(() => setVisibleChars((v) => v + 1), TYPE_MS);
-    return () => {
-      if (timerRef.current) clearTimeout(timerRef.current);
-    };
+    timerRef.current = setTimeout(
+      () => setState((s) => ({ ...s, visibleChars: s.visibleChars + 1 })),
+      TYPE_MS,
+    );
+    return () => { if (timerRef.current) clearTimeout(timerRef.current); };
   }, [phase, visibleChars, totalChars]);
 
   let remaining = visibleChars;
