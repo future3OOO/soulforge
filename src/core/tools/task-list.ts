@@ -75,6 +75,18 @@ export function resetInProgressTasks(): void {
   if (changed) notify();
 }
 
+export function completeInProgressTasks(): void {
+  let changed = false;
+  for (const task of tasks.values()) {
+    if (task.status === "in-progress") {
+      task.status = "done";
+      task.updated = Date.now();
+      changed = true;
+    }
+  }
+  if (changed) notify();
+}
+
 export const taskListTool = {
   name: "task_list",
   description: "Session task scratchpad. Actions: add, update, remove, list, clear.",

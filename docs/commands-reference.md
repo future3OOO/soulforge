@@ -9,7 +9,7 @@
 | `/model` | Switch active LLM model |
 | `/models` | Browse all available models by provider |
 | `/router` | Configure per-task model routing (planning, coding, exploration, etc.) |
-| `/provider` | Provider settings — thinking mode, effort, speed, context management |
+| `/provider-settings` | Provider settings — thinking mode, effort, speed, context management |
 | `/model-scope` | Toggle model persistence scope (project vs global) |
 
 ## Agent & Modes
