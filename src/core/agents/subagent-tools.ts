@@ -7,6 +7,7 @@ import type { AgentFeatures } from "../../types/index.js";
 import type { RepoMap } from "../intelligence/repo-map.js";
 import { getModelContextWindow } from "../llm/models.js";
 import { projectTool } from "../tools/project.js";
+import { taskListTool } from "../tools/task-list.js";
 import {
   AgentBus,
   type AgentTask,
@@ -874,6 +875,9 @@ async function runAgentTask(
     modelId: selectedModelId,
     tier: taskTier,
   });
+  if (task.taskId != null) {
+    taskListTool.execute({ action: "update", id: task.taskId, status: "in-progress" });
+  }
 
   const peerFindings = bus.summarizeFindings(task.agentId);
   const depResults = task.dependsOn
@@ -1039,6 +1043,9 @@ async function runAgentTask(
         tier: taskTier,
         calledDone,
       });
+      if (task.taskId != null) {
+        taskListTool.execute({ action: "update", id: task.taskId, status: "done" });
+      }
       return { doneResult, resultText, callbacks, result: agentResult };
     } catch (error) {
       lastError = error;
@@ -1075,6 +1082,9 @@ async function runAgentTask(
     totalAgents,
     error: errMsg,
   });
+  if (task.taskId != null) {
+    taskListTool.execute({ action: "update", id: task.taskId, status: "blocked" });
+  }
 
   return {
     doneResult: null,
@@ -1125,6 +1135,10 @@ export function buildSubagentTools(models: SubagentModels) {
                   "explore = targeted extraction, investigate = broad cross-cutting analysis (scans with soul_grep/soul_analyze/grep), code = edits",
                 ),
               id: z.string().optional().describe("Unique ID (auto-generated if omitted)"),
+              taskId: z
+                .number()
+                .optional()
+                .describe("Link to a task_list task ID — auto-marks done/failed on completion"),
               dependsOn: z
                 .array(z.string())
                 .optional()
@@ -1505,6 +1519,7 @@ export function buildSubagentTools(models: SubagentModels) {
               role: t.role,
               task: `${t.task}${fileHint}`,
               dependsOn: t.dependsOn,
+              taskId: t.taskId,
             };
           });
 

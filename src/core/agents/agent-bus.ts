@@ -37,6 +37,7 @@ export interface AgentTask {
   dependsOn?: string[];
   timeoutMs?: number;
   tier?: TaskTier;
+  taskId?: number;
 }
 
 export interface AgentResult {

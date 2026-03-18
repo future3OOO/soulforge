@@ -32,7 +32,7 @@ import { createThinkingParser } from "../core/thinking-parser.js";
 import { onFileEdited } from "../core/tools/file-events.js";
 import { planFileName } from "../core/tools/index.js";
 import { setShellCoAuthorEnabled } from "../core/tools/shell.js";
-import { completeInProgressTasks, resetInProgressTasks } from "../core/tools/task-list.js";
+import { resetInProgressTasks } from "../core/tools/task-list.js";
 import { logCompaction } from "../stores/compaction-logs.js";
 import { logBackgroundError } from "../stores/errors.js";
 import { useStatusBarStore } from "../stores/statusbar.js";
@@ -1928,7 +1928,6 @@ export function useChat({
         setStreamingChars(0);
         setStreamSegments([]);
         setLiveToolCalls([]);
-        completeInProgressTasks();
       } catch (err: unknown) {
         if (flushTimerRef.current) {
           clearInterval(flushTimerRef.current);
