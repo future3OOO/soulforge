@@ -559,7 +559,8 @@ export const projectTool = {
             command = command.replace(/gofmt/, "gofmt -w").replace(/goimports/, "goimports -w");
           else if (command.includes("dart")) command = command.replace("analyze", "fix --apply");
           else if (command.includes("swiftlint")) command += " --fix";
-          else if (command.includes("hlint")) command += " --refactor";
+          else if (command.includes("hlint"))
+            command += ' --refactor --refactor-options="--inplace"';
         }
         if (command && args.file) {
           command = `${command} ${shellQuote(args.file)}`;
@@ -586,28 +587,61 @@ export const projectTool = {
       };
     }
 
-    try {
-      const proc = Bun.spawn(["sh", "-c", command], {
+    // Legacy fallback: if fix command fails with unknown-flag error, retry with older syntax
+    const LEGACY_FIX: Record<string, string> = {
+      "--write": "--apply",
+      "--fix --allow-dirty": "--fix --allow-dirty --allow-staged",
+      " --fix": " autocorrect",
+    };
+
+    const runCommand = async (cmd: string) => {
+      const proc = Bun.spawn(["sh", "-c", cmd], {
         cwd,
         stdout: "pipe",
         stderr: "pipe",
         env: { ...process.env, FORCE_COLOR: "0", NO_COLOR: "1", ...args.env },
       });
-
       const timeoutMs = args.timeout ?? 120_000;
       const timer = setTimeout(() => proc.kill(), timeoutMs);
-
       const [stdout, stderr] = await Promise.all([
         new Response(proc.stdout).text(),
         new Response(proc.stderr).text(),
       ]);
       const exitCode = await proc.exited;
       clearTimeout(timer);
+      return { stdout, stderr, exitCode };
+    };
+
+    try {
+      let { stdout, stderr, exitCode } = await runCommand(command);
+
+      // Retry with legacy flag if the tool didn't recognize the modern flag
+      if (exitCode !== 0 && args.fix) {
+        const combined = [stdout, stderr].join("\n").toLowerCase();
+        const isUnknownFlag =
+          combined.includes("unknown") ||
+          combined.includes("unrecognized") ||
+          combined.includes("unexpected argument") ||
+          combined.includes("invalid option");
+        if (isUnknownFlag) {
+          for (const [modern, legacy] of Object.entries(LEGACY_FIX)) {
+            if (command.includes(modern)) {
+              const fallback = command.replace(modern, legacy);
+              const retry = await runCommand(fallback);
+              stdout = retry.stdout;
+              stderr = retry.stderr;
+              exitCode = retry.exitCode;
+              command = fallback;
+              break;
+            }
+          }
+        }
+      }
 
       if (exitCode === null) {
         return {
           success: false,
-          output: `${args.action} timed out after ${String(timeoutMs / 1000)}s`,
+          output: `${args.action} timed out after ${String((args.timeout ?? 120_000) / 1000)}s`,
           error: "timeout",
         };
       }
