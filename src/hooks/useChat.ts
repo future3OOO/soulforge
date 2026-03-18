@@ -1341,17 +1341,32 @@ export function useChat({
          * instead of lumping steering before the final combined response.
          */
         const flushBeforeSteering = (steeringMsgs: ChatMessage[]) => {
-          if (fullText.trim().length === 0 && completedCalls.length === 0) {
-            // Nothing accumulated yet — just queue steering messages into messages
+          // Merge completed tool calls + in-progress ones from the live buffer
+          const completedIds = new Set(completedCalls.map((c) => c.id));
+          const livePending = liveToolCallsBuffer.current
+            .filter((tc) => !completedIds.has(tc.id))
+            .map((tc) => ({
+              id: tc.id,
+              name: tc.toolName,
+              args: safeParseArgs(tc.args),
+              ...(tc.state === "done" && tc.result
+                ? { result: { success: true as const, output: tc.result } }
+                : tc.state === "error" && tc.error
+                  ? { result: { success: false as const, output: tc.error, error: tc.error } }
+                  : {}),
+            }));
+          const allCalls = [...completedCalls, ...livePending];
+          const hasContent = fullText.trim().length > 0 || allCalls.length > 0;
+
+          if (!hasContent) {
             setMessages((prev) => [...prev, ...steeringMsgs]);
           } else {
-            // Commit current assistant progress + steering messages
             const flushedAssistant: ChatMessage = {
               id: crypto.randomUUID(),
               role: "assistant",
               content: fullText,
               timestamp: Date.now(),
-              toolCalls: completedCalls.length > 0 ? [...completedCalls] : undefined,
+              toolCalls: allCalls.length > 0 ? allCalls : undefined,
               segments: finalSegments.length > 0 ? [...finalSegments] : undefined,
             };
             setMessages((prev) => [...prev, flushedAssistant, ...steeringMsgs]);
