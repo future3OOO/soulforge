@@ -77,7 +77,10 @@ export function LandingPage({ bootProviders, bootPrereqs }: LandingPageProps) {
   const wordmarkW = showWordmark ? (WORDMARK[0]?.length ?? 0) : 0;
 
   const activeProviders = useMemo(() => bootProviders.filter((p) => p.available), [bootProviders]);
-  const inactiveProviders = useMemo(() => bootProviders.filter((p) => !p.available), [bootProviders]);
+  const inactiveProviders = useMemo(
+    () => bootProviders.filter((p) => !p.available),
+    [bootProviders],
+  );
   const missingRequired = useMemo(
     () => bootPrereqs.filter((p) => !p.installed && p.prerequisite.required),
     [bootPrereqs],

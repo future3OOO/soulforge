@@ -1,6 +1,5 @@
 import { fg as fgStyle, StyledText, type TextRenderable } from "@opentui/core";
 import { useEffect, useRef } from "react";
-import { icon } from "../core/icons.js";
 import type { TokenUsage } from "../stores/statusbar.js";
 import { useStatusBarStore } from "../stores/statusbar.js";
 
@@ -43,11 +42,12 @@ function usageEqual(a: TokenUsage, b: TokenUsage): boolean {
 function buildContent(u: TokenUsage): StyledText {
   const uncachedInput = Math.max(0, u.prompt - u.cacheRead);
   const chunks = [
-    fgStyle("#555")(`${icon("tokens")} `),
+    // hide icon tv of tokens
+    // fgStyle("#555")(`${icon("tokens")} `),
     fgStyle("#2d9bf0")(fmt(uncachedInput)),
-    fgStyle("#444")("↑"),
+    fgStyle("#444")("↑ "),
     fgStyle("#e0a020")(fmt(u.completion)),
-    fgStyle("#444")("↓"),
+    fgStyle("#444")("↓ "),
   ];
   if (u.cacheRead > 0) {
     chunks.push(fgStyle("#4a7")(` ${fmt(u.cacheRead)} cached`));

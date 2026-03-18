@@ -86,65 +86,71 @@ interface UIState {
 
 export const useUIStore = create<UIState>()(
   subscribeWithSelector((set) => ({
-  modals: { ...INITIAL_MODALS },
-  routerSlotPicking: null,
-  commandPickerConfig: null,
-  infoPopupConfig: null,
+    modals: { ...INITIAL_MODALS },
+    routerSlotPicking: null,
+    commandPickerConfig: null,
+    infoPopupConfig: null,
 
-  codeExpanded: false,
-  changesExpanded: false,
-  chatStyle: "accent",
-  showReasoning: true,
-  reasoningExpanded: false,
-  suspended: false,
-  editorSplit: 60,
+    codeExpanded: false,
+    changesExpanded: false,
+    chatStyle: "accent",
+    showReasoning: true,
+    reasoningExpanded: false,
+    suspended: false,
+    editorSplit: 60,
 
-  openModal: (name) => set(() => ({ modals: { ...INITIAL_MODALS, [name]: true } })),
-  closeModal: (name) => set((s) => ({ modals: { ...s.modals, [name]: false } })),
-  toggleModal: (name) =>
-    set((s) => ({
-      modals: s.modals[name] ? { ...s.modals, [name]: false } : { ...INITIAL_MODALS, [name]: true },
-    })),
+    openModal: (name) => set(() => ({ modals: { ...INITIAL_MODALS, [name]: true } })),
+    closeModal: (name) => set((s) => ({ modals: { ...s.modals, [name]: false } })),
+    toggleModal: (name) =>
+      set((s) => ({
+        modals: s.modals[name]
+          ? { ...s.modals, [name]: false }
+          : { ...INITIAL_MODALS, [name]: true },
+      })),
 
-  setRouterSlotPicking: (slot) => set({ routerSlotPicking: slot }),
+    setRouterSlotPicking: (slot) => set({ routerSlotPicking: slot }),
 
-  openCommandPicker: (config) =>
-    set(() => ({
-      commandPickerConfig: config,
-      modals: { ...INITIAL_MODALS, commandPicker: true },
-    })),
-  updatePickerOptions: (options, currentValue) =>
-    set((s) => ({
-      commandPickerConfig: s.commandPickerConfig
-        ? { ...s.commandPickerConfig, options, ...(currentValue !== undefined && { currentValue }) }
-        : null,
-    })),
-  openInfoPopup: (config) =>
-    set((s) => ({
-      infoPopupConfig: config,
-      modals: { ...s.modals, infoPopup: true },
-    })),
-  closeInfoPopup: () =>
-    set((s) => ({
-      infoPopupConfig: null,
-      modals: { ...s.modals, infoPopup: false },
-    })),
+    openCommandPicker: (config) =>
+      set(() => ({
+        commandPickerConfig: config,
+        modals: { ...INITIAL_MODALS, commandPicker: true },
+      })),
+    updatePickerOptions: (options, currentValue) =>
+      set((s) => ({
+        commandPickerConfig: s.commandPickerConfig
+          ? {
+              ...s.commandPickerConfig,
+              options,
+              ...(currentValue !== undefined && { currentValue }),
+            }
+          : null,
+      })),
+    openInfoPopup: (config) =>
+      set((s) => ({
+        infoPopupConfig: config,
+        modals: { ...s.modals, infoPopup: true },
+      })),
+    closeInfoPopup: () =>
+      set((s) => ({
+        infoPopupConfig: null,
+        modals: { ...s.modals, infoPopup: false },
+      })),
 
-  toggleCodeExpanded: () => set((s) => ({ codeExpanded: !s.codeExpanded })),
-  setCodeExpanded: (v) => set({ codeExpanded: v }),
-  toggleChangesExpanded: () => set((s) => ({ changesExpanded: !s.changesExpanded })),
-  setChangesExpanded: (v) => set({ changesExpanded: v }),
-  setChatStyle: (style) => set({ chatStyle: style }),
-  setShowReasoning: (v) => set({ showReasoning: v }),
-  toggleShowReasoning: () => set((s) => ({ showReasoning: !s.showReasoning })),
-  toggleReasoningExpanded: () => set((s) => ({ reasoningExpanded: !s.reasoningExpanded })),
-  setSuspended: (v) => set({ suspended: v }),
-  cycleEditorSplit: () =>
-    set((s) => {
-      const splits = [40, 50, 60, 70];
-      const idx = splits.indexOf(s.editorSplit);
-      return { editorSplit: splits[(idx + 1) % splits.length] ?? 60 };
-    }),
+    toggleCodeExpanded: () => set((s) => ({ codeExpanded: !s.codeExpanded })),
+    setCodeExpanded: (v) => set({ codeExpanded: v }),
+    toggleChangesExpanded: () => set((s) => ({ changesExpanded: !s.changesExpanded })),
+    setChangesExpanded: (v) => set({ changesExpanded: v }),
+    setChatStyle: (style) => set({ chatStyle: style }),
+    setShowReasoning: (v) => set({ showReasoning: v }),
+    toggleShowReasoning: () => set((s) => ({ showReasoning: !s.showReasoning })),
+    toggleReasoningExpanded: () => set((s) => ({ reasoningExpanded: !s.reasoningExpanded })),
+    setSuspended: (v) => set({ suspended: v }),
+    cycleEditorSplit: () =>
+      set((s) => {
+        const splits = [40, 50, 60, 70];
+        const idx = splits.indexOf(s.editorSplit);
+        return { editorSplit: splits[(idx + 1) % splits.length] ?? 60 };
+      }),
   })),
 );
 

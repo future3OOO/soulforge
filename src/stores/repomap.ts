@@ -44,43 +44,43 @@ function flushScanThrottle(set: (partial: Partial<RepoMapState>) => void) {
 
 export const useRepoMapStore = create<RepoMapState>()(
   subscribeWithSelector((set) => ({
-  status: "off",
-  files: 0,
-  symbols: 0,
-  edges: 0,
-  dbSizeBytes: 0,
-  scanProgress: "",
-  scanError: "",
-  semanticStatus: "off",
-  semanticCount: 0,
-  semanticProgress: "",
-  semanticModel: "",
+    status: "off",
+    files: 0,
+    symbols: 0,
+    edges: 0,
+    dbSizeBytes: 0,
+    scanProgress: "",
+    scanError: "",
+    semanticStatus: "off",
+    semanticCount: 0,
+    semanticProgress: "",
+    semanticModel: "",
 
-  setStatus: (status) => {
-    if (_scanThrottleTimer) {
-      clearTimeout(_scanThrottleTimer);
-      flushScanThrottle(set);
-    }
-    set({ status });
-  },
-  setStats: (files, symbols, edges, dbSizeBytes) => {
-    _pendingStats = { files, symbols, edges, dbSizeBytes };
-    if (!_scanThrottleTimer) {
-      _scanThrottleTimer = setTimeout(() => flushScanThrottle(set), 200);
-    }
-  },
-  setScanProgress: (scanProgress) => {
-    _pendingScanProgress = scanProgress;
-    if (!_scanThrottleTimer) {
-      _scanThrottleTimer = setTimeout(() => flushScanThrottle(set), 200);
-    }
-  },
-  setScanError: (scanError) => set({ scanError }),
-  setSemanticStatus: (semanticStatus) => set({ semanticStatus }),
-  setSemanticCount: (semanticCount) => set({ semanticCount }),
-  setSemanticProgress: (semanticProgress) => set({ semanticProgress }),
-  setSemanticModel: (semanticModel) => set({ semanticModel }),
-})),
+    setStatus: (status) => {
+      if (_scanThrottleTimer) {
+        clearTimeout(_scanThrottleTimer);
+        flushScanThrottle(set);
+      }
+      set({ status });
+    },
+    setStats: (files, symbols, edges, dbSizeBytes) => {
+      _pendingStats = { files, symbols, edges, dbSizeBytes };
+      if (!_scanThrottleTimer) {
+        _scanThrottleTimer = setTimeout(() => flushScanThrottle(set), 200);
+      }
+    },
+    setScanProgress: (scanProgress) => {
+      _pendingScanProgress = scanProgress;
+      if (!_scanThrottleTimer) {
+        _scanThrottleTimer = setTimeout(() => flushScanThrottle(set), 200);
+      }
+    },
+    setScanError: (scanError) => set({ scanError }),
+    setSemanticStatus: (semanticStatus) => set({ semanticStatus }),
+    setSemanticCount: (semanticCount) => set({ semanticCount }),
+    setSemanticProgress: (semanticProgress) => set({ semanticProgress }),
+    setSemanticModel: (semanticModel) => set({ semanticModel }),
+  })),
 );
 
 export function resetRepoMapStore(): void {

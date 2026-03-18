@@ -33,7 +33,10 @@ function InlineSpinner({ color }: { color: string }) {
 export function TaskList({ tasks, nested }: TaskListProps) {
   if (tasks.length === 0) return null;
 
-  const done = tasks.filter((t) => t.status === "done").length;
+  const doneTasks = tasks.filter((t) => t.status === "done");
+  const activeTasks = tasks.filter((t) => t.status === "in-progress");
+  const pendingTasks = tasks.filter((t) => t.status === "pending" || t.status === "blocked");
+  const nonDone = [...activeTasks, ...pendingTasks];
 
   const renderTask = (task: Task) => (
     <box key={String(task.id)} height={1} flexDirection="row">
@@ -63,9 +66,10 @@ export function TaskList({ tasks, nested }: TaskListProps) {
   if (nested) {
     return (
       <box flexDirection="column" paddingLeft={2}>
-        {tasks.slice(0, MAX_VISIBLE).map(renderTask)}
-        {tasks.length > MAX_VISIBLE && (
-          <text fg="#555"> +{String(tasks.length - MAX_VISIBLE)} more</text>
+        {doneTasks.length > 0 && <text fg="#4a7"> +{String(doneTasks.length)} done</text>}
+        {nonDone.slice(0, MAX_VISIBLE).map(renderTask)}
+        {nonDone.length > MAX_VISIBLE && (
+          <text fg="#555"> +{String(nonDone.length - MAX_VISIBLE)} more</text>
         )}
       </box>
     );
@@ -85,12 +89,13 @@ export function TaskList({ tasks, nested }: TaskListProps) {
           {icon("plan")} Tasks
         </text>
         <text fg="#555">
-          {String(done)}/{String(tasks.length)}
+          {String(doneTasks.length)}/{String(tasks.length)}
         </text>
       </box>
-      {tasks.slice(0, MAX_VISIBLE).map(renderTask)}
-      {tasks.length > MAX_VISIBLE && (
-        <text fg="#555">+{String(tasks.length - MAX_VISIBLE)} more</text>
+      {doneTasks.length > 0 && <text fg="#4a7">+{String(doneTasks.length)} done</text>}
+      {nonDone.slice(0, MAX_VISIBLE).map(renderTask)}
+      {nonDone.length > MAX_VISIBLE && (
+        <text fg="#555">+{String(nonDone.length - MAX_VISIBLE)} more</text>
       )}
     </box>
   );

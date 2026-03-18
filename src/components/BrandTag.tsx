@@ -47,11 +47,10 @@ export function BrandTag() {
 
   useEffect(() => {
     if (phase === "hold") {
-      timerRef.current = setTimeout(
-        () => setState((s) => ({ ...s, phase: "erase" })),
-        HOLD_MS,
-      );
-      return () => { if (timerRef.current) clearTimeout(timerRef.current); };
+      timerRef.current = setTimeout(() => setState((s) => ({ ...s, phase: "erase" })), HOLD_MS);
+      return () => {
+        if (timerRef.current) clearTimeout(timerRef.current);
+      };
     }
 
     if (phase === "erase") {
@@ -68,15 +67,16 @@ export function BrandTag() {
         () => setState((s) => ({ ...s, visibleChars: s.visibleChars - 1 })),
         ERASE_MS,
       );
-      return () => { if (timerRef.current) clearTimeout(timerRef.current); };
+      return () => {
+        if (timerRef.current) clearTimeout(timerRef.current);
+      };
     }
 
     if (phase === "pause") {
-      timerRef.current = setTimeout(
-        () => setState((s) => ({ ...s, phase: "type" })),
-        200,
-      );
-      return () => { if (timerRef.current) clearTimeout(timerRef.current); };
+      timerRef.current = setTimeout(() => setState((s) => ({ ...s, phase: "type" })), 200);
+      return () => {
+        if (timerRef.current) clearTimeout(timerRef.current);
+      };
     }
 
     // phase === "type"
@@ -88,7 +88,9 @@ export function BrandTag() {
       () => setState((s) => ({ ...s, visibleChars: s.visibleChars + 1 })),
       TYPE_MS,
     );
-    return () => { if (timerRef.current) clearTimeout(timerRef.current); };
+    return () => {
+      if (timerRef.current) clearTimeout(timerRef.current);
+    };
   }, [phase, visibleChars, totalChars]);
 
   let remaining = visibleChars;

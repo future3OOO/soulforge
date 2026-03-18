@@ -537,7 +537,11 @@ export function App({
 
   const getWorkspaceSnapshot = useCallback(
     (): WorkspaceSnapshot =>
-      workspaceSnapshotRef.current?.() ?? { forgeMode: "default" as const, tabStates: [], activeTabId: "" },
+      workspaceSnapshotRef.current?.() ?? {
+        forgeMode: "default" as const,
+        tabStates: [],
+        activeTabId: "",
+      },
     [],
   );
 

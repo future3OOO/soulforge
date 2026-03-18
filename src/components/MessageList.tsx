@@ -511,7 +511,7 @@ function renderSegments(
   // Precompute: find first tools index so we can check hasToolsBefore in O(1)
   let firstToolsIdx = -1;
   for (let k = 0; k < segments.length; k++) {
-    if (segments[k]!.type === "tools") {
+    if (segments[k]?.type === "tools") {
       firstToolsIdx = k;
       break;
     }
@@ -696,15 +696,17 @@ const AssistantMessage = memo(function AssistantMessage({
           {hasContent && <Markdown text={msg.content} />}
           {hasTools && (
             <box flexDirection="column">
-              {msg.toolCalls?.map((tc) => (
-                <box key={tc.id} flexDirection="column">
-                  {tc.name === "edit_file" ? (
-                    <EditToolCall tc={tc} diffStyle={diffStyle} />
-                  ) : (
-                    <ToolCallRow tc={tc} />
-                  )}
-                </box>
-              ))}
+              {msg.toolCalls
+                ?.filter((tc) => tc.name !== "task_list" && tc.name !== "update_plan_step")
+                .map((tc) => (
+                  <box key={tc.id} flexDirection="column">
+                    {tc.name === "edit_file" ? (
+                      <EditToolCall tc={tc} diffStyle={diffStyle} />
+                    ) : (
+                      <ToolCallRow tc={tc} />
+                    )}
+                  </box>
+                ))}
             </box>
           )}
         </>

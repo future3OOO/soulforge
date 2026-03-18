@@ -238,11 +238,11 @@ function AppRoot({ opts }: { opts: StartOptions }) {
     } catch {}
     // Batch all state updates to avoid 7 separate re-renders after await
     startTransition(() => {
-        setContextManager(undefined);
-        setExitSessionId(null);
-        setAppKey((k) => k + 1);
-        setRestarting(false);
-      });
+      setContextManager(undefined);
+      setExitSessionId(null);
+      setAppKey((k) => k + 1);
+      setRestarting(false);
+    });
   }, []);
 
   if (restarting) {

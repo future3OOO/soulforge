@@ -424,10 +424,10 @@ export const TabInstance = memo(function TabInstance({
             plan={chat.pendingPlanReview.plan}
             planFile={chat.pendingPlanReview.planFile}
             onAccept={onAcceptPlan}
-              onClearAndImplement={onClearAndImplementPlan}
-              onRevise={onRevisePlan}
+            onClearAndImplement={onClearAndImplementPlan}
+            onRevise={onRevisePlan}
             onCancel={onCancelPlan}
-            />
+          />
         </box>
       ) : chat.pendingQuestion ? (
         <>

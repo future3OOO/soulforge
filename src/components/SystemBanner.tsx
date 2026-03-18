@@ -149,7 +149,7 @@ export function SystemBanner({ messages, expanded = false }: Props) {
       fDim: lerpColor(dimColor, fadeTarget, fadeFactor),
       fBg: lerpColor(bgColor, "#000", fadeFactor),
     };
-  }, [fadeFactor, bgColor, accentColor, textColor, iconColor, dimColor]);
+  }, [fadeFactor, bgColor, accentColor, textColor, iconColor]);
 
   const displayText = phase === "enter" ? firstLine.slice(0, revealCount) : firstLine;
   const showCursor = phase === "enter";

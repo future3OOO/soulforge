@@ -407,11 +407,16 @@ export function useChat({
     setShellCoAuthorEnabled(coAuthorCommits);
   }, [coAuthorCommits]);
 
-  // Sync context window size to contextManager + status bar store
+  // Sync context window size to contextManager + status bar store.
+  // Pin per model — never downgrade if API cache expires (prevents 1M→200k drop).
   const contextManagerRef = useRef(contextManager);
   contextManagerRef.current = contextManager;
+  const pinnedContextWindow = useRef(new Map<string, number>());
   useEffect(() => {
-    const windowTokens = getModelContextWindow(activeModel);
+    const cached = pinnedContextWindow.current.get(activeModel);
+    const fresh = getModelContextWindow(activeModel);
+    const windowTokens = cached ? Math.max(cached, fresh) : fresh;
+    pinnedContextWindow.current.set(activeModel, windowTokens);
     contextManagerRef.current.setContextWindow(windowTokens);
     if (visible) useStatusBarStore.getState().setContextWindow(windowTokens);
   }, [activeModel, visible]);
@@ -1734,6 +1739,22 @@ export function useChat({
             }
           }
         }
+
+        // Log agent stop reason for debugging (visible via /errors)
+        try {
+          const resp = await Promise.race([
+            result.response,
+            new Promise<null>((r) => setTimeout(() => r(null), 2_000)),
+          ]);
+          if (resp) {
+            const lastStep = resp.messages?.length ?? 0;
+            const reason = (resp as { finishReason?: string }).finishReason ?? "unknown";
+            logBackgroundError(
+              "agent-stop",
+              `finishReason=${reason} steps=${String(lastStep)} streamErrors=${String(streamErrors.length)}`,
+            );
+          }
+        } catch {}
 
         if (flushTimerRef.current) {
           clearInterval(flushTimerRef.current);
