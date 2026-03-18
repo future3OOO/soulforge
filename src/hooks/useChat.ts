@@ -2,7 +2,7 @@ import { readFileSync } from "node:fs";
 import { join } from "node:path";
 import type { ModelMessage, StreamTextResult, TextPart, ToolCallPart, ToolSet } from "ai";
 import { generateText } from "ai";
-import { startTransition, useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { StreamSegment } from "../components/StreamSegmentList.js";
 import type { LiveToolCall } from "../components/ToolCallDisplay.js";
 import { createForgeAgent } from "../core/agents/index.js";
@@ -256,7 +256,7 @@ export function useChat({
   const lastFlushedToolCalls = useRef<LiveToolCall[]>([]);
   const lastFlushedStreamingChars = useRef(0);
   const flushStreamState = useCallback(() => {
-    startTransition(() => {
+    {
       if (segmentsDirty.current) {
         const buf = streamSegmentsBuffer.current;
         const prev = lastFlushedSegments.current;
@@ -340,7 +340,7 @@ export function useChat({
         lastFlushedStreamingChars.current = nextChars;
         setStreamingChars(nextChars);
       }
-    });
+    }
   }, []);
 
   const flushMicrotaskQueued = useRef(false);
