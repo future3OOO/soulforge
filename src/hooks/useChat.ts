@@ -1588,11 +1588,7 @@ export function useChat({
           }
         };
 
-        flushTimerRef.current = setInterval(() => {
-          if (Date.now() - lastFlushTime.current < 100) return;
-          lastFlushTime.current = Date.now();
-          flushStreamState();
-        }, 150);
+        flushTimerRef.current = setInterval(flushStreamState, 50);
 
         let streamEventCount = 0;
         for await (const part of result.fullStream) {
