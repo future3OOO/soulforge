@@ -476,6 +476,10 @@ export const SkillSearch = memo(function SkillSearch({
                       >
                         {skill.name}
                       </text>
+                      <text bg={bg} fg="#555">
+                        {" "}
+                        {skill.scope === "project" ? "(project)" : "(global)"}
+                      </text>
                       {isLoaded && (
                         <text bg={bg} fg="#00FF00">
                           {" "}

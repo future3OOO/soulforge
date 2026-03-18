@@ -13,6 +13,7 @@ export interface SkillSearchResult {
 export interface InstalledSkill {
   name: string;
   path: string;
+  scope: "project" | "global";
 }
 
 interface SearchResponse {
@@ -72,27 +73,34 @@ export async function installSkill(
 
 /** Scan known directories for installed SKILL.md files */
 export function listInstalledSkills(): InstalledSkill[] {
-  const seen = new Set<string>();
-  const skills: InstalledSkill[] = [];
-  const dirs = [
-    join(homedir(), ".agents", "skills"),
-    join(homedir(), ".claude", "skills"),
-    join(process.cwd(), ".agents", "skills"),
-    join(process.cwd(), ".claude", "skills"),
+  const byName = new Map<string, InstalledSkill>();
+  const seenPaths = new Set<string>();
+
+  // Scan global dirs first, then local — local overwrites global (preferred)
+  const dirs: Array<{ path: string; scope: "global" | "project" }> = [
+    { path: join(homedir(), ".agents", "skills"), scope: "global" },
+    { path: join(homedir(), ".claude", "skills"), scope: "global" },
+    { path: join(process.cwd(), ".agents", "skills"), scope: "project" },
+    { path: join(process.cwd(), ".claude", "skills"), scope: "project" },
   ];
 
   for (const dir of dirs) {
     try {
-      scanSkillDir(dir, skills, seen);
+      scanSkillDir(dir.path, dir.scope, byName, seenPaths);
     } catch {
       // Directory doesn't exist — skip
     }
   }
 
-  return skills;
+  return [...byName.values()];
 }
 
-function scanSkillDir(dir: string, out: InstalledSkill[], seen: Set<string>): void {
+function scanSkillDir(
+  dir: string,
+  scope: "global" | "project",
+  byName: Map<string, InstalledSkill>,
+  seenPaths: Set<string>,
+): void {
   const entries = readdirSync(dir, { withFileTypes: true });
   for (const entry of entries) {
     if (entry.name.startsWith(".")) continue;
@@ -104,19 +112,20 @@ function scanSkillDir(dir: string, out: InstalledSkill[], seen: Set<string>): vo
       try {
         const skillPath = join(full, "SKILL.md");
         const resolved = realpathSync(skillPath);
-        if (seen.has(resolved)) continue;
+        if (seenPaths.has(resolved)) continue;
         readFileSync(skillPath, "utf-8"); // test existence
-        seen.add(resolved);
-        out.push({ name: entry.name, path: skillPath });
+        seenPaths.add(resolved);
+        // Overwrite by name — later scopes (project) take priority over earlier (global)
+        byName.set(entry.name, { name: entry.name, path: skillPath, scope });
       } catch {
         // No SKILL.md in this subdirectory
       }
     } else if (entry.name === "SKILL.md") {
       const resolved = realpathSync(full);
-      if (seen.has(resolved)) continue;
-      seen.add(resolved);
+      if (seenPaths.has(resolved)) continue;
+      seenPaths.add(resolved);
       const parentName = dir.split("/").pop() ?? "skill";
-      out.push({ name: parentName, path: full });
+      byName.set(parentName, { name: parentName, path: full, scope });
     }
   }
 }
