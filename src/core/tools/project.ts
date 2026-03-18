@@ -551,9 +551,15 @@ export const projectTool = {
         if (command && args.fix) {
           if (command.includes("biome")) command += " --write";
           else if (command.includes("eslint")) command += " --fix";
+          else if (command.includes("oxlint")) command += " --fix";
           else if (command.includes("ruff")) command = command.replace("check", "check --fix");
-          else if (command.includes("clippy")) command += " --fix";
+          else if (command.includes("clippy")) command += " --fix --allow-dirty";
           else if (command.includes("rubocop")) command += " -a";
+          else if (command.includes("gofmt") || command.includes("goimports"))
+            command = command.replace(/gofmt/, "gofmt -w").replace(/goimports/, "goimports -w");
+          else if (command.includes("dart")) command = command.replace("analyze", "fix --apply");
+          else if (command.includes("swiftlint")) command += " --fix";
+          else if (command.includes("hlint")) command += " --refactor";
         }
         if (command && args.file) {
           command = `${command} ${shellQuote(args.file)}`;
