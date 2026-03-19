@@ -1,7 +1,21 @@
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { homedir } from "node:os";
 import { join } from "node:path";
+import type { CustomProviderConfig } from "../core/llm/providers/types.js";
 import type { AppConfig } from "../types";
+
+function mergeProviders(
+  base?: CustomProviderConfig[],
+  overlay?: CustomProviderConfig[],
+): CustomProviderConfig[] | undefined {
+  if (!base && !overlay) return undefined;
+  if (!overlay) return base;
+  if (!base) return overlay;
+
+  const map = new Map(base.map((p) => [p.id, p]));
+  for (const p of overlay) map.set(p.id, p);
+  return [...map.values()];
+}
 
 const CONFIG_DIR = join(homedir(), ".soulforge");
 const CONFIG_FILE = join(CONFIG_DIR, "config.json");
@@ -90,6 +104,7 @@ export function mergeConfigs(global: AppConfig, project: Partial<AppConfig> | nu
     const comp = layer.compaction
       ? { ...merged.compaction, ...layer.compaction }
       : merged.compaction;
+    const providers = mergeProviders(merged.providers, layer.providers);
     merged = {
       ...merged,
       ...layer,
@@ -101,6 +116,7 @@ export function mergeConfigs(global: AppConfig, project: Partial<AppConfig> | nu
       performance: perf,
       contextManagement: cm,
       compaction: comp,
+      providers,
     };
   }
   return merged;

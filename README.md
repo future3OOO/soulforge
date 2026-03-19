@@ -369,6 +369,31 @@ SoulForge ships 30+ tools organized by capability:
 | [**LLM Gateway**](https://llmgateway.io) | Multi-model gateway (OpenAI, Claude, Gemini, DeepSeek) | `LLM_GATEWAY_API_KEY` |
 | [**Vercel AI Gateway**](https://vercel.com/ai-gateway) | Unified gateway for 15+ providers with caching, fallbacks, rate limiting | `AI_GATEWAY_API_KEY` |
 | [**Proxy**](https://github.com/router-for-me/CLIProxyAPI) | Local proxy with auto-lifecycle management — starts/stops with SoulForge | `PROXY_API_KEY` |
+| **Custom** | Any OpenAI-compatible API — add via config | Any env var |
+
+### Custom Providers
+
+Add any OpenAI-compatible API as a provider — no code changes needed:
+
+```json
+// ~/.soulforge/config.json (global) or .soulforge/config.json (project)
+{
+  "providers": [
+    {
+      "id": "deepseek",
+      "name": "DeepSeek",
+      "baseURL": "https://api.deepseek.com/v1",
+      "envVar": "DEEPSEEK_API_KEY",
+      "models": ["deepseek-chat", "deepseek-coder"],
+      "modelsAPI": "https://api.deepseek.com/v1/models"
+    }
+  ]
+}
+```
+
+Then use `deepseek/deepseek-chat` as a model ID anywhere — TUI model picker, headless `--model`, task router slots. Custom providers show `[custom]` in listings. If a custom `id` conflicts with a built-in, it auto-renames to `{id}-custom`.
+
+[Custom providers reference →](docs/headless.md#custom-providers)
 
 ### Task Router
 
@@ -495,7 +520,16 @@ Layered config: global (`~/.soulforge/config.json`) + project (`.soulforge/confi
   "semanticSummaries": "ast",
   "diffStyle": "default",
   "chatStyle": "accent",
-  "vimHints": true
+  "vimHints": true,
+  "providers": [
+    {
+      "id": "deepseek",
+      "name": "DeepSeek",
+      "baseURL": "https://api.deepseek.com/v1",
+      "envVar": "DEEPSEEK_API_KEY",
+      "models": ["deepseek-chat", "deepseek-coder"]
+    }
+  ]
 }
 ```
 

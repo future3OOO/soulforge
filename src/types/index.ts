@@ -279,6 +279,8 @@ export interface AppConfig {
   /** LSP servers to disable (by Mason package name). Scoped: project overrides global. */
   disabledLspServers?: string[];
   agentFeatures?: AgentFeatures;
+  /** Custom OpenAI-compatible providers. Merged: project overrides global by id. */
+  providers?: import("../core/llm/providers/types.js").CustomProviderConfig[];
 }
 
 // ─── Focus Types ───

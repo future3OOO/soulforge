@@ -286,6 +286,18 @@ const config = loadConfig();
 const projectConfig = loadProjectConfig(process.cwd());
 initNerdFont(config.nerdFont);
 
+// Register custom providers from global + project config (project overrides global by id)
+{
+  const globalP = config.providers ?? [];
+  const projectP = projectConfig?.providers ?? [];
+  if (globalP.length > 0 || projectP.length > 0) {
+    const map = new Map(globalP.map((p) => [p.id, p]));
+    for (const p of projectP) map.set(p.id, p);
+    const { registerCustomProviders } = await import("./core/llm/providers/index.js");
+    registerCustomProviders([...map.values()]);
+  }
+}
+
 // Pre-init ContextManager async — yields between heavy sync steps so the spinner stays alive.
 const contextManagerReady = import("./core/context/manager.js").then(({ ContextManager }) =>
   ContextManager.createAsync(process.cwd(), (step) => status(step)),

@@ -171,6 +171,28 @@ export function setSecret(key: SecretKey, value: string): SetSecretResult {
   return { success: true, storage: "file", path: SECRETS_FILE };
 }
 
+/**
+ * Store a secret using an arbitrary label (for custom providers).
+ * Uses the same keychain/file backends as setSecret but bypasses the SecretKey union.
+ */
+export function setCustomSecret(label: string, value: string): SetSecretResult {
+  if (keychainAvailable()) {
+    if (keychainSet(label as SecretKey, value)) {
+      const data = fileRead();
+      if (data[label]) {
+        delete data[label];
+        fileWrite(data);
+      }
+      return { success: true, storage: "keychain" };
+    }
+  }
+
+  const data = fileRead();
+  data[label] = value;
+  fileWrite(data);
+  return { success: true, storage: "file", path: SECRETS_FILE };
+}
+
 export function deleteSecret(key: SecretKey): { success: boolean; storage: "keychain" | "file" } {
   let deleted = false;
   let storage: "keychain" | "file" = "file";
@@ -238,6 +260,12 @@ export function getProviderApiKey(envVar: string): string | undefined {
   const envValue = process.env[envVar];
   if (envValue) return envValue;
   const secretKey = ENV_TO_SECRET.get(envVar);
-  if (!secretKey) return undefined;
-  return getSecret(secretKey) ?? undefined;
+  if (secretKey) return getSecret(secretKey) ?? undefined;
+  // Custom provider keys: check keychain and file store by env var name
+  if (keychainAvailable()) {
+    const value = keychainGet(envVar as SecretKey);
+    if (value) return value;
+  }
+  const data = fileRead();
+  return data[envVar] ?? undefined;
 }

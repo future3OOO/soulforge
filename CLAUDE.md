@@ -29,6 +29,7 @@ AI-Powered Terminal IDE by proxySoul.
 - `--list-models [provider]` — show available models (all or for a specific provider)
 - `--set-key <provider> <key>` — save an API key to system keychain
 - Piped input: `echo "prompt" | soulforge --headless`
+- Custom providers: add `providers` array to config (OpenAI-compatible APIs)
 
 ## Conventions
 

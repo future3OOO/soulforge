@@ -50,7 +50,7 @@ soulforge --set-key anthropic sk-ant-...     # Save API key to system keychain
 | `--list-models [provider]` | List available models. Without a provider, shows all configured providers. |
 | `--set-key <provider> <key>` | Save an API key to the system keychain (macOS Keychain, Linux secret-tool). |
 
-Supported providers for `--set-key`: `anthropic`, `openai`, `google`, `xai`, `openrouter`, `llmgateway`, `vercel_gateway`.
+`--set-key` works with all built-in providers (`anthropic`, `openai`, `google`, `xai`, `openrouter`, `llmgateway`, `vercel_gateway`) and any custom provider that has an `envVar` configured.
 
 ## Output
 
@@ -149,6 +149,103 @@ Headless mode reads the same config files as the TUI:
 - Project: `.soulforge/config.json`
 
 The `defaultModel` from config is used unless `--model` is passed. If no model is configured and no `--model` flag is given, headless exits with an error.
+
+## Custom Providers
+
+Add any OpenAI-compatible API as a provider via config — no code changes needed.
+
+### Config
+
+Add a `providers` array to your global (`~/.soulforge/config.json`) or project (`.soulforge/config.json`) config:
+
+```json
+{
+  "providers": [
+    {
+      "id": "deepseek",
+      "name": "DeepSeek",
+      "baseURL": "https://api.deepseek.com/v1",
+      "envVar": "DEEPSEEK_API_KEY",
+      "models": ["deepseek-chat", "deepseek-coder"]
+    }
+  ]
+}
+```
+
+### Fields
+
+| Field | Required | Description |
+|-------|----------|-------------|
+| `id` | Yes | Provider ID, used in model strings like `deepseek/deepseek-chat`. |
+| `name` | No | Display name. Defaults to `id`. |
+| `baseURL` | Yes | OpenAI-compatible API endpoint. |
+| `envVar` | No | Env var name for the API key (e.g. `DEEPSEEK_API_KEY`). |
+| `models` | No | Fallback model list — strings or `{id, name, contextWindow}` objects. |
+| `modelsAPI` | No | URL to fetch models dynamically (expects OpenAI `/v1/models` response format). |
+
+### Scoping
+
+- **Global** (`~/.soulforge/config.json`) — available in all projects.
+- **Project** (`.soulforge/config.json`) — project-specific providers. Override global entries with the same `id`.
+
+### Conflict Handling
+
+If a custom provider `id` matches a built-in (e.g. `"id": "anthropic"`), it auto-renames to `{id}-custom` so both coexist. The built-in is never replaced. Custom providers always show `[custom]` in `--list-providers` and `--list-models`.
+
+### Usage
+
+Once configured, use the provider anywhere:
+
+```bash
+# Headless
+soulforge --headless --model deepseek/deepseek-chat "explain this code"
+
+# Set API key
+soulforge --set-key deepseek sk-...
+
+# List models
+soulforge --list-models deepseek
+```
+
+In the TUI, custom providers appear in the model picker (`Ctrl+L`) and can be assigned to task router slots.
+
+### Examples
+
+**Local LLM server (no API key):**
+```json
+{
+  "providers": [{
+    "id": "local",
+    "name": "Local LLM",
+    "baseURL": "http://localhost:8080/v1",
+    "models": ["llama-3-70b"]
+  }]
+}
+```
+
+**Corporate proxy:**
+```json
+{
+  "providers": [{
+    "id": "corp",
+    "name": "Corp API Gateway",
+    "baseURL": "https://llm.internal.corp.com/v1",
+    "envVar": "CORP_LLM_KEY",
+    "modelsAPI": "https://llm.internal.corp.com/v1/models"
+  }]
+}
+```
+
+**Multiple custom providers:**
+```json
+{
+  "providers": [
+    { "id": "deepseek", "baseURL": "https://api.deepseek.com/v1", "envVar": "DEEPSEEK_API_KEY", "models": ["deepseek-chat"] },
+    { "id": "together", "baseURL": "https://api.together.xyz/v1", "envVar": "TOGETHER_API_KEY", "models": ["meta-llama/Llama-3-70b-chat-hf"] },
+    { "id": "groq", "baseURL": "https://api.groq.com/openai/v1", "envVar": "GROQ_API_KEY", "modelsAPI": "https://api.groq.com/openai/v1/models" }
+  ]
+}
+```
 
 ## Architecture
 

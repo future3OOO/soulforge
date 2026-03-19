@@ -1,10 +1,10 @@
-import { loadConfig, loadProjectConfig } from "./config/index.js";
+import { loadConfig, loadProjectConfig, mergeConfigs } from "./config/index.js";
 import { createForgeAgent } from "./core/agents/index.js";
 import { ContextManager } from "./core/context/manager.js";
 import { checkProviders, resolveModel } from "./core/llm/provider.js";
 import { buildProviderOptions } from "./core/llm/provider-options.js";
-import { getAllProviders } from "./core/llm/providers/index.js";
-import { getProviderApiKey, setSecret } from "./core/secrets.js";
+import { getAllProviders, registerCustomProviders } from "./core/llm/providers/index.js";
+import { getProviderApiKey, setCustomSecret, setSecret } from "./core/secrets.js";
 import type { AppConfig } from "./types/index.js";
 
 const RST = "\x1b[0m";
@@ -14,14 +14,32 @@ const DIM = "\x1b[2m";
 const RED = "\x1b[38;2;255;0;64m";
 const GREEN = "\x1b[38;2;0;200;80m";
 
+// ─── Init (config + custom providers) ───
+
+function initConfig(): AppConfig {
+  const config = loadConfig();
+  const projectConfig = loadProjectConfig(process.cwd());
+  const merged = mergeConfigs(config, projectConfig);
+  if (merged.providers && merged.providers.length > 0) {
+    registerCustomProviders(merged.providers);
+  }
+  return merged;
+}
+
 // ─── List providers ───
 
 async function listProviders(): Promise<void> {
   const statuses = await checkProviders();
+  const providers = getAllProviders();
+  const customIds = new Set(providers.filter((p) => p.custom).map((p) => p.id));
+
   for (const s of statuses) {
+    const tag = customIds.has(s.id) ? ` ${DIM}[custom]${RST}` : "";
     const mark = s.available ? `${GREEN}ready${RST}` : `${DIM}no key${RST}`;
     const env = s.envVar ? `  ${DIM}(${s.envVar})${RST}` : "";
-    process.stdout.write(`${s.available ? GREEN : DIM}${s.id.padEnd(18)}${RST} ${mark}${env}\n`);
+    process.stdout.write(
+      `${s.available ? GREEN : DIM}${s.id.padEnd(18)}${RST} ${mark}${env}${tag}\n`,
+    );
   }
 }
 
@@ -41,7 +59,10 @@ async function listModels(providerId?: string): Promise<void> {
     const hasKey = provider.envVar === "" || Boolean(getProviderApiKey(provider.envVar));
     if (!hasKey && !providerId) continue;
 
-    process.stdout.write(`${BOLD}${PURPLE}${provider.name}${RST} ${DIM}(${provider.id})${RST}\n`);
+    const tag = provider.custom ? ` ${DIM}[custom]${RST}` : "";
+    process.stdout.write(
+      `${BOLD}${PURPLE}${provider.name}${RST} ${DIM}(${provider.id})${RST}${tag}\n`,
+    );
 
     let models = await provider.fetchModels().catch(() => null);
     if (!models) models = provider.fallbackModels;
@@ -58,7 +79,7 @@ async function listModels(providerId?: string): Promise<void> {
 
 // ─── Set API key ───
 
-const PROVIDER_TO_SECRET: Record<string, string> = {
+const BUILTIN_SECRETS: Record<string, string> = {
   anthropic: "anthropic-api-key",
   openai: "openai-api-key",
   google: "google-api-key",
@@ -69,32 +90,43 @@ const PROVIDER_TO_SECRET: Record<string, string> = {
 };
 
 function setKey(providerId: string, key: string): void {
-  const secretKey = PROVIDER_TO_SECRET[providerId];
-  if (!secretKey) {
-    const valid = Object.keys(PROVIDER_TO_SECRET).join(", ");
-    process.stderr.write(`${RED}Error:${RST} Unknown provider "${providerId}"\n`);
-    process.stderr.write(`Supported: ${valid}\n`);
-    process.exit(1);
+  const builtinKey = BUILTIN_SECRETS[providerId];
+  if (builtinKey) {
+    const result = setSecret(builtinKey as Parameters<typeof setSecret>[0], key);
+    if (result.success) {
+      const where = result.storage === "keychain" ? "system keychain" : "~/.soulforge/secrets.json";
+      process.stdout.write(`${GREEN}Saved${RST} ${providerId} key to ${where}\n`);
+    } else {
+      process.stderr.write(`${RED}Error:${RST} Failed to save key\n`);
+      process.exit(1);
+    }
+    return;
   }
 
-  const result = setSecret(secretKey as Parameters<typeof setSecret>[0], key);
-  if (result.success) {
-    const where = result.storage === "keychain" ? "system keychain" : "~/.soulforge/secrets.json";
-    process.stdout.write(`${GREEN}Saved${RST} ${providerId} key to ${where}\n`);
-  } else {
-    process.stderr.write(`${RED}Error:${RST} Failed to save key\n`);
-    process.exit(1);
+  const provider = getAllProviders().find((p) => p.id === providerId);
+  if (provider?.envVar) {
+    const result = setCustomSecret(provider.envVar, key);
+    if (result.success) {
+      const where = result.storage === "keychain" ? "system keychain" : "~/.soulforge/secrets.json";
+      process.stdout.write(`${GREEN}Saved${RST} ${providerId} key to ${where}\n`);
+    } else {
+      process.stderr.write(`${RED}Error:${RST} Failed to save key\n`);
+      process.exit(1);
+    }
+    return;
   }
+
+  const allIds = getAllProviders().map((p) => p.id);
+  process.stderr.write(`${RED}Error:${RST} Unknown provider "${providerId}"\n`);
+  process.stderr.write(`Available: ${allIds.join(", ")}\n`);
+  process.exit(1);
 }
 
 // ─── Run prompt ───
 
-async function runPrompt(opts: HeadlessRunOptions): Promise<void> {
+async function runPrompt(opts: HeadlessRunOptions, merged: AppConfig): Promise<void> {
   const startTime = Date.now();
   const cwd = opts.cwd ?? process.cwd();
-  const config = loadConfig();
-  const projectConfig = loadProjectConfig(cwd);
-  const merged: AppConfig = { ...config, ...projectConfig };
 
   const modelId = opts.modelId ?? merged.defaultModel;
   if (modelId === "none") {
@@ -282,7 +314,11 @@ export async function parseHeadlessArgs(argv: string[]): Promise<HeadlessAction 
     const key = argv[idx + 2];
     if (!provider || !key) {
       process.stderr.write(`${RED}Error:${RST} --set-key requires <provider> <key>\n`);
-      process.stderr.write(`Providers: ${Object.keys(PROVIDER_TO_SECRET).join(", ")}\n`);
+      process.stderr.write(
+        `Providers: ${getAllProviders()
+          .map((p) => p.id)
+          .join(", ")}\n`,
+      );
       process.exit(1);
     }
     return { type: "set-key", provider, key };
@@ -328,6 +364,7 @@ export async function parseHeadlessArgs(argv: string[]): Promise<HeadlessAction 
 }
 
 export async function runHeadless(action: HeadlessAction): Promise<void> {
+  const config = initConfig();
   switch (action.type) {
     case "list-providers":
       await listProviders();
@@ -339,7 +376,7 @@ export async function runHeadless(action: HeadlessAction): Promise<void> {
       setKey(action.provider, action.key);
       break;
     case "run":
-      await runPrompt(action.opts);
+      await runPrompt(action.opts, config);
       break;
   }
 }

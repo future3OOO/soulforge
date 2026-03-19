@@ -16,7 +16,17 @@ export interface ProviderDefinition {
   fallbackModels: ProviderModelInfo[];
   contextWindows: [pattern: string, tokens: number][];
   grouped?: boolean;
+  custom?: boolean;
   checkAvailability?(): Promise<boolean>;
   onActivate?(): Promise<void>;
   onDeactivate?(): void;
+}
+
+export interface CustomProviderConfig {
+  id: string;
+  name?: string;
+  baseURL: string;
+  envVar?: string;
+  models?: (string | ProviderModelInfo)[];
+  modelsAPI?: string;
 }

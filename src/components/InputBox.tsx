@@ -167,8 +167,24 @@ export const InputBox = memo(function InputBox({
   // Visual line count (after char-wrapping) for textarea height
   const [visualLines, setVisualLines] = useState(1);
   // Paste blocks: collapsed pasted text regions
-  const pasteBlocks = useRef<Array<{ id: number; text: string; collapsed: boolean }>>([]);
+  const pasteBlocks = useRef<
+    Array<{ id: number; text: string; collapsed: boolean; placeholder: string }>
+  >([]);
   const pasteIdCounter = useRef(0);
+
+  // Calculate visual lines manually (virtualLineCount is viewport-constrained — chicken-and-egg)
+  const calcVisualLines = useCallback(
+    (text: string) => {
+      // textarea width ≈ terminal - border(2) - paddingX(2) - prompt(2)
+      const w = Math.max(10, termWidth - 6);
+      let n = 0;
+      for (const line of text.split("\n")) {
+        n += line.length === 0 ? 1 : Math.ceil(line.length / w);
+      }
+      return n;
+    },
+    [termWidth],
+  );
 
   const showBusy = isLoading || isCompacting;
 
@@ -287,7 +303,6 @@ export const InputBox = memo(function InputBox({
     textareaRef.current?.setText(completed);
     lineCountRef.current = (completed.match(/\n/g)?.length ?? 0) + 1;
     cursorLineRef.current = 0;
-    isNavigatingHistory.current = false;
   }, [matches, selectedIdx]);
 
   const pushHistory = useCallback(
@@ -309,7 +324,6 @@ export const InputBox = memo(function InputBox({
     historyIdx.current = -1;
     pasteBlocks.current = [];
     setVisualLines(1);
-    isNavigatingHistory.current = false;
   }, []);
 
   const handleSubmit = useCallback(
@@ -324,7 +338,6 @@ export const InputBox = memo(function InputBox({
           textareaRef.current?.setText(withSpace);
           lineCountRef.current = 1;
           cursorLineRef.current = 0;
-          isNavigatingHistory.current = false;
         } else {
           pushHistory(completed);
           onSubmit(completed);
@@ -339,9 +352,7 @@ export const InputBox = memo(function InputBox({
       let finalInput = input;
       for (const block of pasteBlocks.current) {
         if (block.collapsed) {
-          const pastedLines = block.text.split("\n");
-          const placeholder = `📋 [Pasted ${pastedLines.length} lines — ^E to expand]`;
-          finalInput = finalInput.replace(placeholder, block.text);
+          finalInput = finalInput.replace(block.placeholder, block.text);
         }
       }
 
@@ -372,23 +383,27 @@ export const InputBox = memo(function InputBox({
   // Sync textarea content → React state
   const handleContentChange = useCallback(() => {
     const text = textareaRef.current?.plainText ?? "";
-    // Don't reset historyIdx when we're programmatically setting text (history nav, reset, etc.)
-    if (!isNavigatingHistory.current) {
+    if (isNavigatingHistory.current) {
+      isNavigatingHistory.current = false;
+    } else {
       historyIdx.current = -1;
     }
     setValue(text);
     lineCountRef.current = textareaRef.current?.lineCount ?? 1;
-    // Update visual line count for height calculation (accounts for char-wrapping)
-    const vLines = textareaRef.current?.virtualLineCount ?? 1;
-    setVisualLines(vLines);
-  }, []);
+    setVisualLines(calcVisualLines(text));
+  }, [calcVisualLines]);
 
   // Track cursor line for history gating
   const handleCursorChange = useCallback((event: { line: number; visualColumn: number }) => {
     cursorLineRef.current = event.line;
   }, []);
 
-  // Intercept paste — 4+ lines get collapsed like Claude Code
+  // Recalculate visual lines on terminal width change
+  useEffect(() => {
+    setVisualLines(calcVisualLines(valueRef.current));
+  }, [calcVisualLines]);
+
+  // Intercept paste — 4+ lines get collapsed inline
   useEffect(() => {
     const handler = (event: { text: string; preventDefault: () => void }) => {
       if (!isFocused) return;
@@ -398,15 +413,14 @@ export const InputBox = memo(function InputBox({
       // 1-3 lines: let textarea handle normally
       if (pastedLines.length <= 3) return;
 
-      // 4+ lines: store as a collapsible block, insert placeholder on its own line
+      // 4+ lines: collapse into inline placeholder with preview
       event.preventDefault();
       const id = ++pasteIdCounter.current;
-      pasteBlocks.current.push({ id, text, collapsed: true });
-      const placeholder = `📋 [Pasted ${pastedLines.length} lines — ^E to expand]`;
-      const current = textareaRef.current?.plainText ?? "";
-      // Put placeholder on its own line so user can write before/after
-      const prefix = current.length > 0 && !current.endsWith("\n") ? "\n" : "";
-      textareaRef.current?.insertText(`${prefix}${placeholder}\n`);
+      const firstLine = (pastedLines[0] ?? "").trim();
+      const preview = firstLine.length > 30 ? `${firstLine.slice(0, 30)}...` : firstLine;
+      const placeholder = `<pasted (${preview} +${pastedLines.length} lines, ^E expand)>`;
+      pasteBlocks.current.push({ id, text, collapsed: true, placeholder });
+      textareaRef.current?.insertText(placeholder);
     };
     renderer.keyInput.on("paste", handler);
     return () => {
@@ -460,7 +474,6 @@ export const InputBox = memo(function InputBox({
           textareaRef.current?.setText(selected.entry);
           lineCountRef.current = (selected.entry.match(/\n/g)?.length ?? 0) + 1;
           cursorLineRef.current = 0;
-          isNavigatingHistory.current = false;
         }
         setFuzzyMode(false);
         setFuzzyQuery("");
@@ -518,15 +531,11 @@ export const InputBox = memo(function InputBox({
         const currentText = textareaRef.current?.plainText ?? "";
         let newText = currentText;
         for (const block of blocks) {
-          const pastedLines = block.text.split("\n");
-          const placeholder = `📋 [Pasted ${pastedLines.length} lines — ^E to expand]`;
-          if (block.collapsed && newText.includes(placeholder)) {
-            // Expand: replace placeholder with full text
-            newText = newText.replace(placeholder, block.text);
+          if (block.collapsed && newText.includes(block.placeholder)) {
+            newText = newText.replace(block.placeholder, block.text);
             block.collapsed = false;
           } else if (!block.collapsed && newText.includes(block.text)) {
-            // Collapse: replace full text with placeholder
-            newText = newText.replace(block.text, placeholder);
+            newText = newText.replace(block.text, block.placeholder);
             block.collapsed = true;
           }
         }
@@ -535,7 +544,6 @@ export const InputBox = memo(function InputBox({
           setValue(newText);
           textareaRef.current?.setText(newText);
           lineCountRef.current = (newText.match(/\n/g)?.length ?? 0) + 1;
-          isNavigatingHistory.current = false;
         }
       }
       evt.preventDefault();
@@ -546,10 +554,9 @@ export const InputBox = memo(function InputBox({
     if (!focused || hasMatches || fuzzyMode) return;
 
     const lineCount = lineCountRef.current;
-    const curLine = cursorLineRef.current;
 
-    // Up arrow — history: first press requires cursor on first line, subsequent presses always work
-    if (evt.name === "up" && (historyIdx.current !== -1 || curLine === 0)) {
+    // Up arrow — history: single-line enters history, multi-line lets textarea handle cursor
+    if (evt.name === "up" && (historyIdx.current !== -1 || lineCount <= 1)) {
       const history = historyCacheRef.current;
       if (history.length === 0) return;
       if (historyIdx.current === -1) {
@@ -569,14 +576,13 @@ export const InputBox = memo(function InputBox({
         textareaRef.current?.setText(entry);
         lineCountRef.current = (entry.match(/\n/g)?.length ?? 0) + 1;
         cursorLineRef.current = 0;
-        isNavigatingHistory.current = false;
       }
       evt.preventDefault();
       return;
     }
 
-    // Down arrow — history: when navigating, always allow; otherwise only on last line
-    if (evt.name === "down" && (historyIdx.current !== -1 || curLine >= lineCount - 1)) {
+    // Down arrow — history: navigate back or restore stash
+    if (evt.name === "down" && (historyIdx.current !== -1 || lineCount <= 1)) {
       if (historyIdx.current === -1) return;
       isNavigatingHistory.current = true;
       if (historyIdx.current === 0) {
@@ -596,7 +602,6 @@ export const InputBox = memo(function InputBox({
           cursorLineRef.current = 0;
         }
       }
-      isNavigatingHistory.current = false;
       evt.preventDefault();
       return;
     }
@@ -723,7 +728,7 @@ export const InputBox = memo(function InputBox({
                       <box
                         key={`${result.entry.slice(0, 40)}-${String(i)}`}
                         paddingX={1}
-                        height={Math.min(maxInputRows, Math.max(1, visualLines))}
+                        height={1}
                         flexDirection="row"
                       >
                         <text fg={isSelected ? "#FF0040" : "#333"}>{isSelected ? "› " : "  "}</text>
@@ -770,7 +775,7 @@ export const InputBox = memo(function InputBox({
                   onContentChange={handleContentChange}
                   onCursorChange={handleCursorChange}
                   keyBindings={INPUT_KEY_BINDINGS}
-                  placeholder="'/' for commands · or interrupt by sending a new message"
+                  placeholder="'/' for commands · or steer by sending a new message"
                   placeholderColor="#555"
                   focused={focused}
                   wrapMode="char"
