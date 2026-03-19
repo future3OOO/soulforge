@@ -1,6 +1,6 @@
 import { resolve } from "node:path";
 import type { ToolResult } from "../../types/index.js";
-import { getNvimInstance, waitForNvim } from "../editor/instance.js";
+import { getNvimInstance, requestEditor, waitForNvim } from "../editor/instance.js";
 import { isForbidden } from "../security/forbidden.js";
 import { emitFileEdited, emitFileRead } from "./file-events.js";
 
@@ -57,7 +57,11 @@ export const editorTool = {
   execute: async (args: EditorArgs): Promise<ToolResult> => {
     switch (args.action) {
       case "read":
-        return editorReadTool.execute({ startLine: args.startLine, endLine: args.endLine });
+        return editorReadTool.execute({
+          startLine: args.startLine,
+          endLine: args.endLine,
+          file: args.file,
+        });
       case "edit":
         if (args.startLine == null || args.endLine == null || args.replacement == null) {
           return {
@@ -70,6 +74,7 @@ export const editorTool = {
           startLine: args.startLine,
           endLine: args.endLine,
           replacement: args.replacement,
+          file: args.file,
         });
       case "navigate":
         return editorNavigateTool.execute({
@@ -168,13 +173,18 @@ function safeJsonParse<T>(raw: unknown, fallback: T): T {
   }
 }
 
-/** Get nvim instance, waiting briefly if it's still launching */
-async function requireNvim(): Promise<import("../editor/neovim.js").NvimInstance | null> {
-  // Fast path: already available
+/** Get nvim instance, waiting briefly if it's still launching.
+ *  If nvim isn't running at all, requests the editor panel to open. */
+async function requireNvim(
+  file?: string,
+): Promise<import("../editor/neovim.js").NvimInstance | null> {
   const instant = getNvimInstance();
   if (instant) return instant;
-  // Slow path: editor might be opening, wait up to 5s
-  return waitForNvim(5000);
+  // Editor might be opening — wait briefly
+  const waited = await waitForNvim(2000);
+  if (waited) return waited;
+  // Not running — request the panel to open and wait longer
+  return requestEditor(file);
 }
 
 // ─── editor_read ───
@@ -182,6 +192,7 @@ async function requireNvim(): Promise<import("../editor/neovim.js").NvimInstance
 interface EditorReadArgs {
   startLine?: number;
   endLine?: number;
+  file?: string;
 }
 
 export const editorReadTool = {
@@ -189,9 +200,17 @@ export const editorReadTool = {
   description:
     "Read the live buffer from the embedded neovim editor, including unsaved changes. Optionally specify a line range (1-indexed). Requires the editor panel to be open.",
   execute: async (args: EditorReadArgs): Promise<ToolResult> => {
-    const nvim = await requireNvim();
+    const nvim = await requireNvim(args.file);
     if (!nvim) return NO_EDITOR;
     try {
+      // Auto-navigate to the target file if specified and not already open
+      if (args.file) {
+        const targetPath = resolve(args.file);
+        const currentBuf = await nvim.api.request("nvim_buf_get_name", [0]);
+        if (typeof currentBuf === "string" && resolve(currentBuf) !== targetPath) {
+          await nvim.api.executeLua("vim.cmd.edit(vim.fn.fnameescape(...))", [targetPath]);
+        }
+      }
       const forbidden = await checkCurrentBufferForbidden(nvim);
       if (forbidden) return forbidden;
       const buffer = await nvim.api.buffer;
@@ -219,6 +238,7 @@ interface EditorEditArgs {
   startLine: number;
   endLine: number;
   replacement: string;
+  file?: string;
 }
 
 export const editorEditTool = {
@@ -226,9 +246,17 @@ export const editorEditTool = {
   description:
     "Replace lines startLine through endLine (inclusive, 1-indexed) in the neovim buffer with the replacement text. The replacement ONLY contains the new content — do NOT include the original lines. Changes are instant and undoable. Requires the editor panel to be open. Prefer edit_file for writing changes to disk.",
   execute: async (args: EditorEditArgs): Promise<ToolResult> => {
-    const nvim = await requireNvim();
+    const nvim = await requireNvim(args.file);
     if (!nvim) return NO_EDITOR;
     try {
+      // Auto-navigate to the target file if specified and not already open
+      if (args.file) {
+        const targetPath = resolve(args.file);
+        const currentBuf = await nvim.api.request("nvim_buf_get_name", [0]);
+        if (typeof currentBuf === "string" && resolve(currentBuf) !== targetPath) {
+          await nvim.api.executeLua("vim.cmd.edit(vim.fn.fnameescape(...))", [targetPath]);
+        }
+      }
       const forbidden = await checkCurrentBufferForbidden(nvim);
       if (forbidden) return forbidden;
       const buffer = await nvim.api.buffer;
@@ -273,7 +301,7 @@ export const editorNavigateTool = {
   description:
     "Open a file, jump to a line:col, or search in the embedded neovim editor. At least one of file, line, or search must be provided. Requires the editor panel to be open. Use to show files to the user.",
   execute: async (args: EditorNavigateArgs): Promise<ToolResult> => {
-    const nvim = await requireNvim();
+    const nvim = await requireNvim(args.file);
     if (!nvim) return NO_EDITOR;
     try {
       if (args.file) {
@@ -984,7 +1012,7 @@ const editorYankTool = {
 
 const editorOpenFileTool = {
   execute: async (args: { file: string }): Promise<ToolResult> => {
-    const nvim = await requireNvim();
+    const nvim = await requireNvim(args.file);
     if (!nvim) return NO_EDITOR;
     try {
       const blocked = isForbidden(args.file);

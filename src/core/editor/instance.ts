@@ -2,6 +2,7 @@ import { readFileSync } from "node:fs";
 import type { NvimInstance } from "./neovim.js";
 
 let instance: NvimInstance | null = null;
+let editorRequestCallback: ((file?: string) => void) | null = null;
 
 export function setNvimInstance(nvim: NvimInstance | null): void {
   instance = nvim;
@@ -9,6 +10,22 @@ export function setNvimInstance(nvim: NvimInstance | null): void {
 
 export function getNvimInstance(): NvimInstance | null {
   return instance;
+}
+
+/** Register a callback that opens the editor panel. Called by React side on mount. */
+export function setEditorRequestCallback(cb: ((file?: string) => void) | null): void {
+  editorRequestCallback = cb;
+}
+
+/** Request the editor panel to open (optionally with a file), then wait for nvim.
+ *  Returns nvim instance or null if panel couldn't start in time. */
+export async function requestEditor(file?: string): Promise<NvimInstance | null> {
+  if (instance) return instance;
+  if (editorRequestCallback) {
+    editorRequestCallback(file);
+    return waitForNvim(8000);
+  }
+  return null;
 }
 
 const NVIM_READ_TIMEOUT = 3000;

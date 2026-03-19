@@ -10,6 +10,7 @@ interface EditFileArgs {
   path: string;
   oldString: string;
   newString: string;
+  lineStart?: number;
 }
 
 function formatMetricDelta(label: string, before: number, after: number): string {
@@ -146,8 +147,8 @@ export const editFileTool = {
           resolvedOld = fixed.oldStr;
           resolvedNew = fixed.newStr;
         } else {
-          const msg = "old_string not found in file. Make sure it matches exactly.";
-          return { success: false, output: msg, error: msg };
+          const rich = buildRichEditError(content, oldStr, args.lineStart);
+          return { success: false, output: rich.output, error: "old_string not found" };
         }
       }
 

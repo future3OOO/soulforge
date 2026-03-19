@@ -143,6 +143,12 @@ export function buildTools(
         path: z.string().describe("File path to edit"),
         oldString: z.string().describe("Exact string to replace (empty = create new file)"),
         newString: z.string().describe("Replacement string"),
+        lineStart: z
+          .number()
+          .optional()
+          .describe(
+            "1-indexed line hint from your last read — helps locate the match and shows context on error",
+          ),
       }),
       execute: deferExecute(async (args) => {
         const gate = await gateOutsideCwd("edit_file", resolve(args.path));
@@ -1229,6 +1235,12 @@ export function buildSubagentCodeTools(opts?: {
         path: z.string().describe("File path to edit"),
         oldString: z.string().describe("Exact string to replace (empty = create new file)"),
         newString: z.string().describe("Replacement string"),
+        lineStart: z
+          .number()
+          .optional()
+          .describe(
+            "1-indexed line hint from your last read — helps locate the match and shows context on error",
+          ),
       }),
       execute: deferExecute((args) => editFileTool.execute(args)),
     }),

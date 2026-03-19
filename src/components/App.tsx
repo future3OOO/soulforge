@@ -15,6 +15,7 @@ import {
   stripConfigKeys,
 } from "../config/index.js";
 import { ContextManager } from "../core/context/manager.js";
+import { setEditorRequestCallback } from "../core/editor/instance.js";
 import { icon, providerIcon, UI_ICONS } from "../core/icons.js";
 import { fetchOpenRouterMetadata } from "../core/llm/models.js";
 import { notifyProviderSwitch } from "../core/llm/provider.js";
@@ -320,6 +321,15 @@ export function App({
     },
     [editorOpen, nvimReady, nvimOpen, openEditor],
   );
+
+  // Register callback so editor tools can auto-open the panel
+  useEffect(() => {
+    setEditorRequestCallback((file) => {
+      if (file) openEditorWithFile(file);
+      else openEditor();
+    });
+    return () => setEditorRequestCallback(null);
+  }, [openEditorWithFile, openEditor]);
 
   useEffect(() => {
     if (editorOpen) setEditorVisible(true);
