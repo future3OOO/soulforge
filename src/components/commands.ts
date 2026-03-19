@@ -142,6 +142,7 @@ function buildRepoMapOptions(ctx: CommandContext) {
   const repoMap = cm.getRepoMap();
   const enabled = cm.isRepoMapEnabled();
   const ready = cm.isRepoMapReady();
+  const mode = cm.getSemanticMode();
   const stats = repoMap.getStats();
   const size = repoMap.dbSizeBytes();
 
@@ -176,27 +177,29 @@ function buildRepoMapOptions(ctx: CommandContext) {
       },
       {
         value: "semantic",
-        label: cm.getSemanticMode() === "llm" ? "LLM Summaries ✓" : "LLM Summaries",
+        label: mode === "llm" || mode === "on" ? "LLM Summaries ✓" : "LLM Summaries",
         description:
           !enabled || !ready
             ? "requires soul map to be active"
-            : cm.getSemanticMode() === "llm"
+            : mode === "llm" || mode === "on"
               ? `ON — ${String(stats.summaries)} cached [${getShortModelLabel(cm.getSemanticModelId(ctx.chat.activeModel))}]`
               : "generate AI descriptions for top symbols",
       },
       {
         value: "semantic-ast",
-        label: cm.getSemanticMode() === "ast" ? "AST Docstrings ✓" : "AST Docstrings",
+        label: mode === "ast" || mode === "on" ? "AST Docstrings ✓" : "AST Docstrings",
         description:
           !enabled || !ready
             ? "requires soul map to be active"
-            : cm.getSemanticMode() === "ast"
+            : mode === "ast"
               ? `ON — ${String(stats.summaries)} extracted from comments`
-              : "extract summaries from JSDoc/docstrings (free, instant)",
+              : mode === "on"
+                ? "ON — extracts from JSDoc/docstrings where available"
+                : "extract summaries from JSDoc/docstrings (free, instant)",
       },
       ...(cm.isSemanticEnabled() && enabled && ready
         ? [
-            ...(cm.getSemanticMode() === "llm"
+            ...(mode === "llm" || mode === "on"
               ? [
                   {
                     value: "semantic-regen",
@@ -259,10 +262,13 @@ function openRepoMapMenu(ctx: CommandContext): void {
           return;
         }
         const current = cm.getSemanticMode();
-        const next = current === "llm" ? "off" : "llm";
+        const llmOn = current === "llm" || current === "on";
+        const astOn = current === "ast" || current === "on";
+        // Toggle LLM: if LLM is on, turn it off (keep AST if it was on). If LLM is off, turn it on.
+        const next = llmOn ? (astOn ? "ast" : "off") : astOn ? "on" : "llm";
         cm.setSemanticSummaries(next);
         ctx.saveToScope({ semanticSummaries: next }, scope ?? "project");
-        if (next === "llm") {
+        if (next === "llm" || next === "on") {
           triggerSemanticGeneration(ctx, cm);
         } else {
           sysMsg(ctx, `LLM summaries disabled (${scope ?? "project"}).`);
@@ -273,14 +279,17 @@ function openRepoMapMenu(ctx: CommandContext): void {
           return;
         }
         const current = cm.getSemanticMode();
-        const next = current === "ast" ? "off" : "ast";
+        const astOn = current === "ast" || current === "on";
+        const llmOn = current === "llm" || current === "on";
+        // Toggle AST: if AST is on, turn it off (keep LLM if it was on). If AST is off, turn it on.
+        const next = astOn ? (llmOn ? "llm" : "off") : llmOn ? "on" : "ast";
         cm.setSemanticSummaries(next);
         ctx.saveToScope({ semanticSummaries: next }, scope ?? "project");
         sysMsg(
           ctx,
-          next === "ast"
-            ? `AST docstring summaries enabled (${scope ?? "project"}). Rebuilding index...`
-            : `Semantic summaries disabled (${scope ?? "project"}).`,
+          next === "ast" || next === "on"
+            ? `AST docstring summaries enabled (${scope ?? "project"}).`
+            : `AST summaries disabled (${scope ?? "project"}).`,
         );
       } else if (value === "semantic-regen") {
         cm.clearSemanticSummaries();

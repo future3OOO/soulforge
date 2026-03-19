@@ -341,6 +341,8 @@ export interface SymbolForSummary {
   signature: string | null;
   code: string;
   filePath: string;
+  dependents?: number;
+  lineSpan?: number;
 }
 
 export type SummaryGenerator = (
@@ -360,10 +362,12 @@ export class RepoMap {
   private hasGit: boolean | null = null;
   private seenPaths = new Set<string>();
   private entryPointsCache: string[] | null = null;
-  private semanticMode: "off" | "ast" | "llm" = "off";
+  private semanticMode: "off" | "ast" | "llm" | "on" = "off";
   private summaryGenerator: SummaryGenerator | null = null;
+  private regenTimer: ReturnType<typeof setTimeout> | null = null;
   onProgress: ((indexed: number, total: number) => void) | null = null;
   onScanComplete: ((success: boolean) => void) | null = null;
+  onStaleSymbols: ((count: number) => void) | null = null;
 
   constructor(cwd: string) {
     this.cwd = cwd;
@@ -753,7 +757,7 @@ export class RepoMap {
       });
       tx();
 
-      if (this.semanticMode === "ast") {
+      if (this.semanticMode === "ast" || this.semanticMode === "on") {
         this.extractAstSummaries(fileId, outline.symbols, exportedNames, lines, mtime);
       }
 
@@ -1472,11 +1476,11 @@ export class RepoMap {
     return depLines.join("\n");
   }
 
-  setSemanticMode(mode: "off" | "ast" | "llm"): void {
+  setSemanticMode(mode: "off" | "ast" | "llm" | "on"): void {
     this.semanticMode = mode;
   }
 
-  getSemanticMode(): "off" | "ast" | "llm" {
+  getSemanticMode(): "off" | "ast" | "llm" | "on" {
     return this.semanticMode;
   }
 
@@ -1484,20 +1488,21 @@ export class RepoMap {
     return this.semanticMode !== "off";
   }
 
-  detectPersistedSemanticMode(): "off" | "ast" | "llm" {
+  detectPersistedSemanticMode(): "off" | "ast" | "llm" | "on" {
     const llm =
       this.db
         .query<{ c: number }, []>(
           "SELECT COUNT(*) as c FROM semantic_summaries WHERE source = 'llm'",
         )
         .get()?.c ?? 0;
-    if (llm > 0) return "llm";
     const ast =
       this.db
         .query<{ c: number }, []>(
           "SELECT COUNT(*) as c FROM semantic_summaries WHERE source = 'ast'",
         )
         .get()?.c ?? 0;
+    if (llm > 0 && ast > 0) return "on";
+    if (llm > 0) return "llm";
     if (ast > 0) return "ast";
     return "off";
   }
@@ -1561,9 +1566,33 @@ export class RepoMap {
     this.db.run("DELETE FROM semantic_summaries");
   }
 
-  async generateSemanticSummaries(maxSymbols = 100): Promise<number> {
+  getStaleSummaryCount(): number {
+    if (!this.ready) return 0;
+    // Can't filter by line span in SQL (end_line often equals line for name-only nodes).
+    // Count all function/method/class symbols missing fresh LLM summaries as potential stale.
+    return (
+      this.db
+        .query<{ c: number }, []>(
+          `SELECT COUNT(*) AS c FROM symbols s
+           JOIN files f ON f.id = s.file_id
+           WHERE s.is_exported = 1
+             AND s.kind IN ('function', 'method', 'class')
+             AND NOT EXISTS (
+               SELECT 1 FROM semantic_summaries ss
+               WHERE ss.symbol_id = s.id AND ss.source = 'llm' AND ss.file_mtime = f.mtime_ms
+             )`,
+        )
+        .get()?.c ?? 0
+    );
+  }
+
+  async generateSemanticSummaries(maxSymbols = 300): Promise<number> {
     if (!this.summaryGenerator || !this.ready) return 0;
 
+    // Smart targeting: skip self-documenting symbols (types, interfaces, enums, type aliases).
+    // Prioritize: functions/methods/classes with actual logic.
+    // Note: end_line often equals line (tree-sitter stores name node only),
+    // so we can't filter by line span in SQL — body expansion happens in JS below.
     const topSymbols = this.db
       .query<
         {
@@ -1574,22 +1603,23 @@ export class RepoMap {
           line: number;
           end_line: number;
           file_path: string;
+          file_id: number;
           file_mtime: number;
         },
         [number]
       >(
         `SELECT s.id AS sym_id, s.name, s.kind, s.signature, s.line, s.end_line,
-                f.path AS file_path, f.mtime_ms AS file_mtime
+                f.path AS file_path, f.id AS file_id, f.mtime_ms AS file_mtime
          FROM symbols s
          JOIN files f ON f.id = s.file_id
          WHERE s.is_exported = 1
-           AND s.kind IN ('function', 'method', 'class', 'interface', 'type')
+           AND s.kind IN ('function', 'method', 'class')
          ORDER BY f.pagerank DESC, s.line ASC
          LIMIT ?`,
       )
       .all(maxSymbols);
 
-    // Filter to symbols that need (re)generation — only check LLM source
+    // Filter to symbols that need (re)generation
     const existing = new Map<number, number>();
     for (const row of this.db
       .query<{ symbol_id: number; file_mtime: number }, []>(
@@ -1607,6 +1637,8 @@ export class RepoMap {
       code: string;
       filePath: string;
       fileMtime: number;
+      dependents: number;
+      lineSpan: number;
     }> = [];
 
     for (const sym of topSymbols) {
@@ -1615,15 +1647,14 @@ export class RepoMap {
 
       const absPath = join(this.cwd, sym.file_path);
       let code = "";
+      let lineSpan = sym.end_line - sym.line;
       try {
-        const content = require("node:fs").readFileSync(absPath, "utf-8") as string;
+        const content = readFileSync(absPath, "utf-8");
         const lines = content.split("\n");
         const startLine = Math.max(0, sym.line - 1);
-        // end_line often equals line (name node only) — expand to capture the body
         let endLine = sym.end_line;
         if (endLine <= sym.line) {
-          // Scan forward for closing brace/dedent (heuristic: up to 60 lines)
-          const limit = Math.min(startLine + 60, lines.length);
+          const limit = Math.min(startLine + 80, lines.length);
           let depth = 0;
           for (let k = startLine; k < limit; k++) {
             const l = lines[k] ?? "";
@@ -1636,14 +1667,19 @@ export class RepoMap {
               break;
             }
           }
-          if (endLine <= sym.line) endLine = Math.min(startLine + 15, lines.length);
+          if (endLine <= sym.line) endLine = Math.min(startLine + 20, lines.length);
         }
         endLine = Math.min(lines.length, endLine);
+        lineSpan = endLine - startLine;
+        // Skip trivial functions (one-liners, simple getters)
+        if (lineSpan < 5) continue;
         const snippet = lines.slice(startLine, endLine).join("\n");
-        code = snippet.length > 1500 ? `${snippet.slice(0, 1500)}...` : snippet;
+        code = snippet.length > 2000 ? `${snippet.slice(0, 2000)}...` : snippet;
       } catch {
         continue;
       }
+
+      const dependents = this.getFileBlastRadius(sym.file_path);
 
       needed.push({
         symId: sym.sym_id,
@@ -1653,18 +1689,21 @@ export class RepoMap {
         code,
         filePath: sym.file_path,
         fileMtime: sym.file_mtime,
+        dependents,
+        lineSpan,
       });
     }
 
     if (needed.length === 0) return 0;
 
-    // Batch generate summaries
     const batch: SymbolForSummary[] = needed.map((s) => ({
       name: s.name,
       kind: s.kind,
       signature: s.signature,
       code: s.code,
       filePath: s.filePath,
+      dependents: s.dependents,
+      lineSpan: s.lineSpan,
     }));
 
     const results = await this.summaryGenerator(batch);
@@ -1724,14 +1763,27 @@ export class RepoMap {
   private getSemanticSummaries(symbolIds: number[]): Map<number, string> {
     if (!this.isSemanticEnabled() || symbolIds.length === 0) return new Map();
     const placeholders = symbolIds.map(() => "?").join(",");
-    const source = this.semanticMode;
-    const rows = this.db
-      .query<{ symbol_id: number; summary: string }, [...number[], string]>(
-        `SELECT symbol_id, summary FROM semantic_summaries WHERE symbol_id IN (${placeholders}) AND source = ?`,
-      )
-      .all(...symbolIds, source);
     const result = new Map<number, string>();
-    for (const row of rows) result.set(row.symbol_id, row.summary);
+
+    if (this.semanticMode === "on") {
+      // Merged: load both, AST wins on conflict (it's from actual documentation)
+      const rows = this.db
+        .query<{ symbol_id: number; summary: string; source: string }, number[]>(
+          `SELECT symbol_id, summary, source FROM semantic_summaries WHERE symbol_id IN (${placeholders}) ORDER BY source ASC`,
+        )
+        .all(...symbolIds);
+      for (const row of rows) {
+        // AST sorts before LLM — first write wins, so AST takes priority
+        if (!result.has(row.symbol_id)) result.set(row.symbol_id, row.summary);
+      }
+    } else {
+      const rows = this.db
+        .query<{ symbol_id: number; summary: string }, [...number[], string]>(
+          `SELECT symbol_id, summary FROM semantic_summaries WHERE symbol_id IN (${placeholders}) AND source = ?`,
+        )
+        .all(...symbolIds, this.semanticMode);
+      for (const row of rows) result.set(row.symbol_id, row.summary);
+    }
     return result;
   }
 
@@ -1906,7 +1958,8 @@ export class RepoMap {
     const depsSummary = this.getExternalDepsSummary();
     if (depsSummary) lines.push(depsSummary, "");
     if (semanticMap.size > 0) {
-      const tag = this.semanticMode === "ast" ? "[AST]" : "[LLM]";
+      const tagMap = { ast: "[AST]", llm: "[LLM]", on: "[AST+LLM]", off: "" } as const;
+      const tag = tagMap[this.semanticMode] || "[LLM]";
       lines.push(`Summaries: ${tag} ${String(semanticMap.size)} symbols`, "");
     }
 
@@ -1925,6 +1978,21 @@ export class RepoMap {
     }
 
     for (const p of currentPaths) this.seenPaths.add(p);
+
+    // Lazy regen: after render, check for stale LLM summaries and notify
+    if (
+      (this.semanticMode === "llm" || this.semanticMode === "on") &&
+      this.summaryGenerator &&
+      this.onStaleSymbols
+    ) {
+      if (this.regenTimer) clearTimeout(this.regenTimer);
+      this.regenTimer = setTimeout(() => {
+        this.regenTimer = null;
+        const stale = this.getStaleSummaryCount();
+        if (stale > 0) this.onStaleSymbols?.(stale);
+      }, 2000);
+    }
+
     return lines.join("\n");
   }
 
@@ -2875,13 +2943,18 @@ export class RepoMap {
     const symbols =
       this.db.query<{ c: number }, []>("SELECT COUNT(*) as c FROM symbols").get()?.c ?? 0;
     const edges = this.db.query<{ c: number }, []>("SELECT COUNT(*) as c FROM edges").get()?.c ?? 0;
-    const source = this.semanticMode === "off" ? "llm" : this.semanticMode;
     const summaries =
-      this.db
-        .query<{ c: number }, [string]>(
-          "SELECT COUNT(*) as c FROM semantic_summaries WHERE source = ?",
-        )
-        .get(source)?.c ?? 0;
+      this.semanticMode === "on"
+        ? (this.db
+            .query<{ c: number }, []>(
+              "SELECT COUNT(DISTINCT symbol_id) as c FROM semantic_summaries",
+            )
+            .get()?.c ?? 0)
+        : (this.db
+            .query<{ c: number }, [string]>(
+              "SELECT COUNT(*) as c FROM semantic_summaries WHERE source = ?",
+            )
+            .get(this.semanticMode === "off" ? "llm" : this.semanticMode)?.c ?? 0);
     return { files, symbols, edges, summaries };
   }
 
@@ -3033,6 +3106,10 @@ export class RepoMap {
     if (this.dirtyTimer) {
       clearTimeout(this.dirtyTimer);
       this.dirtyTimer = null;
+    }
+    if (this.regenTimer) {
+      clearTimeout(this.regenTimer);
+      this.regenTimer = null;
     }
     this.db.close();
   }

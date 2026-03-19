@@ -27,6 +27,12 @@ function formatBytes(bytes: number): string {
   return `${(bytes / (1024 * 1024)).toFixed(1)}MB`;
 }
 
+function formatTokens(n: number): string {
+  if (n < 1000) return String(n);
+  if (n < 1_000_000) return `${(n / 1000).toFixed(1)}k`;
+  return `${(n / 1_000_000).toFixed(2)}M`;
+}
+
 interface Props {
   visible: boolean;
   onClose: () => void;
@@ -43,22 +49,12 @@ export function RepoMapStatusPopup({ visible, onClose }: Props) {
 
   useEffect(() => {
     if (!visible) return;
+    // Sync current state immediately on open — stateRef may be stale from mount time
+    stateRef.current = useRepoMapStore.getState();
+    setRenderTick((n) => n + 1);
     return useRepoMapStore.subscribe((s) => {
-      const prev = stateRef.current;
       stateRef.current = s;
-      if (
-        s.status !== prev.status ||
-        s.files !== prev.files ||
-        s.symbols !== prev.symbols ||
-        s.edges !== prev.edges ||
-        s.dbSizeBytes !== prev.dbSizeBytes ||
-        s.scanError !== prev.scanError ||
-        s.semanticStatus !== prev.semanticStatus ||
-        s.semanticCount !== prev.semanticCount ||
-        s.semanticModel !== prev.semanticModel
-      ) {
-        setRenderTick((n) => n + 1);
-      }
+      setRenderTick((n) => n + 1);
     });
   }, [visible]);
 
@@ -93,6 +89,8 @@ export function RepoMapStatusPopup({ visible, onClose }: Props) {
     semanticCount,
     semanticProgress,
     semanticModel,
+    semanticTokensIn,
+    semanticTokensOut,
   } = stateRef.current;
   const frame = SPINNER_FRAMES[spinnerRef.current % SPINNER_FRAMES.length] ?? "⠋";
 
@@ -132,6 +130,15 @@ export function RepoMapStatusPopup({ visible, onClose }: Props) {
     { label: "Semantic", value: semanticLabel, valueColor: semanticColor },
     ...(semanticModel && semanticStatus !== "off"
       ? [{ label: "Semantic Model", value: semanticModel, valueColor: "#8B5CF6" }]
+      : []),
+    ...(semanticTokensIn > 0 || semanticTokensOut > 0
+      ? [
+          {
+            label: "LLM Tokens",
+            value: `↑${formatTokens(semanticTokensIn)} ↓${formatTokens(semanticTokensOut)} (${formatTokens(semanticTokensIn + semanticTokensOut)} total)`,
+            valueColor: "#FF8C00",
+          },
+        ]
       : []),
     ...(scanError ? [{ label: "Error", value: scanError, valueColor: "#FF0040" }] : []),
   ];

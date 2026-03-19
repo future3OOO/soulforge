@@ -272,8 +272,8 @@ export interface AppConfig {
   defaultForgeMode?: ForgeMode;
   /** Enable AST-based repo map in system prompt instead of file tree. Default: true */
   repoMap?: boolean;
-  /** Semantic summary mode: "off" (default), "ast" (extract docstrings), "llm" (AI-generated). Boolean for backward compat: true → "llm", false → "off". */
-  semanticSummaries?: "off" | "ast" | "llm" | boolean;
+  /** Semantic summary mode: "off" (default), "ast" (docstrings), "llm" (AI-generated), "on" (AST+LLM merged). Boolean compat: true → "llm", false → "off". */
+  semanticSummaries?: "off" | "ast" | "llm" | "on" | boolean;
   /** LSP servers to disable (by Mason package name). Scoped: project overrides global. */
   disabledLspServers?: string[];
   agentFeatures?: AgentFeatures;

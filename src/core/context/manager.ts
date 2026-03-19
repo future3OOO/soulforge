@@ -134,6 +134,7 @@ export class ContextManager {
   private contextWindowTokens = 200_000;
   private repoMapCache: { content: string; at: number } | null = null;
   private taskRouter: TaskRouter | undefined;
+  private lastActiveModel = "";
   private isChild = false;
   private static readonly REPO_MAP_TTL = 5_000; // 5s — covers getContextBreakdown + buildSystemPrompt in same prompt
 
@@ -236,14 +237,31 @@ export class ContextManager {
         useRepoMapStore.getState().setScanError("Soul map scan completed with errors");
       }
     };
+
+    // Lazy background regen: when render detects stale LLM summaries after file edits,
+    // regenerate just the changed symbols automatically.
+    this.repoMap.onStaleSymbols = (count) => {
+      const mode = this.repoMap.getSemanticMode();
+      if (mode !== "llm" && mode !== "on") return;
+      if (!this.repoMapReady) return;
+      const modelId = this.getSemanticModelId(this.lastActiveModel ?? "");
+      if (!modelId || modelId === "none") return;
+      const store = useRepoMapStore.getState();
+      store.setSemanticStatus("generating");
+      store.setSemanticProgress(`${String(count)} stale — regenerating...`);
+      this.generateSemanticSummaries(modelId).catch(() => {});
+    };
   }
 
   private syncRepoMapStore(status: "off" | "scanning" | "ready" | "error"): void {
     const store = useRepoMapStore.getState();
     store.setStatus(status);
-    const stats = this.repoMap.getStats();
-    store.setStats(stats.files, stats.symbols, stats.edges, this.repoMap.dbSizeBytes());
-    if (status !== "scanning") store.setScanProgress("");
+    // Don't reset stats to 0 during scanning — keep last-known values visible
+    if (status !== "scanning") {
+      const stats = this.repoMap.getStats();
+      store.setStats(stats.files, stats.symbols, stats.edges, this.repoMap.dbSizeBytes());
+      store.setScanProgress("");
+    }
   }
 
   getMemoryManager(): MemoryManager {
@@ -383,7 +401,7 @@ export class ContextManager {
     }
   }
 
-  setSemanticSummaries(modeOrBool: "off" | "ast" | "llm" | boolean): void {
+  setSemanticSummaries(modeOrBool: "off" | "ast" | "llm" | "on" | boolean): void {
     const mode = modeOrBool === true ? "llm" : modeOrBool === false ? "off" : modeOrBool;
     this.repoMap.setSemanticMode(mode);
     const store = useRepoMapStore.getState();
@@ -392,25 +410,39 @@ export class ContextManager {
       store.setSemanticCount(0);
       store.setSemanticProgress("");
       store.setSemanticModel("");
-    } else if (mode === "ast") {
+    } else if (mode === "ast" || mode === "on") {
       store.setSemanticModel("");
-      const stats = this.repoMap.getStats();
-      if (stats.summaries > 0) {
+      // Ensure AST summaries exist (free extraction)
+      if (this.repoMapReady) {
+        const existingAst = this.repoMap.getStats();
+        if (existingAst.summaries === 0 || mode === "on") {
+          store.setSemanticStatus("generating");
+          store.setSemanticProgress("extracting docstrings...");
+          this.repoMap.generateAstSummaries();
+        }
+      }
+      if (mode === "on") {
+        const stats = this.repoMap.getStats();
         store.setSemanticCount(stats.summaries);
-        store.setSemanticStatus("ready");
-        store.setSemanticProgress(`ast — ${String(stats.summaries)} extracted`);
-      } else if (this.repoMapReady) {
-        store.setSemanticStatus("generating");
-        store.setSemanticProgress("extracting docstrings...");
-        store.setSemanticCount(0);
-        const count = this.repoMap.generateAstSummaries();
-        store.setSemanticCount(count);
-        store.setSemanticStatus("ready");
-        store.setSemanticProgress(`ast — ${String(count)} extracted`);
+        // If any summaries already exist, show ready. AST may produce 0 (no docstrings) — that's fine.
+        if (stats.summaries > 0) {
+          const persisted = this.repoMap.detectPersistedSemanticMode();
+          const tag = persisted === "on" ? "ast+llm" : persisted === "ast" ? "ast" : "llm";
+          store.setSemanticStatus("ready");
+          store.setSemanticProgress(`${tag} — ${String(stats.summaries)} symbols`);
+        } else {
+          store.setSemanticStatus("generating");
+          store.setSemanticProgress("waiting for LLM generation...");
+        }
       } else {
-        store.setSemanticStatus("off");
-        store.setSemanticCount(0);
-        store.setSemanticProgress("waiting for soul map...");
+        const stats = this.repoMap.getStats();
+        store.setSemanticCount(stats.summaries);
+        store.setSemanticStatus(stats.summaries > 0 ? "ready" : "off");
+        store.setSemanticProgress(
+          stats.summaries > 0
+            ? `ast — ${String(stats.summaries)} extracted`
+            : "waiting for soul map...",
+        );
       }
     } else {
       store.setSemanticModel("");
@@ -435,7 +467,7 @@ export class ContextManager {
     return this.repoMap.isSemanticEnabled();
   }
 
-  getSemanticMode(): "off" | "ast" | "llm" {
+  getSemanticMode(): "off" | "ast" | "llm" | "on" {
     return this.repoMap.getSemanticMode();
   }
 
@@ -449,11 +481,13 @@ export class ContextManager {
 
   async generateSemanticSummaries(modelId: string): Promise<number> {
     if (!this.repoMapReady) return 0;
+    this.lastActiveModel = modelId;
 
     const store = useRepoMapStore.getState();
     store.setSemanticStatus("generating");
     store.setSemanticProgress("preparing...");
     store.setSemanticModel(modelId);
+    store.resetSemanticTokens();
 
     const model = resolveModel(modelId);
     const CHUNK = 10;
@@ -465,22 +499,34 @@ export class ContextManager {
       for (let i = 0; i < batch.length; i += CHUNK) {
         const chunk = batch.slice(i, i + CHUNK);
         const prompt = chunk
-          .map(
-            (s, j) =>
-              `[${String(j + 1)}] ${s.kind} \`${s.name}\` in ${s.filePath}:\n${s.signature ? `${s.signature}\n` : ""}${s.code}`,
-          )
+          .map((s, j) => {
+            const meta: string[] = [];
+            if (s.lineSpan) meta.push(`${String(s.lineSpan)}L`);
+            if (s.dependents) meta.push(`${String(s.dependents)} dependents`);
+            const metaStr = meta.length > 0 ? ` (${meta.join(", ")})` : "";
+            return `[${String(j + 1)}] ${s.kind} \`${s.name}\` in ${s.filePath}${metaStr}:\n${s.signature ? `${s.signature}\n` : ""}${s.code}`;
+          })
           .join("\n\n");
 
         store.setSemanticProgress(
           `${String(processed + 1)}-${String(Math.min(processed + CHUNK, batch.length))}/${String(batch.length)}`,
         );
 
-        const { text } = await generateText({
+        const { text, usage } = await generateText({
           model,
-          system:
-            "Generate a one-line summary (max 80 chars) for each code symbol below. Output ONLY lines in the format:\nSymbolName: one-line summary\nNo numbering, no backticks, no extra text.",
+          system: [
+            "Summarize each code symbol in ONE line (max 80 chars). Focus on BEHAVIOR: what it does, key side effects, non-obvious logic.",
+            "BAD: 'Checks if Neovim is available' (restates name)",
+            "GOOD: 'Pings nvim RPC, returns false on timeout or socket error'",
+            "BAD: 'Renders a widget component' (generic)",
+            "GOOD: 'Memoized tree-view with virtual scroll, collapses on blur'",
+            "Output ONLY lines: SymbolName: summary",
+            "No numbering, no backticks, no extra text.",
+          ].join("\n"),
           prompt,
         });
+
+        store.addSemanticTokens(usage.inputTokens ?? 0, usage.outputTokens ?? 0);
 
         for (const line of text.split("\n")) {
           const trimmed = line.trim();
@@ -510,8 +556,10 @@ export class ContextManager {
       const stats = this.repoMap.getStats();
       store.setSemanticCount(stats.summaries);
       store.setSemanticStatus(stats.summaries > 0 ? "ready" : "off");
+      const mode = this.repoMap.getSemanticMode();
+      const tag = mode === "on" ? "ast+llm" : "llm";
       store.setSemanticProgress(
-        stats.summaries > 0 ? `llm — ${String(stats.summaries)} generated` : "",
+        stats.summaries > 0 ? `${tag} — ${String(stats.summaries)} symbols` : "",
       );
       return count;
     } catch (err) {

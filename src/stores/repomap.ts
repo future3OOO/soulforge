@@ -16,6 +16,8 @@ interface RepoMapState {
   semanticCount: number;
   semanticProgress: string;
   semanticModel: string;
+  semanticTokensIn: number;
+  semanticTokensOut: number;
 
   setStatus: (status: RepoMapStatus) => void;
   setStats: (files: number, symbols: number, edges: number, dbSizeBytes: number) => void;
@@ -25,6 +27,8 @@ interface RepoMapState {
   setSemanticCount: (count: number) => void;
   setSemanticProgress: (msg: string) => void;
   setSemanticModel: (model: string) => void;
+  addSemanticTokens: (input: number, output: number) => void;
+  resetSemanticTokens: () => void;
 }
 
 let _pendingScanProgress = "";
@@ -55,6 +59,8 @@ export const useRepoMapStore = create<RepoMapState>()(
     semanticCount: 0,
     semanticProgress: "",
     semanticModel: "",
+    semanticTokensIn: 0,
+    semanticTokensOut: 0,
 
     setStatus: (status) => {
       if (_scanThrottleTimer) {
@@ -80,6 +86,12 @@ export const useRepoMapStore = create<RepoMapState>()(
     setSemanticCount: (semanticCount) => set({ semanticCount }),
     setSemanticProgress: (semanticProgress) => set({ semanticProgress }),
     setSemanticModel: (semanticModel) => set({ semanticModel }),
+    addSemanticTokens: (input, output) =>
+      set((s) => ({
+        semanticTokensIn: s.semanticTokensIn + input,
+        semanticTokensOut: s.semanticTokensOut + output,
+      })),
+    resetSemanticTokens: () => set({ semanticTokensIn: 0, semanticTokensOut: 0 }),
   })),
 );
 
@@ -102,5 +114,7 @@ export function resetRepoMapStore(): void {
     semanticCount: 0,
     semanticProgress: "",
     semanticModel: "",
+    semanticTokensIn: 0,
+    semanticTokensOut: 0,
   });
 }
