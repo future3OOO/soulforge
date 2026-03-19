@@ -80,6 +80,7 @@ export interface CommandContext {
   saveToScope: (patch: Partial<AppConfig>, toScope: ConfigScope, fromScope?: ConfigScope) => void;
   detectScope: (key: string) => ConfigScope;
   agentFeatures: AgentFeatures | undefined;
+  instructionFiles: string[] | undefined;
 }
 
 function formatBytes(bytes: number): string {
@@ -2290,6 +2291,66 @@ async function handleCommandInner(input: string, ctx: CommandContext): Promise<v
             const key = value as keyof AgentFeatures;
             const current = (localState as Record<string, unknown>)[key] !== false;
             ctx.saveToScope({ agentFeatures: { [key]: current } }, to, from);
+          },
+        });
+        break;
+      }
+      if (cmd === "/instructions") {
+        const { INSTRUCTION_SOURCES, loadInstructions, buildInstructionPrompt } = await import(
+          "../core/instructions.js"
+        );
+        const currentEnabled = new Set<string>(
+          ctx.instructionFiles ??
+            INSTRUCTION_SOURCES.filter((s: { defaultEnabled: boolean }) => s.defaultEnabled).map(
+              (s: { id: string }) => s.id,
+            ),
+        );
+        const loaded = loadInstructions(ctx.cwd, [...currentEnabled]);
+        const loadedIds = new Set(loaded.map((l: { source: string }) => l.source));
+
+        const buildOptions = () =>
+          INSTRUCTION_SOURCES.map((s: { id: string; label: string; files: string[] }) => {
+            const enabled = currentEnabled.has(s.id);
+            const found = loadedIds.has(s.id);
+            const status = enabled ? (found ? "on (loaded)" : "on (file not found)") : "off";
+            return {
+              value: s.id,
+              label: `${s.label}: ${status}`,
+              description: s.files.join(", "),
+            };
+          });
+
+        ctx.openCommandPicker({
+          title: "Instruction Files",
+          icon: icon("system"),
+          keepOpen: true,
+          currentValue: "",
+          options: buildOptions(),
+          scopeEnabled: true,
+          initialScope: ctx.detectScope("instructionFiles"),
+          onSelect: (value, scope) => {
+            if (currentEnabled.has(value)) {
+              currentEnabled.delete(value);
+            } else {
+              currentEnabled.add(value);
+            }
+            const ids = [...currentEnabled];
+            ctx.saveToScope({ instructionFiles: ids }, scope ?? "project");
+
+            const freshLoaded = loadInstructions(ctx.cwd, ids);
+            loadedIds.clear();
+            for (const l of freshLoaded) loadedIds.add(l.source);
+
+            ctx.contextManager.setProjectInstructions(buildInstructionPrompt(freshLoaded));
+
+            sysMsg(
+              ctx,
+              `Instruction file "${value}" ${currentEnabled.has(value) ? "enabled" : "disabled"} (${scope ?? "project"})`,
+            );
+            useUIStore.getState().updatePickerOptions(buildOptions());
+          },
+          onScopeMove: (_value, from, to) => {
+            ctx.saveToScope({ instructionFiles: [...currentEnabled] }, to, from);
           },
         });
         break;

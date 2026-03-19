@@ -237,8 +237,14 @@ SoulForge checks for prerequisites on first launch and offers to install Neovim 
 soulforge                                    # Launch TUI
 soulforge --session <id>                     # Resume a saved session
 soulforge --headless "your prompt here"      # Run without TUI, stream to stdout
-soulforge --headless --json "your prompt"    # Structured JSON output
+soulforge --headless --json "your prompt"    # Structured JSON after completion
+soulforge --headless --events "prompt"       # JSONL event stream (real-time)
 soulforge --headless --model provider/model  # Override model
+soulforge --headless --mode architect        # Read-only analysis mode
+soulforge --headless --max-steps 10          # Limit agent steps
+soulforge --headless --timeout 60000         # Abort after 60s
+soulforge --headless --quiet "prompt"        # Suppress header/footer
+soulforge --headless --cwd /path/to/project  # Set working directory
 echo "prompt" | soulforge --headless         # Pipe from stdin
 soulforge --list-providers                   # Show providers + key status
 soulforge --list-models [provider]           # Show available models
@@ -282,7 +288,7 @@ soulforge --set-key <provider> <key>         # Save API key to keychain
 `/lsp` `/lsp-install` `/diagnose` `/repo-map` `/web-search` `/keys`
 
 **Context & Memory**
-`/compact` `/context` `/memory` `/compaction`
+`/compact` `/context` `/memory` `/compaction` `/instructions`
 
 **Sessions & Tabs**
 `/sessions` `/new-tab` `/close-tab` `/rename` `/tabs`
@@ -505,6 +511,33 @@ The `project` tool auto-detects your toolchain from config files — no setup re
 **Monorepo support:** `project(action: "list")` discovers workspace packages across pnpm, npm/yarn, Cargo, and Go workspaces.
 
 [Full reference →](docs/project-tool.md)
+
+---
+
+## Project Instructions
+
+SoulForge loads `SOULFORGE.md` from your project root as project-specific instructions — conventions, architecture notes, toolchain preferences — injected into every prompt.
+
+You can also load instruction files from other AI tools to reduce friction when migrating or working across tools:
+
+| File | Source | Default |
+|------|--------|---------|
+| `SOULFORGE.md` | SoulForge | **on** |
+| `CLAUDE.md` | Claude Code | off |
+| `.cursorrules` | Cursor | off |
+| `.github/copilot-instructions.md` | GitHub Copilot | off |
+| `.clinerules` | Cline | off |
+| `.windsurfrules` | Windsurf | off |
+| `.aider.conf.yml` | Aider | off |
+| `AGENTS.md` | OpenAI Codex | off |
+| `.opencode/instructions.md` | OpenCode | off |
+| `AMPLIFY.md` | Amp | off |
+
+Toggle via `/instructions` in the TUI or set `"instructionFiles"` in config:
+
+```json
+{ "instructionFiles": ["soulforge", "claude", "cursorrules"] }
+```
 
 ---
 

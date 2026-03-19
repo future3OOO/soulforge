@@ -78,8 +78,10 @@ export function listInstalledSkills(): InstalledSkill[] {
 
   // Scan global dirs first, then local — local overwrites global (preferred)
   const dirs: Array<{ path: string; scope: "global" | "project" }> = [
+    { path: join(homedir(), ".soulforge", "skills"), scope: "global" },
     { path: join(homedir(), ".agents", "skills"), scope: "global" },
     { path: join(homedir(), ".claude", "skills"), scope: "global" },
+    { path: join(process.cwd(), ".soulforge", "skills"), scope: "project" },
     { path: join(process.cwd(), ".agents", "skills"), scope: "project" },
     { path: join(process.cwd(), ".claude", "skills"), scope: "project" },
   ];

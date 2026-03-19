@@ -23,13 +23,20 @@ AI-Powered Terminal IDE by proxySoul.
 
 - `--session <id>` / `--resume <id>` / `-s <id>` — resume a saved session
 - `--headless <prompt>` — run without TUI, stream output to stdout
-- `--headless --model <provider/model>` — override the configured model
-- `--headless --json` — output structured JSON instead of streaming text
+- `--headless --json` — structured JSON after completion
+- `--headless --events` — JSONL event stream (real-time tool calls, text, steps)
+- `--headless --model <provider/model>` — override model
+- `--headless --mode <mode>` — set mode (default/architect/plan/auto)
+- `--headless --max-steps <n>` — limit agent steps
+- `--headless --timeout <ms>` — abort after timeout
+- `--headless --quiet` / `-q` — suppress header/footer
+- `--headless --cwd <dir>` — set working directory
 - `--list-providers` — show providers and their key status
-- `--list-models [provider]` — show available models (all or for a specific provider)
+- `--list-models [provider]` — show available models
 - `--set-key <provider> <key>` — save an API key to system keychain
 - Piped input: `echo "prompt" | soulforge --headless`
 - Custom providers: add `providers` array to config (OpenAI-compatible APIs)
+- Project instructions: `SOULFORGE.md` loaded by default, `CLAUDE.md` + 9 others via `/instructions`
 
 ## Conventions
 

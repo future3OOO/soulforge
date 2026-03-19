@@ -24,6 +24,11 @@ const LINES: HelpLine[] = [
   { type: "entry", label: "/close-tab", desc: "close current tab" },
   { type: "entry", label: "/co-author-commits", desc: "toggle co-author trailer on commits" },
   { type: "entry", label: "/commit", desc: "Git commit with message" },
+  {
+    type: "entry",
+    label: "/instructions",
+    desc: "toggle instruction files (SOULFORGE.md, CLAUDE.md, etc.)",
+  },
   { type: "entry", label: "/compact", desc: "compact conversation to save context" },
   { type: "entry", label: "/compact-v2-logs", desc: "view compaction events & summaries" },
   { type: "entry", label: "/compaction", desc: "switch compaction strategy (v1/v2)" },

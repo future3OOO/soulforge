@@ -538,7 +538,7 @@ describe("Boundary — read_file line cap", () => {
 		expect(result.output).not.toContain("showing first");
 	});
 
-	it("501 lines: cap notice shown, line 501 excluded", async () => {
+	it("501 lines: no cap for non-code files under 50MB", async () => {
 		const filePath = join(dir, "just-over.txt");
 		const lines = Array.from({ length: 501 }, (_, i) => `line ${i + 1}`).join("\n");
 		writeFileSync(filePath, lines);
@@ -546,8 +546,7 @@ describe("Boundary — read_file line cap", () => {
 		const result = await readFileTool.execute({ path: filePath });
 		expect(result.success).toBe(true);
 		expect(result.output).toContain("line 500");
-		expect(result.output).not.toContain("line 501");
-		expect(result.output).toContain("showing first 500");
+		expect(result.output).toContain("line 501");
 	});
 
 	it("499 lines: no cap, all lines shown", async () => {

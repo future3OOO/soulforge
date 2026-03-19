@@ -47,6 +47,11 @@ const CMD_DEFS: Array<{ cmd: string; ic: string; desc: string }> = [
   { cmd: "/git-status", ic: "git", desc: "Git status" },
   { cmd: "/help", ic: "help", desc: "Show available commands" },
   { cmd: "/init", ic: "git", desc: "Initialize git repo" },
+  {
+    cmd: "/instructions",
+    ic: "system",
+    desc: "Toggle instruction files (SOULFORGE.md, CLAUDE.md, etc.)",
+  },
   { cmd: "/keys", ic: "cog", desc: "Manage LLM provider API keys" },
   { cmd: "/lazygit", ic: "git", desc: "Launch lazygit" },
   { cmd: "/log", ic: "git", desc: "Show recent commits" },
@@ -159,7 +164,9 @@ export const InputBox = memo(function InputBox({
   const acScrollRef = useRef<ScrollBoxRenderable>(null);
   const textareaRef = useRef<TextareaRenderable>(null);
   const containerRef = useRef<BoxRenderable>(null);
-  // Track logical cursor line for history gating (up on first line / down on last line)
+  // Snapshot visual row at end of each key event — used to gate history on NEXT keypress
+  const preKeyVisualRow = useRef(0);
+  // Track logical cursor line
   const cursorLineRef = useRef(0);
   const lineCountRef = useRef(1);
   // Guard: when true, handleContentChange skips historyIdx reset (programmatic setText)
@@ -418,7 +425,7 @@ export const InputBox = memo(function InputBox({
       const id = ++pasteIdCounter.current;
       const firstLine = (pastedLines[0] ?? "").trim();
       const preview = firstLine.length > 30 ? `${firstLine.slice(0, 30)}...` : firstLine;
-      const placeholder = `<pasted (${preview} +${pastedLines.length} lines, ^E expand)>`;
+      const placeholder = `<pasted (${preview} +${pastedLines.length} lines)>`;
       pasteBlocks.current.push({ id, text, collapsed: true, placeholder });
       textareaRef.current?.insertText(placeholder);
     };
@@ -524,39 +531,11 @@ export const InputBox = memo(function InputBox({
       return;
     }
 
-    // ── Ctrl+E — toggle expand/collapse paste blocks ──
-    if (focused && evt.name === "e" && evt.ctrl) {
-      const blocks = pasteBlocks.current;
-      if (blocks.length > 0) {
-        const currentText = textareaRef.current?.plainText ?? "";
-        let newText = currentText;
-        for (const block of blocks) {
-          if (block.collapsed && newText.includes(block.placeholder)) {
-            newText = newText.replace(block.placeholder, block.text);
-            block.collapsed = false;
-          } else if (!block.collapsed && newText.includes(block.text)) {
-            newText = newText.replace(block.text, block.placeholder);
-            block.collapsed = true;
-          }
-        }
-        if (newText !== currentText) {
-          isNavigatingHistory.current = true;
-          setValue(newText);
-          textareaRef.current?.setText(newText);
-          lineCountRef.current = (newText.match(/\n/g)?.length ?? 0) + 1;
-        }
-      }
-      evt.preventDefault();
-      return;
-    }
-
     // ── Normal editing mode — textarea handles most keys natively ──
     if (!focused || hasMatches || fuzzyMode) return;
 
-    const lineCount = lineCountRef.current;
-
-    // Up arrow — history: single-line enters history, multi-line lets textarea handle cursor
-    if (evt.name === "up" && (historyIdx.current !== -1 || lineCount <= 1)) {
+    // Up arrow — history: only when cursor is on the first visual row (works for both normal + history)
+    if (evt.name === "up" && preKeyVisualRow.current === 0) {
       const history = historyCacheRef.current;
       if (history.length === 0) return;
       if (historyIdx.current === -1) {
@@ -574,15 +553,16 @@ export const InputBox = memo(function InputBox({
         isNavigatingHistory.current = true;
         setValue(entry);
         textareaRef.current?.setText(entry);
+        textareaRef.current?.gotoBufferEnd();
         lineCountRef.current = (entry.match(/\n/g)?.length ?? 0) + 1;
-        cursorLineRef.current = 0;
       }
       evt.preventDefault();
       return;
     }
 
-    // Down arrow — history: navigate back or restore stash
-    if (evt.name === "down" && (historyIdx.current !== -1 || lineCount <= 1)) {
+    // Down arrow — history: only when cursor is on the last visual row
+    const totalVisualRows = calcVisualLines(valueRef.current);
+    if (evt.name === "down" && preKeyVisualRow.current >= totalVisualRows - 1) {
       if (historyIdx.current === -1) return;
       isNavigatingHistory.current = true;
       if (historyIdx.current === 0) {
@@ -590,21 +570,25 @@ export const InputBox = memo(function InputBox({
         const stashed = historyStash.current;
         setValue(stashed);
         textareaRef.current?.setText(stashed);
+        textareaRef.current?.gotoBufferEnd();
         lineCountRef.current = (stashed.match(/\n/g)?.length ?? 0) + 1;
-        cursorLineRef.current = 0;
       } else {
         historyIdx.current -= 1;
         const entry = historyCacheRef.current[historyIdx.current];
         if (entry != null) {
           setValue(entry);
           textareaRef.current?.setText(entry);
+          textareaRef.current?.gotoBufferEnd();
           lineCountRef.current = (entry.match(/\n/g)?.length ?? 0) + 1;
-          cursorLineRef.current = 0;
         }
       }
       evt.preventDefault();
       return;
     }
+
+    // Snapshot document-absolute visual row for next keypress gating
+    preKeyVisualRow.current =
+      (textareaRef.current?.visualCursor?.visualRow ?? 0) + (textareaRef.current?.scrollY ?? 0);
   });
 
   const fuzzyMaxVisible = Math.min(8, Math.max(3, Math.floor(termRows * 0.2)));
@@ -758,36 +742,7 @@ export const InputBox = memo(function InputBox({
           borderColor={borderColor}
           paddingX={1}
         >
-          {showBusy && !showAutocomplete ? (
-            <box
-              flexDirection="row"
-              alignItems="center"
-              width="100%"
-              justifyContent="space-between"
-            >
-              <box flexGrow={1} flexDirection="row">
-                <text fg="#FF0040" attributes={TextAttributes.BOLD} flexShrink={0}>
-                  {">"}{" "}
-                </text>
-                <textarea
-                  ref={textareaRef}
-                  initialValue={value}
-                  onContentChange={handleContentChange}
-                  onCursorChange={handleCursorChange}
-                  keyBindings={INPUT_KEY_BINDINGS}
-                  placeholder="'/' for commands · or steer by sending a new message"
-                  placeholderColor="#555"
-                  focused={focused}
-                  wrapMode="char"
-                  height={1}
-                  flexGrow={1}
-                  backgroundColor="transparent"
-                  textColor="#ccc"
-                />
-              </box>
-              <text fg="#555"> ^X stop</text>
-            </box>
-          ) : fuzzyMode ? (
+          {fuzzyMode ? (
             <box flexDirection="row">
               <text fg="#FF8C00" attributes={TextAttributes.BOLD}>
                 {"search: "}
@@ -806,16 +761,29 @@ export const InputBox = memo(function InputBox({
                 onContentChange={handleContentChange}
                 onCursorChange={handleCursorChange}
                 keyBindings={INPUT_KEY_BINDINGS}
-                placeholder="speak to the forge..."
+                placeholder={
+                  showBusy && !showAutocomplete
+                    ? "'/' for commands · or steer by sending a new message"
+                    : "speak to the forge..."
+                }
                 placeholderColor="#555"
                 focused={focused}
                 wrapMode="char"
-                height={Math.min(maxInputRows, Math.max(1, visualLines))}
+                height={
+                  showBusy && !showAutocomplete
+                    ? 1
+                    : Math.min(maxInputRows, Math.max(1, visualLines))
+                }
                 flexGrow={1}
                 backgroundColor="transparent"
                 textColor="#ccc"
               />
-              {ghost ? (
+              {showBusy && !showAutocomplete ? (
+                <text fg="#555" flexShrink={0}>
+                  {" "}
+                  ^X stop
+                </text>
+              ) : ghost ? (
                 <text fg="#444" flexShrink={0}>
                   {ghost}
                 </text>

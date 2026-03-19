@@ -514,6 +514,13 @@ export function App({
   }, [effectiveConfig.taskRouter, contextManager]);
 
   useEffect(() => {
+    import("../core/instructions.js").then(({ loadInstructions, buildInstructionPrompt }) => {
+      const loaded = loadInstructions(cwd, effectiveConfig.instructionFiles);
+      contextManager.setProjectInstructions(buildInstructionPrompt(loaded));
+    });
+  }, [effectiveConfig.instructionFiles, cwd, contextManager]);
+
+  useEffect(() => {
     if (effectiveConfig.semanticSummaries !== undefined) {
       contextManager.setSemanticSummaries(effectiveConfig.semanticSummaries);
     }
@@ -859,6 +866,7 @@ export function App({
         saveToScope,
         detectScope,
         agentFeatures: effectiveConfig.agentFeatures,
+        instructionFiles: effectiveConfig.instructionFiles,
       });
     },
     [
@@ -882,6 +890,7 @@ export function App({
       saveToScope,
       detectScope,
       effectiveConfig.agentFeatures,
+      effectiveConfig.instructionFiles,
     ],
   );
 

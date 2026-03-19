@@ -5,7 +5,7 @@ import { checkProviders, resolveModel } from "./core/llm/provider.js";
 import { buildProviderOptions } from "./core/llm/provider-options.js";
 import { getAllProviders, registerCustomProviders } from "./core/llm/providers/index.js";
 import { getProviderApiKey, setCustomSecret, setSecret } from "./core/secrets.js";
-import type { AppConfig } from "./types/index.js";
+import type { AppConfig, ForgeMode } from "./types/index.js";
 
 const RST = "\x1b[0m";
 const BOLD = "\x1b[1m";
@@ -13,12 +13,15 @@ const PURPLE = "\x1b[38;2;155;48;255m";
 const DIM = "\x1b[2m";
 const RED = "\x1b[38;2;255;0;64m";
 const GREEN = "\x1b[38;2;0;200;80m";
+const YELLOW = "\x1b[38;2;255;200;0m";
+
+const VALID_MODES: ForgeMode[] = ["default", "architect", "socratic", "challenge", "plan", "auto"];
 
 // ─── Init (config + custom providers) ───
 
-function initConfig(): AppConfig {
+function initConfig(cwd?: string): AppConfig {
   const config = loadConfig();
-  const projectConfig = loadProjectConfig(process.cwd());
+  const projectConfig = loadProjectConfig(cwd ?? process.cwd());
   const merged = mergeConfigs(config, projectConfig);
   if (merged.providers && merged.providers.length > 0) {
     registerCustomProviders(merged.providers);
@@ -122,11 +125,20 @@ function setKey(providerId: string, key: string): void {
   process.exit(1);
 }
 
+// ─── JSONL event writer ───
+
+function writeEvent(event: Record<string, unknown>): void {
+  process.stdout.write(`${JSON.stringify(event)}\n`);
+}
+
 // ─── Run prompt ───
 
 async function runPrompt(opts: HeadlessRunOptions, merged: AppConfig): Promise<void> {
   const startTime = Date.now();
   const cwd = opts.cwd ?? process.cwd();
+  const mode = opts.mode ?? "default";
+  const isQuiet = opts.quiet === true;
+  const isEvents = opts.events === true;
 
   const modelId = opts.modelId ?? merged.defaultModel;
   if (modelId === "none") {
@@ -140,7 +152,7 @@ async function runPrompt(opts: HeadlessRunOptions, merged: AppConfig): Promise<v
   const providerOpts = buildProviderOptions(modelId, merged);
 
   const contextManager = await ContextManager.createAsync(cwd, (step) => {
-    if (!opts.json) process.stderr.write(`${DIM}${step}${RST}\n`);
+    if (!opts.json && !isQuiet && !isEvents) process.stderr.write(`${DIM}${step}${RST}\n`);
   });
 
   const REPO_MAP_TIMEOUT = 15_000;
@@ -154,20 +166,35 @@ async function runPrompt(opts: HeadlessRunOptions, merged: AppConfig): Promise<v
 
   const repoMap = contextManager.isRepoMapReady() ? contextManager.getRepoMap() : undefined;
 
+  const { loadInstructions, buildInstructionPrompt } = await import("./core/instructions.js");
+  const instructions = loadInstructions(cwd, merged.instructionFiles);
+  contextManager.setProjectInstructions(buildInstructionPrompt(instructions));
+
+  if (mode !== "default") contextManager.setForgeMode(mode);
+
   try {
     const { warmupIntelligence } = await import("./core/intelligence/index.js");
     warmupIntelligence(cwd, merged.codeIntelligence);
   } catch {}
 
   const abortController = new AbortController();
+  let timedOut = false;
+
   process.on("SIGINT", () => {
     abortController.abort();
   });
 
+  if (opts.timeout) {
+    setTimeout(() => {
+      timedOut = true;
+      abortController.abort();
+    }, opts.timeout);
+  }
+
   const agent = createForgeAgent({
     model,
     contextManager,
-    forgeMode: "default",
+    forgeMode: mode,
     editorIntegration: {
       diagnostics: false,
       symbols: false,
@@ -187,8 +214,18 @@ async function runPrompt(opts: HeadlessRunOptions, merged: AppConfig): Promise<v
 
   contextManager.updateConversationContext(opts.prompt, 0);
 
-  if (!opts.json) {
+  if (isEvents) {
+    writeEvent({
+      type: "start",
+      model: modelId,
+      mode,
+      repoMap: repoMap
+        ? { files: repoMap.getStats().files, symbols: repoMap.getStats().symbols }
+        : null,
+    });
+  } else if (!opts.json && !isQuiet) {
     process.stderr.write(`${PURPLE}Model:${RST} ${modelId}\n`);
+    if (mode !== "default") process.stderr.write(`${PURPLE}Mode:${RST}  ${mode}\n`);
     if (repoMap) {
       const stats = repoMap.getStats();
       process.stderr.write(
@@ -212,11 +249,38 @@ async function runPrompt(opts: HeadlessRunOptions, merged: AppConfig): Promise<v
     });
 
     for await (const part of result.fullStream) {
+      if (opts.maxSteps && steps >= opts.maxSteps) {
+        abortController.abort();
+        error = `Max steps reached (${String(opts.maxSteps)})`;
+        if (!opts.json && !isEvents) process.stderr.write(`\n${YELLOW}${error}${RST}\n`);
+        if (isEvents) writeEvent({ type: "error", error });
+        break;
+      }
+
       if (part.type === "text-delta") {
         output += part.text;
-        if (!opts.json) process.stdout.write(part.text);
+        if (isEvents) {
+          writeEvent({ type: "text", content: part.text });
+        } else if (!opts.json) {
+          process.stdout.write(part.text);
+        }
       } else if (part.type === "tool-call") {
         toolCalls.push(part.toolName);
+        if (isEvents) {
+          writeEvent({ type: "tool-call", tool: part.toolName });
+        }
+      } else if (part.type === "tool-result") {
+        if (isEvents) {
+          const raw = part.output;
+          let summary: string;
+          if (raw && typeof raw === "object" && "output" in raw) {
+            const out = String((raw as Record<string, unknown>).output);
+            summary = out.length > 200 ? `${out.slice(0, 200)}…` : out;
+          } else {
+            summary = String(raw).slice(0, 200);
+          }
+          writeEvent({ type: "tool-result", tool: part.toolName, summary });
+        }
       } else if (part.type === "finish-step") {
         steps++;
         const usage = part.usage as {
@@ -227,24 +291,44 @@ async function runPrompt(opts: HeadlessRunOptions, merged: AppConfig): Promise<v
         tokens.input += usage.inputTokens ?? 0;
         tokens.output += usage.outputTokens ?? 0;
         tokens.cacheRead += usage.inputTokenDetails?.cacheReadTokens ?? 0;
+        if (isEvents) {
+          writeEvent({ type: "step", step: steps, tokens: { ...tokens } });
+        }
       }
     }
   } catch (err) {
-    if (abortController.signal.aborted) {
+    if (timedOut) {
+      error = `Timeout after ${String(Math.round((opts.timeout ?? 0) / 1000))}s`;
+      if (!opts.json && !isEvents) process.stderr.write(`\n${YELLOW}${error}${RST}\n`);
+      if (isEvents) writeEvent({ type: "error", error });
+    } else if (abortController.signal.aborted) {
       error = "Aborted by user";
-      if (!opts.json) process.stderr.write(`\n${RED}Aborted${RST}\n`);
+      if (!opts.json && !isEvents) process.stderr.write(`\n${RED}Aborted${RST}\n`);
+      if (isEvents) writeEvent({ type: "error", error });
     } else {
       const msg = err instanceof Error ? err.message : String(err);
       error = msg;
-      if (!opts.json) process.stderr.write(`\n${RED}Error:${RST} ${msg}\n`);
+      if (!opts.json && !isEvents) process.stderr.write(`\n${RED}Error:${RST} ${msg}\n`);
+      if (isEvents) writeEvent({ type: "error", error: msg });
     }
   }
 
   const duration = Date.now() - startTime;
 
-  if (opts.json) {
+  if (isEvents) {
+    writeEvent({
+      type: "done",
+      output,
+      steps,
+      tokens,
+      toolCalls,
+      duration,
+      ...(error ? { error } : {}),
+    });
+  } else if (opts.json) {
     const report = {
       model: modelId,
+      mode,
       prompt: opts.prompt,
       output,
       steps,
@@ -256,15 +340,17 @@ async function runPrompt(opts: HeadlessRunOptions, merged: AppConfig): Promise<v
     process.stdout.write(`${JSON.stringify(report, null, 2)}\n`);
   } else {
     if (output.length > 0 && !output.endsWith("\n")) process.stdout.write("\n");
-    process.stderr.write(`${DIM}${"─".repeat(40)}${RST}\n`);
-    const inK = (tokens.input / 1000).toFixed(1);
-    const outK = (tokens.output / 1000).toFixed(1);
-    const cachePct = tokens.input > 0 ? Math.round((tokens.cacheRead / tokens.input) * 100) : 0;
-    const cacheStr = tokens.cacheRead > 0 ? `, ${String(cachePct)}% cached` : "";
-    const durStr = duration < 1000 ? `${String(duration)}ms` : `${(duration / 1000).toFixed(1)}s`;
-    process.stderr.write(
-      `${DIM}${String(steps)} steps — ${inK}k in, ${outK}k out${cacheStr} — ${durStr}${RST}\n`,
-    );
+    if (!isQuiet) {
+      process.stderr.write(`${DIM}${"─".repeat(40)}${RST}\n`);
+      const inK = (tokens.input / 1000).toFixed(1);
+      const outK = (tokens.output / 1000).toFixed(1);
+      const cachePct = tokens.input > 0 ? Math.round((tokens.cacheRead / tokens.input) * 100) : 0;
+      const cacheStr = tokens.cacheRead > 0 ? `, ${String(cachePct)}% cached` : "";
+      const durStr = duration < 1000 ? `${String(duration)}ms` : `${(duration / 1000).toFixed(1)}s`;
+      process.stderr.write(
+        `${DIM}${String(steps)} steps — ${inK}k in, ${outK}k out${cacheStr} — ${durStr}${RST}\n`,
+      );
+    }
   }
 
   contextManager.dispose();
@@ -276,7 +362,12 @@ async function runPrompt(opts: HeadlessRunOptions, merged: AppConfig): Promise<v
 interface HeadlessRunOptions {
   prompt: string;
   modelId?: string;
+  mode?: ForgeMode;
   json?: boolean;
+  events?: boolean;
+  quiet?: boolean;
+  maxSteps?: number;
+  timeout?: number;
   cwd?: string;
 }
 
@@ -289,7 +380,13 @@ type HeadlessAction =
 const USAGE = `${BOLD}Usage:${RST}
   soulforge --headless <prompt>                          Run a prompt
   soulforge --headless --json <prompt>                   JSON output
+  soulforge --headless --events <prompt>                 JSONL event stream
   soulforge --headless --model <provider/model> <prompt> Override model
+  soulforge --headless --mode <mode> <prompt>            Set mode (default/architect/plan/auto)
+  soulforge --headless --max-steps <n> <prompt>          Limit agent steps
+  soulforge --headless --timeout <ms> <prompt>           Abort after timeout
+  soulforge --headless --quiet <prompt>                  Suppress header/footer
+  soulforge --headless --cwd <dir> <prompt>              Set working directory
   echo "prompt" | soulforge --headless                   Pipe from stdin
 
 ${BOLD}Management:${RST}
@@ -327,7 +424,13 @@ export async function parseHeadlessArgs(argv: string[]): Promise<HeadlessAction 
   if (!argv.includes("--headless")) return null;
 
   let modelId: string | undefined;
+  let mode: ForgeMode | undefined;
   let json = false;
+  let events = false;
+  let quiet = false;
+  let maxSteps: number | undefined;
+  let timeout: number | undefined;
+  let cwd: string | undefined;
   const promptParts: string[] = [];
 
   for (let i = 0; i < argv.length; i++) {
@@ -337,8 +440,26 @@ export async function parseHeadlessArgs(argv: string[]): Promise<HeadlessAction 
       modelId = argv[++i];
     } else if (arg?.startsWith("--model=")) {
       modelId = arg.slice("--model=".length);
+    } else if (arg === "--mode" && argv[i + 1]) {
+      const m = argv[++i] as ForgeMode;
+      if (!VALID_MODES.includes(m)) {
+        process.stderr.write(`${RED}Error:${RST} Unknown mode "${m}"\n`);
+        process.stderr.write(`Valid: ${VALID_MODES.join(", ")}\n`);
+        process.exit(1);
+      }
+      mode = m;
     } else if (arg === "--json") {
       json = true;
+    } else if (arg === "--events") {
+      events = true;
+    } else if (arg === "--quiet" || arg === "-q") {
+      quiet = true;
+    } else if (arg === "--max-steps" && argv[i + 1]) {
+      maxSteps = Number.parseInt(argv[++i] ?? "0", 10);
+    } else if (arg === "--timeout" && argv[i + 1]) {
+      timeout = Number.parseInt(argv[++i] ?? "0", 10);
+    } else if (arg === "--cwd" && argv[i + 1]) {
+      cwd = argv[++i];
     } else if (arg === "--session" || arg === "--resume" || arg === "-s") {
       i++;
     } else if (arg?.startsWith("--session=") || arg?.startsWith("--resume=")) {
@@ -360,11 +481,15 @@ export async function parseHeadlessArgs(argv: string[]): Promise<HeadlessAction 
     process.exit(1);
   }
 
-  return { type: "run", opts: { prompt, modelId, json } };
+  return {
+    type: "run",
+    opts: { prompt, modelId, mode, json, events, quiet, maxSteps, timeout, cwd },
+  };
 }
 
 export async function runHeadless(action: HeadlessAction): Promise<void> {
-  const config = initConfig();
+  const cwd = action.type === "run" ? action.opts.cwd : undefined;
+  const config = initConfig(cwd);
   switch (action.type) {
     case "list-providers":
       await listProviders();

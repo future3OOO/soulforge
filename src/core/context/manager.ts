@@ -136,6 +136,7 @@ export class ContextManager {
   private taskRouter: TaskRouter | undefined;
   private lastActiveModel = "";
   private isChild = false;
+  private projectInstructions = "";
   private static readonly REPO_MAP_TTL = 5_000; // 5s — covers getContextBreakdown + buildSystemPrompt in same prompt
 
   private static readonly FILE_TREE_TTL = 30_000; // 30s
@@ -274,6 +275,10 @@ export class ContextManager {
   }
 
   /** Set the current forge mode */
+  setProjectInstructions(content: string): void {
+    this.projectInstructions = content;
+  }
+
   setForgeMode(mode: ForgeMode): void {
     this.forgeMode = mode;
   }
@@ -766,6 +771,7 @@ export class ContextManager {
       "The Soul Map is your foundation — check it before any tool call. If the Soul Map answers your question, act without tools. Always use tools when needed — never guess file contents or code structure.",
       `Project cwd: ${this.cwd}`,
       projectInfo ?? "",
+      this.projectInstructions,
     ];
 
     if (!isMinimal) {

@@ -281,6 +281,8 @@ export interface AppConfig {
   agentFeatures?: AgentFeatures;
   /** Custom OpenAI-compatible providers. Merged: project overrides global by id. */
   providers?: import("../core/llm/providers/types.js").CustomProviderConfig[];
+  /** Instruction files to load into system prompt. Default: ["forge"] (FORGE.md only). */
+  instructionFiles?: string[];
 }
 
 // ─── Focus Types ───

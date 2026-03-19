@@ -29,7 +29,13 @@ soulforge --headless --model anthropic/claude-sonnet-4-20250514 "refactor store.
 |------|-------------|
 | `--headless <prompt>` | Run without TUI. Prompt is all non-flag arguments joined. |
 | `--model <provider/model>` | Override the configured default model. |
-| `--json` | Output structured JSON instead of streaming text. |
+| `--mode <mode>` | Set forge mode: `default`, `architect`, `socratic`, `challenge`, `plan`, `auto`. |
+| `--json` | Output structured JSON after completion. |
+| `--events` | JSONL event stream — one JSON object per line, real-time. |
+| `--quiet` / `-q` | Suppress header/footer on stderr. Text still streams to stdout. |
+| `--max-steps <n>` | Limit agent to N steps, then abort. |
+| `--timeout <ms>` | Abort after N milliseconds. |
+| `--cwd <dir>` | Set working directory (default: current directory). |
 
 When no prompt arguments are given and stdin is not a TTY, the prompt is read from stdin.
 
@@ -91,7 +97,34 @@ With `--json`, a single JSON object is written to stdout after the agent complet
 }
 ```
 
-On error, an `"error"` field is included and the process exits with code 1.
+On error, an `"error"` field is included and the process exits with code 1. The `"mode"` field is also included in JSON output.
+
+### JSONL event stream
+
+With `--events`, each event is a JSON object on its own line, emitted in real time:
+
+```jsonl
+{"type":"start","model":"anthropic/claude-sonnet-4-20250514","mode":"default","repoMap":{"files":280,"symbols":4494}}
+{"type":"text","content":"Let me "}
+{"type":"text","content":"check the code..."}
+{"type":"tool-call","tool":"soul_grep"}
+{"type":"tool-result","tool":"soul_grep","summary":"3 matches found in src/"}
+{"type":"step","step":1,"tokens":{"input":12000,"output":450,"cacheRead":10000}}
+{"type":"text","content":"Found 3 references."}
+{"type":"step","step":2,"tokens":{"input":14000,"output":900,"cacheRead":12000}}
+{"type":"done","output":"Let me check the code...Found 3 references.","steps":2,"tokens":{"input":14000,"output":900,"cacheRead":12000},"toolCalls":["soul_grep"],"duration":4521}
+```
+
+Event types:
+- `start` — emitted once at the beginning with model, mode, and repo map stats
+- `text` — text chunk from the agent (streaming)
+- `tool-call` — agent invoked a tool
+- `tool-result` — tool returned a result (summary, max 200 chars)
+- `step` — agent completed a step with cumulative token counts
+- `error` — error occurred (timeout, abort, API error)
+- `done` — final event with full output, token totals, tool list, duration
+
+This is the format to use when building integrations — parse one line at a time, react to events as they arrive.
 
 ## What's Available
 

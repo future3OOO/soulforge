@@ -85,6 +85,7 @@ Supports installation via npm, pip, cargo, go, and GitHub binaries.
 | `/compact` | Trigger context compaction (V1 or V2 strategy) |
 | `/compaction` | Switch compaction strategy (v1 LLM summary, v2 deterministic extraction) |
 | `/context` | Context budget inspector — per-section token breakdown with visual bar |
+| `/instructions` | Toggle instruction files loaded into system prompt (FORGE.md, CLAUDE.md, .cursorrules, etc.) |
 | `/memory` | Memory system — title-only memories searchable by FTS5 |
 | `/compact-v2-logs` | View compaction event history with token breakdowns |
 
