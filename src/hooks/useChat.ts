@@ -1557,7 +1557,7 @@ export function useChat({
 
         const updateStreamingEstimate = (newChars: number) => {
           streamingCharsRef.current += newChars;
-          const estimatedNewTokens = Math.round(streamingCharsRef.current / 3);
+          const estimatedNewTokens = Math.round(streamingCharsRef.current / 3.5);
           const base = baseTokenUsageRef.current;
           pendingTokenUsage.current = {
             ...base,

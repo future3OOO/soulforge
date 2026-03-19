@@ -89,7 +89,7 @@ export class WorkingStateManager {
 
   // ─── Decisions / Failures / Discoveries ───
 
-  private static readonly MAX_LIST_SIZE = 30;
+  private static readonly MAX_LIST_SIZE = 25;
 
   addDecision(d: string): void {
     if (!this.state.decisions.includes(d)) {

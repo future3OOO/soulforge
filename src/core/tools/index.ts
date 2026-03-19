@@ -737,7 +737,6 @@ export const RESTRICTED_TOOL_NAMES: string[] = [
   "ask_user",
   "plan",
   "update_plan_step",
-  "recall",
 ];
 
 /** Read-only tools for restricted modes (architect, socratic, challenge).
@@ -831,7 +830,6 @@ export const PLAN_EXECUTION_TOOL_NAMES: string[] = [
   "soul_find",
   "soul_analyze",
   "soul_impact",
-  "recall",
 ];
 
 export function planFileName(sessionId?: string): string {
