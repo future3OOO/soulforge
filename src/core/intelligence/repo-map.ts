@@ -1518,6 +1518,24 @@ export class RepoMap {
     }, DIRTY_DEBOUNCE_MS);
   }
 
+  recheckModifiedFiles(): void {
+    if (!this.ready) return;
+    const files = this.db
+      .query<{ path: string; mtime_ms: number }, []>("SELECT path, mtime_ms FROM files")
+      .all();
+    for (const f of files) {
+      const absPath = join(this.cwd, f.path);
+      try {
+        const st = statSync(absPath);
+        if (st.mtimeMs !== f.mtime_ms) {
+          this.onFileChanged(absPath);
+        }
+      } catch {
+        // file deleted — will be caught on next full scan
+      }
+    }
+  }
+
   private flushIfDirty(): void {
     if (!this.dirty || this.dirtyTimer) return;
     this.dirty = false;

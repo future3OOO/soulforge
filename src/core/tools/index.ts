@@ -333,7 +333,11 @@ export function buildTools(
             return { success: false, output: msg, error: msg };
           }
         }
-        return shellTool.execute(args, abortSignal);
+        const result = await shellTool.execute(args, abortSignal);
+        if (result.success && opts?.repoMap?.isReady) {
+          opts.repoMap.recheckModifiedFiles();
+        }
+        return result;
       },
     }),
 
@@ -1276,6 +1280,9 @@ export function buildSubagentCodeTools(opts?: {
       execute: async (args, { abortSignal }) => {
         await new Promise<void>((r) => setTimeout(r, 0));
         const result = await shellTool.execute(args, abortSignal);
+        if (result.success && opts?.repoMap?.isReady) {
+          opts.repoMap.recheckModifiedFiles();
+        }
         if (!result.success) return result;
         return { ...result, output: truncateBytes(result.output) };
       },

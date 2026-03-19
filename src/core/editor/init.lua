@@ -535,6 +535,16 @@ vim.api.nvim_create_autocmd("BufWritePre", {
   end,
 })
 
+-- ─── Notify SoulForge on buffer write (repo map live updates) ───
+vim.api.nvim_create_autocmd("BufWritePost", {
+  callback = function()
+    local path = vim.api.nvim_buf_get_name(0)
+    if path and path ~= "" then
+      pcall(vim.rpcnotify, 0, "soulforge:file_written", path)
+    end
+  end,
+})
+
 -- ─── Filetype detection (fallback) ───
 vim.cmd("filetype plugin indent on")
 

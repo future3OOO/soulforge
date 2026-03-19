@@ -3,13 +3,14 @@ import { join } from "node:path";
 import { generateText } from "ai";
 import { useRepoMapStore } from "../../stores/repomap.js";
 import type { EditorIntegration, ForgeMode, TaskRouter } from "../../types/index.js";
+import { setNeovimFileWrittenHandler } from "../editor/neovim.js";
 import { buildGitContext } from "../git/status.js";
 import { RepoMap, type SymbolForSummary } from "../intelligence/repo-map.js";
 import { resolveModel } from "../llm/provider.js";
 import { MemoryManager } from "../memory/manager.js";
 import { getModeInstructions } from "../modes/prompts.js";
 import { buildForbiddenContext, isForbidden } from "../security/forbidden.js";
-import { onFileEdited, onFileRead } from "../tools/file-events.js";
+import { emitFileEdited, onFileEdited, onFileRead } from "../tools/file-events.js";
 
 // System prompt: question-driven tool routing + prohibition enforcement
 // Pattern: map the QUESTION the agent would ask → the tool that answers it
@@ -192,6 +193,9 @@ export class ContextManager {
   private wireFileEventHandlers(): void {
     this.unsubEdit = onFileEdited((absPath) => this.onFileChanged(absPath));
     this.unsubRead = onFileRead((absPath) => this.trackMentionedFile(absPath));
+    setNeovimFileWrittenHandler((absPath) => {
+      emitFileEdited(absPath, "");
+    });
   }
 
   private startRepoMapScan(): void {
@@ -224,9 +228,7 @@ export class ContextManager {
         useRepoMapStore.getState().setScanError("");
         if (!this.repoMap.isSemanticEnabled()) {
           const persisted = this.repoMap.detectPersistedSemanticMode();
-          if (persisted !== "off") {
-            this.setSemanticSummaries(persisted);
-          }
+          this.setSemanticSummaries(persisted === "off" ? "ast" : persisted);
         }
       } else {
         this.repoMapReady = false;

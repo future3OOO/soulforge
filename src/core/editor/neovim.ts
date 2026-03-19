@@ -24,6 +24,12 @@ const DEFAULT_ROWS = 24;
  * - `--embed`: run as an embedded UI client (waits for nvim_ui_attach)
  * - `-i NONE`: skip ShaDa file (marks, registers, history — irrelevant for embedded use)
  */
+let _onFileWritten: ((absPath: string) => void) | null = null;
+
+export function setNeovimFileWrittenHandler(handler: (absPath: string) => void): void {
+  _onFileWritten = handler;
+}
+
 export async function launchNeovim(
   nvimPath: string,
   cols: number = DEFAULT_COLS,
@@ -70,6 +76,9 @@ export async function launchNeovim(
   api.on("notification", (method: string, args: unknown[]) => {
     if (method === "redraw") {
       screen.processEvents(args);
+    } else if (method === "soulforge:file_written" && _onFileWritten) {
+      const path = Array.isArray(args) ? args[0] : undefined;
+      if (typeof path === "string" && path) _onFileWritten(path);
     }
   });
 
