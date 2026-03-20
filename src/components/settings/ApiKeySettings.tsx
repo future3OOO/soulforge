@@ -1,4 +1,4 @@
-import { TextAttributes } from "@opentui/core";
+import { decodePasteBytes, type PasteEvent, TextAttributes } from "@opentui/core";
 import { useKeyboard, useRenderer, useTerminalDimensions } from "@opentui/react";
 import { useEffect, useState } from "react";
 import { create } from "zustand";
@@ -132,8 +132,10 @@ export function ApiKeySettings({ visible, onClose }: Props) {
 
   useEffect(() => {
     if (!visible || mode !== "input") return;
-    const handler = (event: { text: string }) => {
-      const cleaned = event.text.replace(/[\n\r]/g, "").trim();
+    const handler = (event: PasteEvent) => {
+      const cleaned = decodePasteBytes(event.bytes)
+        .replace(/[\n\r]/g, "")
+        .trim();
       if (cleaned) setInputValue((v) => v + cleaned);
     };
     renderer.keyInput.on("paste", handler);

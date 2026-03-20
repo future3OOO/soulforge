@@ -1,7 +1,7 @@
 import { homedir } from "node:os";
 import { join } from "node:path";
 import type { BoxRenderable, ScrollBoxRenderable, TextareaRenderable } from "@opentui/core";
-import { TextAttributes } from "@opentui/core";
+import { decodePasteBytes, type PasteEvent, TextAttributes } from "@opentui/core";
 import { useKeyboard, useRenderer, useTerminalDimensions } from "@opentui/react";
 import { memo, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { getCommandDefs } from "../../core/commands/registry.js";
@@ -339,9 +339,9 @@ export const InputBox = memo(function InputBox({
 
   // Intercept paste — 4+ lines get collapsed inline
   useEffect(() => {
-    const handler = (event: { text: string; preventDefault: () => void }) => {
+    const handler = (event: PasteEvent) => {
       if (!isFocused) return;
-      const text = event.text.replace(/\r\n/g, "\n").replace(/\r/g, "\n");
+      const text = decodePasteBytes(event.bytes).replace(/\r\n/g, "\n").replace(/\r/g, "\n");
       const pastedLines = text.split("\n");
 
       // 1-3 lines: let textarea handle normally
