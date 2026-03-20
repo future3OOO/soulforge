@@ -51,7 +51,7 @@ export interface CompactionConfig {
 }
 
 export const DEFAULT_COMPACTION_CONFIG: CompactionConfig = {
-  strategy: "v1",
+  strategy: "v2",
   triggerThreshold: 0.7,
   resetThreshold: 0.4,
   keepRecent: 4,

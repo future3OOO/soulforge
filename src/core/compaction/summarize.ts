@@ -26,7 +26,10 @@ export async function buildV2Summary(opts: {
 
   const structuredState = wsm.serialize();
 
-  if (skipLlm || !model) {
+  // Skip gap-fill when structured state is rich enough — the incremental
+  // extraction already captured the important context. Saves ~2k tokens.
+  const RICH_STATE_THRESHOLD = 15;
+  if (skipLlm || !model || wsm.slotCount() >= RICH_STATE_THRESHOLD) {
     return structuredState;
   }
 
