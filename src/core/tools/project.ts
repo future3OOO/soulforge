@@ -36,6 +36,7 @@ interface ProjectProfile {
   lint: string | null;
   typecheck: string | null;
   run: string | null;
+  format: string | null;
 }
 
 export function detectProfile(cwd: string): ProjectProfile {
@@ -45,6 +46,7 @@ export function detectProfile(cwd: string): ProjectProfile {
     lint: null,
     typecheck: null,
     run: null,
+    format: null,
   };
 
   const has = (f: string) => existsSync(join(cwd, f));
@@ -68,6 +70,7 @@ export function detectProfile(cwd: string): ProjectProfile {
         : "bunx tsc --noEmit"
       : null;
     profile.run = scripts.dev ? "bun run dev" : scripts.start ? "bun run start" : null;
+    profile.format = scripts.format ? "bun run format" : detectJsFormatter(cwd, "bunx");
     return profile;
   }
 
@@ -78,6 +81,7 @@ export function detectProfile(cwd: string): ProjectProfile {
     profile.lint = "deno lint";
     profile.typecheck = "deno check .";
     profile.run = scripts.dev ? "deno task dev" : "deno run main.ts";
+    profile.format = "deno fmt";
     return profile;
   }
 
@@ -94,6 +98,7 @@ export function detectProfile(cwd: string): ProjectProfile {
         : "npx tsc --noEmit"
       : null;
     profile.run = scripts.dev ? `${run} dev` : scripts.start ? `${run} start` : null;
+    profile.format = scripts.format ? `${run} format` : detectJsFormatter(cwd, "npx");
     return profile;
   }
 
@@ -104,6 +109,7 @@ export function detectProfile(cwd: string): ProjectProfile {
     profile.lint = "cargo clippy";
     profile.typecheck = "cargo check";
     profile.run = "cargo run";
+    profile.format = "rustfmt";
     return profile;
   }
 
@@ -115,6 +121,7 @@ export function detectProfile(cwd: string): ProjectProfile {
       has(".golangci.yml") || has(".golangci.yaml") ? "golangci-lint run" : "go vet ./...";
     profile.typecheck = "go build ./...";
     profile.run = "go run .";
+    profile.format = "gofmt -w";
     return profile;
   }
 
@@ -133,6 +140,8 @@ export function detectProfile(cwd: string): ProjectProfile {
     profile.lint =
       has("ruff.toml") || has(".ruff.toml") ? `${prefix}ruff check` : `${prefix}flake8`;
     profile.typecheck = has("pyrightconfig.json") ? `${prefix}pyright` : `${prefix}mypy .`;
+    profile.format =
+      has("ruff.toml") || has(".ruff.toml") ? `${prefix}ruff format` : `${prefix}black`;
     // Framework-specific run commands
     if (has("manage.py")) profile.run = `${prefix}python manage.py runserver`;
     else if (has("app.py") || has("main.py")) profile.run = `${prefix}uvicorn main:app --reload`;
@@ -146,6 +155,7 @@ export function detectProfile(cwd: string): ProjectProfile {
     profile.lint = "dotnet format --verify-no-changes";
     profile.typecheck = "dotnet build";
     profile.run = "dotnet run";
+    profile.format = null;
     return profile;
   }
 
@@ -165,6 +175,11 @@ export function detectProfile(cwd: string): ProjectProfile {
           ? "vendor/bin/psalm"
           : null;
     profile.run = has("artisan") ? "php artisan serve" : null;
+    profile.format = has("pint.json")
+      ? "vendor/bin/pint"
+      : has(".php-cs-fixer.php") || has(".php-cs-fixer.dist.php")
+        ? "vendor/bin/php-cs-fixer fix"
+        : null;
     return profile;
   }
 
@@ -175,6 +190,7 @@ export function detectProfile(cwd: string): ProjectProfile {
     profile.lint = has(".swiftlint.yml") ? "swiftlint" : null;
     profile.typecheck = "swift build";
     profile.run = "swift run";
+    profile.format = has(".swiftformat") ? "swiftformat" : null;
     return profile;
   }
 
@@ -196,6 +212,7 @@ export function detectProfile(cwd: string): ProjectProfile {
     profile.lint = "dart analyze";
     profile.typecheck = "dart analyze";
     profile.run = "flutter run";
+    profile.format = "dart format";
     return profile;
   }
 
@@ -206,6 +223,7 @@ export function detectProfile(cwd: string): ProjectProfile {
     profile.lint = "mix credo";
     profile.typecheck = "mix dialyzer";
     profile.run = "mix phx.server";
+    profile.format = "mix format";
     return profile;
   }
 
@@ -216,6 +234,7 @@ export function detectProfile(cwd: string): ProjectProfile {
     profile.lint = "bundle exec rubocop";
     profile.typecheck = null;
     profile.run = has("config.ru") ? "bundle exec rails server" : null;
+    profile.format = "bundle exec rubocop -a --fail-level error";
     return profile;
   }
 
@@ -233,6 +252,7 @@ export function detectProfile(cwd: string): ProjectProfile {
     else profile.lint = `${gw} check`;
     profile.typecheck = has("build.gradle.kts") ? `${gw} compileKotlin` : `${gw} compileJava`;
     profile.run = `${gw} run`;
+    profile.format = null; // spotless doesn't support single-file formatting
     return profile;
   }
 
@@ -274,6 +294,7 @@ export function detectProfile(cwd: string): ProjectProfile {
     profile.lint = "zig fmt --check src/";
     profile.typecheck = "zig build";
     profile.run = "zig build run";
+    profile.format = "zig fmt";
     return profile;
   }
 
@@ -284,6 +305,11 @@ export function detectProfile(cwd: string): ProjectProfile {
     profile.lint = "hlint .";
     profile.typecheck = "stack build";
     profile.run = "stack run";
+    profile.format = has(".ormolu")
+      ? "ormolu --mode inplace"
+      : has(".fourmolu.yaml")
+        ? "fourmolu --mode inplace"
+        : null;
     return profile;
   }
 
@@ -294,6 +320,7 @@ export function detectProfile(cwd: string): ProjectProfile {
     profile.lint = has(".scalafmt.conf") ? "scalafmt --check" : null;
     profile.typecheck = "sbt compile";
     profile.run = "sbt run";
+    profile.format = has(".scalafmt.conf") ? "scalafmt" : null;
     return profile;
   }
 
@@ -335,6 +362,27 @@ function detectJsLinter(cwd: string, runner = ""): string | null {
     has(".eslintrc.yml")
   )
     return `${run}eslint .`;
+  return null;
+}
+
+function detectJsFormatter(cwd: string, runner = ""): string | null {
+  const has = (f: string) => existsSync(join(cwd, f));
+  const run = runner ? `${runner} ` : "";
+  if (has("biome.json") || has("biome.jsonc")) return `${run}biome format --write`;
+  if (has("dprint.json") || has("dprint.jsonc")) return `${run}dprint fmt`;
+  if (
+    has(".prettierrc") ||
+    has(".prettierrc.js") ||
+    has(".prettierrc.json") ||
+    has(".prettierrc.yml") ||
+    has(".prettierrc.yaml") ||
+    has(".prettierrc.cjs") ||
+    has(".prettierrc.mjs") ||
+    has("prettier.config.js") ||
+    has("prettier.config.cjs") ||
+    has("prettier.config.mjs")
+  )
+    return `${run}prettier --write`;
   return null;
 }
 
@@ -779,6 +827,33 @@ export const projectTool = {
     }
   },
 };
+
+/**
+ * Run the project's configured formatter on a single file.
+ * Returns whether formatting was applied. Best-effort — failures return false.
+ */
+export async function formatFile(filePath: string, cwd?: string): Promise<boolean> {
+  const effectiveCwd = cwd ?? process.cwd();
+  const profile = detectProfile(effectiveCwd);
+  if (!profile.format) return false;
+
+  const command = `${profile.format} ${shellQuote(filePath)}`;
+  try {
+    const proc = Bun.spawn(["sh", "-c", command], {
+      cwd: effectiveCwd,
+      stdout: "pipe",
+      stderr: "pipe",
+      env: { ...process.env, FORCE_COLOR: "0", NO_COLOR: "1" },
+    });
+    const timer = setTimeout(() => proc.kill(), 10_000);
+    await Promise.all([new Response(proc.stdout).text(), new Response(proc.stderr).text()]);
+    const exitCode = await proc.exited;
+    clearTimeout(timer);
+    return exitCode === 0;
+  } catch {
+    return false;
+  }
+}
 
 function resolveRunScript(profile: ProjectProfile, script: string, cwd: string): string | null {
   const scripts = readPackageScripts(cwd);

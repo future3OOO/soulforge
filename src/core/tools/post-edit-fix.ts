@@ -1,7 +1,7 @@
 import { readFileSync, writeFileSync } from "node:fs";
 import { resolve } from "node:path";
 import { getIntelligenceRouter } from "../intelligence/index.js";
-import type { RefactorResult } from "../intelligence/types.js";
+import type { FormatEdit, RefactorResult } from "../intelligence/types.js";
 import { pushEdit } from "./edit-stack.js";
 import { emitFileEdited } from "./file-events.js";
 
@@ -38,6 +38,33 @@ export async function autoFixFile(filePath: string): Promise<string[]> {
     applied.push("fixAll");
   }
 
+  // 3. Format — final pass (after imports/fixAll may have shifted lines)
+  // Priority: project formatter (authoritative) → LSP formatDocument → skip
+  try {
+    const { formatFile } = await import("./project.js");
+    const preFormat = readFileSync(absPath, "utf-8");
+    const formatted = await formatFile(absPath);
+    if (formatted) {
+      // Re-read the file that the formatter wrote and push to edit stack
+      const afterFormat = readFileSync(absPath, "utf-8");
+      if (afterFormat !== preFormat) {
+        pushEdit(absPath, preFormat);
+        emitFileEdited(absPath, afterFormat);
+        applied.push("format");
+      }
+    } else {
+      const formatResult = await router.executeWithFallback(language, "formatDocument", (b) =>
+        b.formatDocument ? b.formatDocument(absPath) : Promise.resolve(null),
+      );
+      if (formatResult) {
+        applyFormatEdits(formatResult);
+        applied.push("format");
+      }
+    }
+  } catch {
+    // Formatting unavailable — no-op
+  }
+
   return applied;
 }
 
@@ -61,6 +88,34 @@ export async function autoFixFiles(filePaths: string[]): Promise<Map<string, str
   );
 
   return results;
+}
+
+function applyFormatEdits(formatEdit: FormatEdit): void {
+  const content = readFileSync(formatEdit.file, "utf-8");
+
+  const lineStarts: number[] = [0];
+  for (let i = 0; i < content.length; i++) {
+    if (content[i] === "\n") {
+      lineStarts.push(i + 1);
+    }
+  }
+
+  const sorted = [...formatEdit.edits].sort((a, b) => {
+    if (a.startLine !== b.startLine) return b.startLine - a.startLine;
+    return b.startCol - a.startCol;
+  });
+
+  let result = content;
+  for (const edit of sorted) {
+    const startOffset = (lineStarts[edit.startLine] ?? 0) + edit.startCol - 1;
+    const endOffset = (lineStarts[edit.endLine] ?? 0) + edit.endCol - 1;
+    result = result.slice(0, startOffset) + edit.newText + result.slice(endOffset);
+  }
+
+  if (result === content) return;
+  pushEdit(formatEdit.file, content);
+  writeFileSync(formatEdit.file, result, "utf-8");
+  emitFileEdited(formatEdit.file, result);
 }
 
 function applyRefactorEdits(result: RefactorResult): void {
