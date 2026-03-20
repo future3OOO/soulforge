@@ -51,7 +51,6 @@ interface Props {
   reasoningExpanded?: boolean;
 }
 
-
 function formatTime(ts: number): string {
   const d = new Date(ts);
   return d.toLocaleTimeString("en-US", {
@@ -77,7 +76,6 @@ function formatToolSummary(tc: ToolCall): string {
   }
   return "";
 }
-
 
 const RETRY_COLOR = "#fa0";
 
@@ -115,7 +113,6 @@ function parseRetry(text: string): { attempt: string; reason: string; delay: str
   if (!match) return null;
   return { attempt: match[1] as string, reason: match[2] as string, delay: match[3] as string };
 }
-
 
 function SystemMessage({ msg, animate = true }: { msg: ChatMessage; animate?: boolean }) {
   const time = formatTime(msg.timestamp);
@@ -201,7 +198,6 @@ function SystemMessage({ msg, animate = true }: { msg: ChatMessage; animate?: bo
 }
 
 const META_TOOLS = new Set(["plan", "update_plan_step", "ask_user", "editor_panel"]);
-
 
 function parseBackend(result?: { output: string }): string | null {
   if (!result) return null;
@@ -289,7 +285,6 @@ function ToolCallRow({ tc }: { tc: ToolCall }) {
   );
 }
 
-
 function CollapsedToolGroup({ calls }: { calls: ToolCall[] }) {
   const count = calls.length;
   const allOk = calls.every((tc) => tc.result?.success);
@@ -305,7 +300,6 @@ function CollapsedToolGroup({ calls }: { calls: ToolCall[] }) {
     </box>
   );
 }
-
 
 function EditToolCall({
   tc,
@@ -332,7 +326,6 @@ function EditToolCall({
     />
   );
 }
-
 
 function parsePlanFromArgs(tc: ToolCall): PlanOutput | null {
   if (tc.name !== "write_plan" && tc.name !== "plan") return null;
@@ -388,7 +381,6 @@ function WritePlanCall({ tc }: { tc: ToolCall }) {
   );
 }
 
-
 function isPlanExecution(content: string): boolean {
   return content.startsWith("Execute this plan.");
 }
@@ -397,7 +389,6 @@ function parsePlanTitle(content: string): string {
   const match = content.match(/^#\s+(.+)$/m);
   return match?.[1] ?? "Plan";
 }
-
 
 const UserMessageAccent = memo(function UserMessageAccent({ msg }: { msg: ChatMessage }) {
   const time = formatTime(msg.timestamp);
@@ -462,7 +453,6 @@ const UserMessageAccent = memo(function UserMessageAccent({ msg }: { msg: ChatMe
   );
 });
 
-
 const UserMessageBubble = memo(function UserMessageBubble({ msg }: { msg: ChatMessage }) {
   const time = formatTime(msg.timestamp);
 
@@ -482,7 +472,6 @@ const UserMessageBubble = memo(function UserMessageBubble({ msg }: { msg: ChatMe
     </box>
   );
 });
-
 
 function renderSegments(
   segments: MessageSegment[],
@@ -697,7 +686,6 @@ const AssistantMessage = memo(function AssistantMessage({
     </box>
   );
 });
-
 
 export const StaticMessage = memo(function StaticMessage({
   msg,

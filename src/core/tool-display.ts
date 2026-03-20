@@ -1,4 +1,3 @@
-
 export type ToolCategory =
   | "file"
   | "shell"
@@ -106,7 +105,6 @@ export function getBackendLabel(tag: string): string {
   return BACKEND_LABELS_BASE[tag] ?? tag;
 }
 
-
 import { icon } from "./icons.js";
 
 const TOOL_ICON_MAP: Record<string, string> = {
@@ -154,7 +152,6 @@ export const TOOL_ICONS = new Proxy({} as Record<string, string>, {
   },
 });
 
-
 export const TOOL_LABELS: Record<string, string> = {
   read_file: "Reading",
   edit_file: "Editing",
@@ -187,7 +184,6 @@ export const TOOL_LABELS: Record<string, string> = {
   soul_impact: "Impact analysis",
   _nudge: "Output nudge",
 };
-
 
 /** Resolve all display properties for a tool in one call. */
 export function resolveToolDisplay(toolName: string, defaultColor = "#888") {

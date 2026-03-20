@@ -46,8 +46,6 @@ const COLORS = {
 
 export const RENDER_DEBOUNCE = 80;
 
-
-
 export const Spinner = memo(function Spinner({ color }: { color?: string }) {
   const frame = useSpinnerFrame();
   return <span fg={color ?? COLORS.spinnerActive}>{SPINNER_FRAMES[frame]}</span>;
@@ -132,7 +130,12 @@ const StatusIcon = memo(function StatusIcon({
 
 const ChildStepRow = memo(
   function ChildStepRow({ step }: { step: SubagentStep }) {
-    const { icon, iconColor, label, category: staticCategory } = resolveToolDisplay(step.toolName, "#666");
+    const {
+      icon,
+      iconColor,
+      label,
+      category: staticCategory,
+    } = resolveToolDisplay(step.toolName, "#666");
     const hasSplit = !!(step.backend && staticCategory && step.backend !== staticCategory);
     const category = hasSplit ? staticCategory : (step.backend ?? staticCategory);
     const backendTag = hasSplit ? step.backend : null;
@@ -344,7 +347,12 @@ const MultiAgentChildRow = memo(
                 </box>
               )}
               {visible.map((step, i) => {
-                const { icon: stepIcon, iconColor: stepColor, label: stepLabel, category: stepStaticCategory } = resolveToolDisplay(step.toolName, "#666");
+                const {
+                  icon: stepIcon,
+                  iconColor: stepColor,
+                  label: stepLabel,
+                  category: stepStaticCategory,
+                } = resolveToolDisplay(step.toolName, "#666");
                 const stepHasSplit = !!(
                   step.backend &&
                   stepStaticCategory &&
@@ -614,9 +622,7 @@ const ToolRow = memo(
     }, [editDiff, tc.result]);
 
     const iconColor = isRepoMapHit ? "#2dd4bf" : toolDisplay.iconColor;
-    const staticCategory = isRepoMapHit
-      ? ("soul-map" as ToolCategory)
-      : toolDisplay.category;
+    const staticCategory = isRepoMapHit ? ("soul-map" as ToolCategory) : toolDisplay.category;
     const backendCategory = useMemo(() => {
       if (isRepoMapHit) return null;
       if (tc.result) {

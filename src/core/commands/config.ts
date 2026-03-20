@@ -4,6 +4,7 @@ import type { AgentFeatures } from "../../types/index.js";
 import { icon, setNerdFont } from "../icons.js";
 import type { CommandContext, CommandHandler } from "./types.js";
 import { sysMsg } from "./utils.js";
+
 type ToggleConfig = {
   configKey: string;
   title: string;
@@ -39,7 +40,6 @@ function createTogglePicker(config: ToggleConfig): CommandHandler {
     });
   };
 }
-
 
 async function handleFont(input: string, ctx: CommandContext): Promise<void> {
   const trimmed = input.trim();
@@ -284,7 +284,6 @@ const handleVerbose = createTogglePicker({
   messageTemplate: (v, s) => `Verbose mode ${v === "on" ? "on" : "off"} (${s})`,
 });
 
-
 function handleReasoning(_input: string, ctx: CommandContext): void {
   const patch = (v: string) => ({ showReasoning: v === "on" });
   ctx.openCommandPicker({
@@ -502,7 +501,6 @@ const handleVimHints = createTogglePicker({
   offDescription: "hide vim keybinding hints",
   messageTemplate: (v, s) => `Vim hints ${v === "visible" ? "visible" : "hidden"} (${s})`,
 });
-
 
 function handleModelScope(_input: string, ctx: CommandContext): void {
   ctx.openCommandPicker({

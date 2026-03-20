@@ -51,7 +51,6 @@ import type {
 import { reprimeContextFromMessages, safeParseArgs } from "./chat/message-processing.js";
 import { buildSessionMeta } from "./useSessionBuilder.js";
 
-
 export interface TabState {
   id: string;
   label: string;

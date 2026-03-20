@@ -25,9 +25,7 @@ export function toolOk(output: string, extra?: Partial<ToolResult>): ToolResult 
  * Wrap a function body in a try/catch that returns a ToolResult on error.
  * Eliminates the repeated `catch (err: unknown) { return { success: false, output: String(err), error: String(err) }; }` pattern.
  */
-export async function catchToolError(
-  fn: () => Promise<ToolResult>,
-): Promise<ToolResult> {
+export async function catchToolError(fn: () => Promise<ToolResult>): Promise<ToolResult> {
   try {
     return await fn();
   } catch (err: unknown) {
