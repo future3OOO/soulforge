@@ -130,17 +130,18 @@ export class LspBackend implements IntelligenceBackend {
     symbol: string,
     line: number | undefined,
     column: number | undefined,
-    nvimMethod: "findDefinition" | "findReferences" | "findImplementation",
-    clientMethod:
-      | "textDocumentDefinition"
-      | "textDocumentReferences"
-      | "textDocumentImplementation",
+    method: "definition" | "references" | "implementation",
   ): Promise<SourceLocation[] | null> {
     const pos = this.resolvePosition(file, symbol, line, column);
     if (!pos) return null;
 
     if (nvimBridge.isNvimAvailable()) {
-      const locations = await nvimBridge[nvimMethod](file, pos.line, pos.col);
+      const locations =
+        method === "definition"
+          ? await nvimBridge.findDefinition(file, pos.line, pos.col)
+          : method === "references"
+            ? await nvimBridge.findReferences(file, pos.line, pos.col)
+            : await nvimBridge.findImplementation(file, pos.line, pos.col);
       if (locations && locations.length > 0) return locations.map(lspLocationToSourceLocation);
       return null;
     }
@@ -148,7 +149,12 @@ export class LspBackend implements IntelligenceBackend {
     const client = await this.getStandaloneClient(file);
     if (!client) return null;
     try {
-      const locations = await client[clientMethod](file, pos.line, pos.col);
+      const locations =
+        method === "definition"
+          ? await client.textDocumentDefinition(file, pos.line, pos.col)
+          : method === "references"
+            ? await client.textDocumentReferences(file, pos.line, pos.col)
+            : await client.textDocumentImplementation(file, pos.line, pos.col);
       if (locations.length > 0) return locations.map(lspLocationToSourceLocation);
     } catch {}
     return null;
@@ -160,14 +166,7 @@ export class LspBackend implements IntelligenceBackend {
     line?: number,
     column?: number,
   ): Promise<SourceLocation[] | null> {
-    return this.lspPositionRequest(
-      file,
-      symbol,
-      line,
-      column,
-      "findDefinition",
-      "textDocumentDefinition",
-    );
+    return this.lspPositionRequest(file, symbol, line, column, "definition");
   }
 
   async findReferences(
@@ -176,14 +175,7 @@ export class LspBackend implements IntelligenceBackend {
     line?: number,
     column?: number,
   ): Promise<SourceLocation[] | null> {
-    return this.lspPositionRequest(
-      file,
-      symbol,
-      line,
-      column,
-      "findReferences",
-      "textDocumentReferences",
-    );
+    return this.lspPositionRequest(file, symbol, line, column, "references");
   }
 
   async findSymbols(file: string, query?: string): Promise<SymbolInfo[] | null> {
@@ -865,14 +857,7 @@ export class LspBackend implements IntelligenceBackend {
     line?: number,
     column?: number,
   ): Promise<SourceLocation[] | null> {
-    return this.lspPositionRequest(
-      file,
-      symbol,
-      line,
-      column,
-      "findImplementation",
-      "textDocumentImplementation",
-    );
+    return this.lspPositionRequest(file, symbol, line, column, "implementation");
   }
 
   async getTypeHierarchy(

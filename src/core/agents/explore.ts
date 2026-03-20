@@ -68,6 +68,7 @@ interface ExploreAgentOptions {
   onApproveFetchPage?: (url: string) => Promise<boolean>;
   repoMap?: import("../intelligence/repo-map.js").RepoMap;
   contextWindow?: number;
+  disablePruning?: boolean;
 }
 
 export function createExploreAgent(model: LanguageModel, options?: ExploreAgentOptions) {
@@ -99,6 +100,7 @@ export function createExploreAgent(model: LanguageModel, options?: ExploreAgentO
     allTools,
     symbolLookup: buildSymbolLookup(options?.repoMap),
     contextWindow: options?.contextWindow,
+    disablePruning: options?.disablePruning,
   });
 
   return new ToolLoopAgent({

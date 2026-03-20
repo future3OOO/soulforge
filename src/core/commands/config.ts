@@ -309,30 +309,63 @@ function handleReasoning(_input: string, ctx: CommandContext): void {
 }
 
 function handleCompaction(_input: string, ctx: CommandContext): void {
-  const patch = (v: string) => ({ compaction: { strategy: v as "v1" | "v2" } });
+  type Strategy = import("../compaction/types.js").CompactionStrategy;
+  let localStrategy = ctx.compactionStrategy as Strategy;
+  let localPruning = !ctx.disablePruning;
+
+  const buildOptions = () => [
+    {
+      value: "v1",
+      label: `V1 — LLM Summarization${localStrategy === "v1" ? " ●" : ""}`,
+      description: "batch summarize with LLM when context is full (default)",
+    },
+    {
+      value: "v2",
+      label: `V2 — Incremental Extraction${localStrategy === "v2" ? " ●" : ""}`,
+      description: "extract structured state as-you-go, cheap gap-fill on compact",
+    },
+    {
+      value: "disabled",
+      label: `Disabled${localStrategy === "disabled" ? " ●" : ""}`,
+      description: "no auto-compaction — context will fill until the model's limit",
+    },
+    {
+      value: "pruning",
+      label: `Subagent Pruning: ${localPruning ? "on" : "off"}`,
+      description: "semantic pruning of old tool results in subagent context windows",
+    },
+  ];
+
   ctx.openCommandPicker({
-    title: "Compaction Strategy",
+    title: "Compaction & Pruning",
     icon: icon("compact"),
-    currentValue: ctx.compactionStrategy,
+    keepOpen: true,
+    currentValue: localStrategy,
     scopeEnabled: true,
     initialScope: ctx.detectScope("compaction"),
-    options: [
-      {
-        value: "v1",
-        label: "V1 — LLM Summarization",
-        description: "batch summarize with LLM when context is full (default)",
-      },
-      {
-        value: "v2",
-        label: "V2 — Incremental Extraction",
-        description: "extract structured state as-you-go, cheap gap-fill on compact",
-      },
-    ],
+    options: buildOptions(),
     onSelect: (value, scope) => {
-      ctx.saveToScope(patch(value), scope ?? "project");
-      sysMsg(ctx, `Compaction strategy: ${value} (${scope ?? "project"})`);
+      if (value === "pruning") {
+        localPruning = !localPruning;
+        ctx.saveToScope({ compaction: { disablePruning: !localPruning } }, scope ?? "project");
+        sysMsg(
+          ctx,
+          `Subagent pruning ${localPruning ? "enabled" : "disabled"} (${scope ?? "project"})`,
+        );
+      } else {
+        localStrategy = value as Strategy;
+        ctx.saveToScope({ compaction: { strategy: localStrategy } }, scope ?? "project");
+        sysMsg(ctx, `Compaction strategy: ${value} (${scope ?? "project"})`);
+      }
+      useUIStore.getState().updatePickerOptions(buildOptions());
     },
-    onScopeMove: (value, from, to) => ctx.saveToScope(patch(value), to, from),
+    onScopeMove: (value, from, to) => {
+      if (value === "pruning") {
+        ctx.saveToScope({ compaction: { disablePruning: !localPruning } }, to, from);
+      } else {
+        ctx.saveToScope({ compaction: { strategy: localStrategy } }, to, from);
+      }
+    },
   });
 }
 

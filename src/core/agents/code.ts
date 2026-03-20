@@ -52,6 +52,7 @@ interface CodeAgentOptions {
   onApproveFetchPage?: (url: string) => Promise<boolean>;
   repoMap?: import("../intelligence/repo-map.js").RepoMap;
   contextWindow?: number;
+  disablePruning?: boolean;
 }
 
 export function createCodeAgent(model: LanguageModel, options?: CodeAgentOptions) {
@@ -83,6 +84,7 @@ export function createCodeAgent(model: LanguageModel, options?: CodeAgentOptions
     allTools,
     symbolLookup: buildSymbolLookup(options?.repoMap),
     contextWindow: options?.contextWindow,
+    disablePruning: options?.disablePruning,
   });
 
   return new ToolLoopAgent({

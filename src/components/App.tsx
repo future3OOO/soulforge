@@ -745,6 +745,7 @@ export function App({
         verbose: effectiveConfig.verbose === true,
         diffStyle: effectiveConfig.diffStyle ?? "default",
         compactionStrategy: effectiveConfig.compaction?.strategy ?? "v1",
+        disablePruning: effectiveConfig.compaction?.disablePruning === true,
         showReasoning: uiState.showReasoning,
         setShowReasoning: uiState.setShowReasoning,
         openSetup: () => uiState.openModal("setup"),
@@ -789,6 +790,7 @@ export function App({
       detectScope,
       effectiveConfig.agentFeatures,
       effectiveConfig.instructionFiles,
+      effectiveConfig.compaction?.disablePruning,
     ],
   );
 

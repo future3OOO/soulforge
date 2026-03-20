@@ -1,6 +1,7 @@
 import { execFile } from "node:child_process";
 import { create } from "zustand";
 import { subscribeWithSelector } from "zustand/middleware";
+import type { CompactionStrategy } from "../core/compaction/types.js";
 import { getIntelligenceChildPids } from "../core/intelligence/index.js";
 import { getProxyPid } from "../core/proxy/lifecycle.js";
 
@@ -31,7 +32,7 @@ interface StatusBarState {
   rssMB: number;
   compacting: boolean;
   compactElapsed: number;
-  compactionStrategy: "v1" | "v2";
+  compactionStrategy: CompactionStrategy;
   v2Slots: number;
 
   setTokenUsage: (usage: TokenUsage) => void;
@@ -42,7 +43,7 @@ interface StatusBarState {
   setRssMB: (mb: number) => void;
   setCompacting: (v: boolean) => void;
   setCompactElapsed: (s: number) => void;
-  setCompactionStrategy: (s: "v1" | "v2") => void;
+  setCompactionStrategy: (s: CompactionStrategy) => void;
   setV2Slots: (n: number) => void;
 }
 

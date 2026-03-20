@@ -688,11 +688,7 @@ export const InputBox = memo(function InputBox({
                 placeholderColor="#555"
                 focused={focused}
                 wrapMode="char"
-                height={
-                  showBusy && !showAutocomplete
-                    ? 1
-                    : Math.min(maxInputRows, Math.max(1, visualLines))
-                }
+                height={Math.min(maxInputRows, Math.max(1, visualLines))}
                 flexGrow={1}
                 backgroundColor="transparent"
                 textColor="#ccc"

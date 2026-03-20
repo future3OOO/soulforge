@@ -185,8 +185,8 @@ export interface ContextManagementConfig {
 }
 
 export interface CompactionConfig {
-  /** "v1" = LLM batch summarization (default), "v2" = incremental structured extraction */
-  strategy?: "v1" | "v2";
+  /** "v1" = LLM batch summarization (default), "v2" = incremental structured extraction, "disabled" = no auto-compaction */
+  strategy?: "v1" | "v2" | "disabled";
   /** Threshold (0-1) at which auto-compaction triggers. Default: 0.7 */
   triggerThreshold?: number;
   /** Hysteresis reset threshold. Default: 0.4 */
@@ -197,6 +197,8 @@ export interface CompactionConfig {
   maxToolResults?: number;
   /** Use a cheap LLM gap-fill pass for fuzzy extraction (v2 only). Default: true */
   llmExtraction?: boolean;
+  /** Disable semantic pruning of old tool results in subagents. Default: false */
+  disablePruning?: boolean;
 }
 
 export interface AgentFeatures {

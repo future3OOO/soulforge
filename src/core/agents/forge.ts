@@ -276,6 +276,7 @@ interface ForgeAgentOptions {
   agentFeatures?: AgentFeatures;
   planExecution?: boolean;
   drainSteering?: () => string | null;
+  disablePruning?: boolean;
 }
 
 /**
@@ -310,6 +311,7 @@ export function createForgeAgent({
   agentFeatures,
   planExecution,
   drainSteering,
+  disablePruning,
 }: ForgeAgentOptions) {
   const isRestricted = RESTRICTED_MODES.has(forgeMode);
   const repoMap = contextManager.isRepoMapReady() ? contextManager.getRepoMap() : undefined;
@@ -345,6 +347,7 @@ export function createForgeAgent({
           sharedCacheRef,
           agentFeatures,
           skills,
+          disablePruning,
         }).dispatch,
       }
     : buildSubagentTools({
@@ -363,6 +366,7 @@ export function createForgeAgent({
         sharedCacheRef,
         agentFeatures,
         skills,
+        disablePruning,
       });
 
   const cachedReadFile =

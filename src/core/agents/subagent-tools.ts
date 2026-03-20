@@ -43,6 +43,7 @@ export interface SubagentModels {
   sharedCacheRef?: SharedCacheRef;
   agentFeatures?: AgentFeatures;
   skills?: Array<{ name: string; content: string }>;
+  disablePruning?: boolean;
 }
 
 function formatToolArgs(toolCall: { toolName: string; input?: unknown }): string {
@@ -180,6 +181,7 @@ export function createAgent(
     onApproveFetchPage: models.onApproveFetchPage,
     repoMap: models.repoMap,
     contextWindow,
+    disablePruning: models.disablePruning,
   };
   const agent = useExplore ? createExploreAgent(model, opts) : createCodeAgent(model, opts);
   return { agent, modelId, tier };

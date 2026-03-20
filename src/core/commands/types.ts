@@ -10,6 +10,7 @@ import type {
   ForgeMode,
   NvimConfigMode,
 } from "../../types/index.js";
+import type { CompactionStrategy } from "../compaction/types.js";
 import type { ContextManager } from "../context/manager.js";
 
 export interface CommandContext {
@@ -39,7 +40,8 @@ export interface CommandContext {
   vimHints: boolean;
   verbose: boolean;
   diffStyle: "default" | "sidebyside" | "compact";
-  compactionStrategy: "v1" | "v2";
+  compactionStrategy: CompactionStrategy;
+  disablePruning: boolean;
   showReasoning: boolean;
   setShowReasoning: (v: boolean) => void;
   openSetup: () => void;

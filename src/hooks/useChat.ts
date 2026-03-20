@@ -883,6 +883,7 @@ export function useChat({
 
   const autoSummarizedRef = useRef(false);
   useEffect(() => {
+    if (effectiveConfig.compaction?.strategy === "disabled") return;
     if (activeModelRef.current === "none") return;
     if (contextTokens <= 0) return;
     const ctxWindow = getModelContextWindow(activeModelRef.current);
@@ -1369,6 +1370,7 @@ export function useChat({
           agentFeatures: effectiveConfig.agentFeatures,
           planExecution: planExecutionRef.current,
           drainSteering,
+          disablePruning: effectiveConfig.compaction?.disablePruning,
         });
         let result!: StreamTextResult<ToolSet, never>;
         const MAX_TRANSIENT_RETRIES = 3;
@@ -1404,6 +1406,7 @@ export function useChat({
                           sessionId: sessionIdRef.current,
                           agentFeatures: effectiveConfig.agentFeatures,
                           planExecution: planExecutionRef.current,
+                          disablePruning: effectiveConfig.compaction?.disablePruning,
                         });
                       })();
                 result = (await currentAgent.stream({

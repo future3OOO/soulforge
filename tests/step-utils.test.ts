@@ -663,6 +663,54 @@ describe("buildPrepareStep — step gating", () => {
 	});
 });
 
+describe("buildPrepareStep — disablePruning", () => {
+	// A read followed by an edit to the same file — semanticPrune replaces the stale read.
+	// Content must be >200 chars to trigger the stale replacement.
+	const longContent = "x".repeat(250);
+	const staleReadMsgs: ModelMessage[] = [
+		{ role: "user", content: [{ type: "text", text: "fix a.ts" }] },
+		assistantToolCall([{ id: "r1", name: "read_file", input: { path: "/a.ts" } }]),
+		toolResult([{ id: "r1", name: "read_file", output: longContent }]),
+		assistantToolCall([{ id: "e1", name: "edit_file", input: { path: "/a.ts", old_string: "old", new_string: "new" } }]),
+		toolResult([{ id: "e1", name: "edit_file", output: "ok" }]),
+	];
+
+	it("prunes stale reads by default (disablePruning unset)", () => {
+		const msgs = staleReadMsgs.map((m) => ({ ...m }));
+		const result = callPrepareStep(
+			{ role: "code", allTools: TOOLS },
+			{ stepNumber: 1, messages: msgs },
+		);
+		const toolMsg = result?.messages?.[2];
+		expect(toolMsg).toBeDefined();
+		const part = (toolMsg as { content: Array<{ output: unknown }> }).content[0];
+		const text = typeof part?.output === "string"
+			? part.output
+			: typeof (part?.output as { value?: unknown })?.value === "string"
+				? (part.output as { value: string }).value
+				: JSON.stringify(part?.output);
+		expect(text).toContain("stale");
+	});
+
+	it("skips pruning when disablePruning: true", () => {
+		const msgs = staleReadMsgs.map((m) => ({ ...m }));
+		const result = callPrepareStep(
+			{ role: "code", allTools: TOOLS, disablePruning: true },
+			{ stepNumber: 1, messages: msgs },
+		);
+		// With pruning disabled, messages should either be unchanged or not include [stale]
+		const toolMsg = (result?.messages ?? msgs)[2];
+		expect(toolMsg).toBeDefined();
+		const part = (toolMsg as { content: Array<{ output: unknown }> }).content[0];
+		const text = typeof part?.output === "string"
+			? part.output
+			: typeof (part?.output as { value?: unknown })?.value === "string"
+				? (part.output as { value: string }).value
+				: JSON.stringify(part?.output);
+		expect(text).not.toContain("stale");
+	});
+});
+
 describe("buildPrepareStep — cache control", () => {
 	it("sets ephemeral cache on penultimate message at step > 0", () => {
 		const msgs: ModelMessage[] = [

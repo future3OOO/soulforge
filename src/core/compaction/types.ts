@@ -34,8 +34,10 @@ export interface ToolResultSlot {
   timestamp: number;
 }
 
+export type CompactionStrategy = "v1" | "v2" | "disabled";
+
 export interface CompactionConfig {
-  strategy: "v1" | "v2";
+  strategy: CompactionStrategy;
   /** Threshold (0-1) at which auto-compaction triggers. Default: 0.7 */
   triggerThreshold?: number;
   /** Hysteresis reset threshold. Default: 0.4 */

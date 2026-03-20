@@ -53,7 +53,7 @@ const COMPACT_FRAMES = ["◐", "◓", "◑", "◒"];
 interface CompactState {
   active: boolean;
   frame: number;
-  strategy: "v1" | "v2";
+  strategy: import("../../core/compaction/types.js").CompactionStrategy;
   v2Slots: number;
 }
 
@@ -84,6 +84,8 @@ function buildContent(
   if (compact?.active) {
     const spinner = COMPACT_FRAMES[compact.frame % COMPACT_FRAMES.length] ?? "◐";
     chunks.push(fgStyle("#5af")(` ${spinner} compacting`));
+  } else if (compact?.strategy === "disabled") {
+    chunks.push(fgStyle("#633")(" compact:off"));
   } else if (compact?.strategy === "v2") {
     chunks.push(fgStyle("#336")(` v2:${String(compact.v2Slots)}`));
   }

@@ -15,6 +15,7 @@ export interface PrepareStepOptions {
   allTools: Record<string, unknown>;
   symbolLookup?: SymbolLookup;
   contextWindow?: number;
+  disablePruning?: boolean;
 }
 
 // Context-proportional thresholds (fraction of model's context window).
@@ -382,6 +383,7 @@ export function buildPrepareStep({
   allTools: _allTools,
   symbolLookup: _symbolLookup,
   contextWindow: ctxWindow,
+  disablePruning,
 }: PrepareStepOptions): PrepareStepResult {
   const cw = Math.min(ctxWindow ?? DEFAULT_CONTEXT_WINDOW, MAX_SUBAGENT_CONTEXT);
   const nudgeThreshold = Math.floor(cw * OUTPUT_NUDGE_PCT);
@@ -443,7 +445,7 @@ export function buildPrepareStep({
     }
 
     // Semantic pruning: stale reads + canceled plans + re-read stubbing
-    if (stepNumber >= 1) {
+    if (stepNumber >= 1 && !disablePruning) {
       let msgs = result.messages ?? messages;
       msgs = semanticPrune(msgs, pathMap);
       msgs = stripOldEditArgs(msgs, msgs.length - KEEP_RECENT_MESSAGES);
