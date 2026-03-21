@@ -179,6 +179,42 @@ export function extractWrittenFiles(command: string): string[] {
   return files;
 }
 
+const SEARCH_TOOL_RE = /(?:^|\|)\s*(?:rg|grep|egrep|fgrep|ag|ack|pt)\s/;
+const READ_PIPE_RE = /(?:^|\|)\s*(?:cat|head|tail|less|more|bat)\s+(?!\/dev\/)/;
+const FIND_RE = /(?:^|[;&|])\s*find\s+/;
+
+interface SearchRedirect {
+  blocked: true;
+  tool: string;
+  hint: string;
+}
+
+function checkSearchAntiPattern(command: string, force?: boolean): SearchRedirect | null {
+  if (force) return null;
+  if (SEARCH_TOOL_RE.test(command)) {
+    return {
+      blocked: true,
+      tool: "soul_grep",
+      hint: 'Use soul_grep for search (count mode, word boundary, symbol context). Use soul_grep with dep: "pkg" for node_modules/vendor. Add force: true to bypass.',
+    };
+  }
+  if (READ_PIPE_RE.test(command)) {
+    return {
+      blocked: true,
+      tool: "read_file",
+      hint: "Use read_file (with target/name for symbols, startLine/endLine for ranges). Add force: true to bypass.",
+    };
+  }
+  if (FIND_RE.test(command)) {
+    return {
+      blocked: true,
+      tool: "soul_find / glob",
+      hint: "Use soul_find for fuzzy file/symbol search or glob for pattern matching. Add force: true to bypass.",
+    };
+  }
+  return null;
+}
+
 /**
  * Build Vercel AI SDK tool definitions.
  * AI SDK v6 uses `inputSchema` instead of `parameters`.
@@ -514,11 +550,25 @@ export function buildTools(
         command: z.string().describe("Shell command to execute"),
         cwd: z.string().optional().describe("Working directory"),
         timeout: z.number().optional().describe("Timeout in ms"),
+        force: z
+          .boolean()
+          .optional()
+          .describe(
+            "Bypass search redirect. Required when you genuinely need raw shell for search (e.g. complex pipelines, binary inspection, node_modules type checking)",
+          ),
       }),
       execute: async (args, { abortSignal }) => {
         await new Promise<void>((r) => setTimeout(r, 0));
         resetReadCounter();
         resetReadCache(); // Shell commands can modify any file
+        const redirect = checkSearchAntiPattern(args.command, args.force);
+        if (redirect) {
+          return {
+            success: false,
+            output: `Use ${redirect.tool} instead. ${redirect.hint}`,
+            error: "search redirect",
+          };
+        }
         if (args.cwd) {
           const gate = await gateOutsideCwd("shell", resolve(args.cwd));
           if (gate.blocked) return gate.result;
@@ -1448,9 +1498,23 @@ export function buildSubagentCodeTools(opts?: {
         command: z.string().describe("Shell command to execute"),
         cwd: z.string().optional().describe("Working directory"),
         timeout: z.number().optional().describe("Timeout in ms"),
+        force: z
+          .boolean()
+          .optional()
+          .describe(
+            "Bypass search redirect. Required when you genuinely need raw shell for search (e.g. complex pipelines, binary inspection, node_modules type checking)",
+          ),
       }),
       execute: async (args, { abortSignal }) => {
         await new Promise<void>((r) => setTimeout(r, 0));
+        const redirect = checkSearchAntiPattern(args.command, args.force);
+        if (redirect) {
+          return {
+            success: false,
+            output: `Use ${redirect.tool} instead. ${redirect.hint}`,
+            error: "search redirect",
+          };
+        }
         const result = await shellTool.execute(args, abortSignal);
         if (result.success && opts?.repoMap?.isReady) {
           opts.repoMap.recheckModifiedFiles();

@@ -142,13 +142,9 @@ export function sleep(ms: number, signal?: AbortSignal): Promise<void> {
 
 export function detectTaskTier(task: AgentTask): "trivial" | "standard" {
   if (task.tier) return task.tier;
-  const t = task.task;
-  const targetFileLine = t.split("\n").find((l) => l.startsWith("Target files:"));
-  const targetFileCount = targetFileLine ? targetFileLine.split(",").length : 0;
-  const isSingleFileRead = task.role === "explore" && targetFileCount <= 1 && t.length < 200;
-  const isSmallEdit = task.role === "code" && targetFileCount <= 1 && t.length < 200;
-  if (task.role === "investigate") return "standard";
-  return isSingleFileRead || isSmallEdit ? "trivial" : "standard";
+  if (task.role !== "code") return "standard";
+  const fileCount = task.targetFileCount ?? 0;
+  return fileCount <= 1 && task.task.length < 200 ? "trivial" : "standard";
 }
 
 export function selectModel(task: AgentTask, models: SubagentModels): { model: LanguageModel } {
@@ -277,23 +273,16 @@ export async function runAgentTask(
 
   let enrichedPrompt = task.task;
 
-  const taskTargetFiles = new Set<string>();
-  const targetMatch = task.task.match(/Target files:\n([\s\S]*?)(?:\n---|\n\n|$)/);
-  if (targetMatch) {
-    for (const line of targetMatch[1]?.split("\n") ?? []) {
-      const trimmed = line.trim();
-      if (trimmed && !trimmed.startsWith(" ") && trimmed.includes("/")) {
-        taskTargetFiles.add(normalizePath(trimmed));
-      }
-    }
-  }
+  const taskTargetFiles = new Set<string>((task.targetFiles ?? []).map((f) => normalizePath(f)));
 
   if (taskTargetFiles.size > 0) {
     const peerTasks = bus.tasks.filter((t) => t.agentId !== task.agentId);
     const overlaps: string[] = [];
     for (const peer of peerTasks) {
+      if (!peer.targetFiles) continue;
+      const peerFiles = new Set(peer.targetFiles.map((f) => normalizePath(f)));
       for (const file of taskTargetFiles) {
-        if (peer.task.includes(file)) {
+        if (peerFiles.has(file)) {
           overlaps.push(`${peer.agentId} also targets ${file}`);
         }
       }

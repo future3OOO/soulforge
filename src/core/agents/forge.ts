@@ -274,7 +274,7 @@ function buildForgePrepareStep(
       // and the agent isn't in plan mode (audits/plans legitimately need many reads)
       if (!hasDispatch) {
         if (readsSinceAction >= 8) {
-          const nudge = `${String(readsSinceAction)} consecutive reads without an action (plan/edit/dispatch). If you're gathering for a plan, call plan now. If this is an audit, use dispatch for parallel scanning.`;
+          const nudge = `${String(readsSinceAction)} consecutive reads without an action (edit/dispatch). Act on what you have — edit files directly or use dispatch for parallel work.`;
           result.system = result.system ? `${result.system}\n\n${nudge}` : nudge;
         }
       }

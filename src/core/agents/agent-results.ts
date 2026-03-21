@@ -44,7 +44,7 @@ const READ_TOOLS = new Set(["read_file", "read_code", "navigate", "soul_analyze"
 const EDIT_TOOLS = new Set(["edit_file", "write_file", "create_file"]);
 const SEARCH_TOOLS = new Set(["grep", "glob", "soul_grep", "soul_find", "soul_impact"]);
 
-const STUB_PATTERNS = ["[Already in your context", "[stale", "[summary]", "[pruned]", "[cached]"];
+const STUB_PATTERNS = ["[Already in your context", "← file was edited", "←", "[cached]"];
 
 function extractPathFromArgs(args: Record<string, unknown> | undefined): string | undefined {
   if (!args) return undefined;
@@ -106,7 +106,7 @@ export function buildFallbackResult(
       if (text.length < MIN_CONTENT_LEN || isStub(text)) continue;
       const capped =
         text.length > PER_FILE_CONTENT_CAP
-          ? `${text.slice(0, PER_FILE_CONTENT_CAP)}\n[... ${String(text.length - PER_FILE_CONTENT_CAP)} chars truncated]`
+          ? `${text.slice(0, PER_FILE_CONTENT_CAP)}\n[... capped at ${String(Math.round(PER_FILE_CONTENT_CAP / 1000))}K chars]`
           : text;
       readContents.push({ file, content: capped });
     }
@@ -118,9 +118,7 @@ export function buildFallbackResult(
   const text = result.text.trim();
   if (text) {
     parts.push(
-      text.length > TEXT_TRUNCATION_CAP
-        ? `${text.slice(0, TEXT_TRUNCATION_CAP)} [truncated]`
-        : text,
+      text.length > TEXT_TRUNCATION_CAP ? `${text.slice(0, TEXT_TRUNCATION_CAP)} [...]` : text,
     );
   }
 
@@ -284,7 +282,7 @@ export function formatDoneResult(done: DoneToolResult): string {
 
   const result = parts.join("\n");
   if (result.length > DONE_RESULT_CAP) {
-    return `${result.slice(0, DONE_RESULT_CAP)}\n[truncated — ${String(result.length - DONE_RESULT_CAP)} chars omitted]`;
+    return `${result.slice(0, DONE_RESULT_CAP)}\n[... capped at ${String(Math.round(DONE_RESULT_CAP / 1000))}K chars]`;
   }
   return result;
 }

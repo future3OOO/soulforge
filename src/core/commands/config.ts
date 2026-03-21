@@ -332,7 +332,7 @@ function handleCompaction(_input: string, ctx: CommandContext): void {
     {
       value: "pruning",
       label: `Subagent Pruning: ${localPruning ? "on" : "off"}`,
-      description: "semantic pruning of old tool results in subagent context windows",
+      description: `semantic pruning of old tool results in subagent context windows${localPruning ? " — breaks prompt cache, auto-disabled for Claude models" : ""}`,
     },
   ];
 

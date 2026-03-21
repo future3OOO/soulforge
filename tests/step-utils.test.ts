@@ -159,7 +159,7 @@ describe("pruning rules", () => {
 			output: LONG_CONTENT,
 		});
 		const result = callCompact(msgs);
-		expect(resultText(result, 1)).toContain("[summary]");
+		expect(resultText(result, 1)).toContain("←");
 	});
 
 	it("preserves recent messages within KEEP_RECENT_MESSAGES window", () => {
@@ -199,7 +199,7 @@ describe("summary formats", () => {
 			output: LONG_CONTENT,
 		});
 		const result = callCompact(msgs);
-		expect(resultText(result, 1)).toBe("[summary] 100 lines");
+		expect(resultText(result, 1)).toBe("← 100 lines");
 	});
 
 	it("read_file with symbols: exact format", () => {
@@ -218,7 +218,7 @@ describe("summary formats", () => {
 		});
 		const result = callCompact(msgs, symbolLookup);
 		expect(resultText(result, 1)).toBe(
-			"[summary] 100 lines — exports: Foo, bar",
+			"← 100 lines — exports: Foo, bar",
 		);
 	});
 
@@ -230,7 +230,7 @@ describe("summary formats", () => {
 			output: LONG_CONTENT,
 		});
 		const result = callCompact(msgs);
-		expect(resultText(result, 1)).toBe("[summary] 100 lines");
+		expect(resultText(result, 1)).toBe("← 100 lines");
 	});
 
 	it("grep: includes pattern in summary", () => {
@@ -243,7 +243,7 @@ describe("summary formats", () => {
 		});
 		const result = callCompact(msgs);
 		const text = resultText(result, 1);
-		expect(text).toStartWith("[summary] 42 matches");
+		expect(text).toStartWith("← 42 matches");
 		expect(text).toContain('"x"');
 	});
 
@@ -260,7 +260,7 @@ describe("summary formats", () => {
 		});
 		const result = callCompact(msgs);
 		const text = resultText(result, 1);
-		expect(text).toStartWith("[summary] 25 files");
+		expect(text).toStartWith("← 25 files");
 		expect(text).toContain("**/*.ts");
 	});
 
@@ -274,7 +274,7 @@ describe("summary formats", () => {
 		});
 		const result = callCompact(msgs);
 		const text = resultText(result, 1);
-		expect(text).toStartWith("[summary]");
+		expect(text).toStartWith("←");
 		expect(text).toContain("ls -la src/");
 	});
 
@@ -291,7 +291,7 @@ describe("summary formats", () => {
 		});
 		const result = callCompact(msgs);
 		const text = resultText(result, 1);
-		expect(text).toStartWith("[summary] dispatch completed");
+		expect(text).toStartWith("← dispatch completed");
 		expect(text).toContain("edited: src/a.ts, src/b.ts");
 		expect(text).toContain("3/3 agents");
 	});
@@ -306,7 +306,7 @@ describe("summary formats", () => {
 		});
 		const result = callCompact(msgs);
 		const text = resultText(result, 1);
-		expect(text).toStartWith("[summary] dispatch completed");
+		expect(text).toStartWith("← dispatch completed");
 		expect(text).toContain("My Dispatch");
 		expect(text).toContain("2/2 agents");
 		expect(text).toContain("reader-1 (explore)");
@@ -328,7 +328,7 @@ describe("summary formats", () => {
 			});
 			const result = callCompact(msgs);
 			const text = resultText(result, 1);
-			expect(text).toMatch(/^\[summary\] \d+ lines, \d+ chars$/);
+			expect(text).toMatch(/^← \d+ lines, \d+ chars$/);
 		}
 	});
 
@@ -365,7 +365,7 @@ describe("summary formats", () => {
 			);
 		}
 		const result = callCompact(msgs);
-		expect(resultText(result, 1)).toContain("[summary]");
+		expect(resultText(result, 1)).toContain("←");
 	});
 
 	it("handles {output: string} format from extractText", () => {
@@ -401,7 +401,7 @@ describe("summary formats", () => {
 			);
 		}
 		const result = callCompact(msgs);
-		expect(resultText(result, 1)).toContain("[summary]");
+		expect(resultText(result, 1)).toContain("←");
 	});
 });
 
@@ -494,7 +494,7 @@ describe("preservation rules", () => {
 		}
 
 		const result = callCompact(msgs);
-		expect(resultText(result, 1, 0)).toBe("[summary] 100 lines");
+		expect(resultText(result, 1, 0)).toBe("← 100 lines");
 		expect(resultText(result, 1, 1)).toBe(LONG_CONTENT);
 	});
 });
@@ -539,7 +539,7 @@ describe("symbol enrichment", () => {
 			output: LONG_CONTENT,
 		});
 		const result = callCompact(msgs, symbolLookup);
-		expect(resultText(result, 1)).toBe("[summary] 100 lines");
+		expect(resultText(result, 1)).toBe("← 100 lines");
 	});
 
 	it("resolves read_code 'file' input key", () => {
@@ -555,7 +555,7 @@ describe("symbol enrichment", () => {
 		});
 		const result = callCompact(msgs, symbolLookup);
 		expect(resultText(result, 1)).toBe(
-			"[summary] 100 lines — exports: User",
+			"← 100 lines — exports: User",
 		);
 	});
 
@@ -572,7 +572,7 @@ describe("symbol enrichment", () => {
 		});
 		const result = callCompact(msgs, symbolLookup);
 		expect(resultText(result, 1)).toBe(
-			"[summary] 100 lines — exports: helper",
+			"← 100 lines — exports: helper",
 		);
 	});
 
@@ -637,7 +637,7 @@ describe("symbol enrichment", () => {
 
 		const result = callCompact(msgs, symbolLookup);
 		const summary = resultText(result, 1);
-		expect(summary).toBe("[summary] 100 lines");
+		expect(summary).toBe("← 100 lines");
 	});
 });
 
@@ -689,7 +689,7 @@ describe("buildPrepareStep — disablePruning", () => {
 			: typeof (part?.output as { value?: unknown })?.value === "string"
 				? (part.output as { value: string }).value
 				: JSON.stringify(part?.output);
-		expect(text).toContain("stale");
+		expect(text).toContain("← file was edited");
 	});
 
 	it("skips pruning when disablePruning: true", () => {
@@ -698,7 +698,7 @@ describe("buildPrepareStep — disablePruning", () => {
 			{ role: "code", allTools: TOOLS, disablePruning: true },
 			{ stepNumber: 1, messages: msgs },
 		);
-		// With pruning disabled, messages should either be unchanged or not include [stale]
+		// With pruning disabled, messages should either be unchanged or not include ← file was edited
 		const toolMsg = (result?.messages ?? msgs)[2];
 		expect(toolMsg).toBeDefined();
 		const part = (toolMsg as { content: Array<{ output: unknown }> }).content[0];
@@ -1031,7 +1031,7 @@ describe("summary formats — real audit tool outputs", () => {
 		});
 		const result = compactOldToolResults(msgs);
 		const text = resultText(result, 1);
-		expect(text).toStartWith("[summary] dispatch completed");
+		expect(text).toStartWith("← dispatch completed");
 		expect(text).toContain("Comprehensive project audit");
 		expect(text).toContain("8/8 agents");
 		expect(text).toContain("edited:");
@@ -1047,7 +1047,7 @@ describe("summary formats — real audit tool outputs", () => {
 		});
 		const result = compactOldToolResults(msgs);
 		const text = resultText(result, 1);
-		expect(text).toStartWith("[summary] dispatch completed");
+		expect(text).toStartWith("← dispatch completed");
 		expect(text).not.toContain("agents:");
 		expect(text).not.toContain("edited:");
 		expect(text).not.toContain("verification:");
@@ -1061,7 +1061,7 @@ describe("summary formats — real audit tool outputs", () => {
 		});
 		const result = compactOldToolResults(msgs);
 		const text = resultText(result, 1);
-		expect(text).toMatch(/\[summary\] \d+ matches for "estimatedItemSize"/);
+		expect(text).toMatch(/← \d+ matches for "estimatedItemSize"/);
 	});
 
 	it("soul_grep: includes match count and search pattern from args", () => {
@@ -1156,7 +1156,7 @@ describe("summary formats — real audit tool outputs", () => {
 		});
 		const result = compactOldToolResults(msgs);
 		const text = resultText(result, 1);
-		expect(text).toStartWith("[summary] `");
+		expect(text).toStartWith("← `");
 		expect(text).toContain("lines");
 	});
 
@@ -1218,7 +1218,7 @@ describe("summary formats — real audit tool outputs", () => {
 		});
 		const result = compactOldToolResults(msgs);
 		const text = resultText(result, 1);
-		expect(text).toStartWith("[summary] duplication:");
+		expect(text).toStartWith("← duplication:");
 		expect(text).toContain("Structural clones");
 	});
 
@@ -1232,7 +1232,7 @@ describe("summary formats — real audit tool outputs", () => {
 		});
 		const result = compactOldToolResults(msgs);
 		const text = resultText(result, 1);
-		expect(text).toStartWith("[summary] dependents:");
+		expect(text).toStartWith("← dependents:");
 		expect(text).toContain("Dependents of lib/social-api.ts");
 	});
 
@@ -1244,7 +1244,7 @@ describe("summary formats — real audit tool outputs", () => {
 		});
 		const result = compactOldToolResults(msgs);
 		const text = resultText(result, 1);
-		expect(text).toStartWith("[summary] Structural clones");
+		expect(text).toStartWith("← Structural clones");
 	});
 
 	it("list_dir: extracts entry count", () => {
@@ -1255,7 +1255,7 @@ describe("summary formats — real audit tool outputs", () => {
 		});
 		const result = compactOldToolResults(msgs);
 		const text = resultText(result, 1);
-		expect(text).toBe("[summary] 23 entries");
+		expect(text).toBe("← 23 entries");
 	});
 
 	it("list_dir: falls back to line count when no entry match", () => {
@@ -1267,7 +1267,7 @@ describe("summary formats — real audit tool outputs", () => {
 		});
 		const result = compactOldToolResults(msgs);
 		const text = resultText(result, 1);
-		expect(text).toBe("[summary] 25 entries");
+		expect(text).toBe("← 25 entries");
 	});
 
 	it("memory: includes memory count", () => {
@@ -1278,7 +1278,7 @@ describe("summary formats — real audit tool outputs", () => {
 		});
 		const result = compactOldToolResults(msgs);
 		const text = resultText(result, 1);
-		expect(text).toBe("[summary] 5 memories");
+		expect(text).toBe("← 5 memories");
 	});
 
 	it("plan: includes title and step count", () => {
@@ -1315,7 +1315,7 @@ describe("summary formats — real audit tool outputs", () => {
 		});
 		const result = compactOldToolResults(msgs);
 		const text = resultText(result, 1);
-		expect(text).toStartWith("[summary] user:");
+		expect(text).toStartWith("← user:");
 		expect(text).toContain("Yes, go ahead and fix all the performance issues first.");
 	});
 
@@ -1327,7 +1327,7 @@ describe("summary formats — real audit tool outputs", () => {
 		});
 		const result = compactOldToolResults(msgs);
 		const text = resultText(result, 1);
-		expect(text).toStartWith("[summary] feat: fix race condition");
+		expect(text).toStartWith("← feat: fix race condition");
 	});
 
 	it("read_file: includes line count", () => {
@@ -1350,7 +1350,7 @@ describe("summary formats — real audit tool outputs", () => {
 		});
 		const result = compactOldToolResults(msgs);
 		const text = resultText(result, 1);
-		expect(text).toMatch(/\[summary\] \d+ lines, \d+ chars/);
+		expect(text).toMatch(/← \d+ lines, \d+ chars/);
 	});
 });
 
@@ -1456,7 +1456,7 @@ describe("argsMap — non-object input handling", () => {
 		}
 		const result = compactOldToolResults(msgs);
 		const text = resultText(result, 1);
-		expect(text).toContain("[summary]");
+		expect(text).toContain("←");
 	});
 });
 
@@ -1655,7 +1655,7 @@ describe("compactOldToolResults + stripBookkeepingTools — audit conversation s
 						const v = (p.output as Record<string, unknown>).value;
 						if (typeof v === "string") text = v;
 					}
-					expect(text).toStartWith("[summary]");
+					expect(text).toStartWith("←");
 					expect(text.length).toBeLessThan(300);
 				}
 			}
@@ -1674,7 +1674,7 @@ describe("compactOldToolResults + stripBookkeepingTools — audit conversation s
 						const v = (p.output as Record<string, unknown>).value;
 						if (typeof v === "string") text = v;
 					}
-					expect(text).not.toStartWith("[summary]");
+					expect(text).not.toStartWith("←");
 				}
 			}
 		}
@@ -1778,7 +1778,7 @@ describe("compactOldToolResults — realistic audit data", () => {
 		const pruned = compactOldToolResults(msgs);
 
 		const dispatchResult = resultText(pruned, 2);
-		expect(dispatchResult).toStartWith("[summary] dispatch completed");
+		expect(dispatchResult).toStartWith("← dispatch completed");
 		expect(dispatchResult.length).toBeLessThan(300);
 	});
 
@@ -1787,7 +1787,7 @@ describe("compactOldToolResults — realistic audit data", () => {
 		const pruned = compactOldToolResults(msgs);
 
 		const grepResult = resultText(pruned, 4, 0);
-		expect(grepResult).toStartWith("[summary]");
+		expect(grepResult).toStartWith("←");
 		expect(grepResult).toContain("44");
 		expect(grepResult.length).toBeLessThan(100);
 	});
@@ -1797,7 +1797,7 @@ describe("compactOldToolResults — realistic audit data", () => {
 		const pruned = compactOldToolResults(msgs);
 
 		const readResult = resultText(pruned, 4, 1);
-		expect(readResult).toStartWith("[summary]");
+		expect(readResult).toStartWith("←");
 		expect(readResult).toContain("350 lines");
 		expect(readResult.length).toBeLessThan(200);
 	});

@@ -58,12 +58,12 @@ const SUBAGENT_MAX_OUTPUT_BYTES = 8192;
 export function truncateLines(output: string): string {
   const lines = output.split("\n");
   if (lines.length <= SUBAGENT_MAX_LINES) return output;
-  return `${lines.slice(0, SUBAGENT_MAX_LINES).join("\n")}\n\n... [truncated: ${String(lines.length)} lines total. Use startLine/endLine for specific sections.]`;
+  return `${lines.slice(0, SUBAGENT_MAX_LINES).join("\n")}\n\n... [${String(lines.length)} lines total — use startLine/endLine for specific sections]`;
 }
 
 export function truncateBytes(output: string): string {
   if (output.length <= SUBAGENT_MAX_OUTPUT_BYTES) return output;
-  return `${output.slice(0, SUBAGENT_MAX_OUTPUT_BYTES)}\n\n... [truncated: output exceeded limit. Narrow with glob or path params.]`;
+  return `${output.slice(0, SUBAGENT_MAX_OUTPUT_BYTES)}\n\n... [output capped — narrow with glob or path params]`;
 }
 
 export function planFileName(sessionId?: string): string {

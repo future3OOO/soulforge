@@ -7,6 +7,7 @@ import type { AgentFeatures } from "../../types/index.js";
 import { getWorkspaceCoordinator } from "../coordination/WorkspaceCoordinator.js";
 import type { RepoMap } from "../intelligence/repo-map.js";
 import { getModelContextWindow } from "../llm/models.js";
+import { detectModelFamily } from "../llm/provider-options.js";
 import { getActiveTaskTab } from "../tools/task-list.js";
 import { AgentBus, type AgentTask, normalizePath, type SharedCache } from "./agent-bus.js";
 import type { DispatchOutput, DoneToolResult } from "./agent-results.js";
@@ -189,7 +190,7 @@ export function createAgent(
     onApproveFetchPage: models.onApproveFetchPage,
     repoMap: models.repoMap,
     contextWindow,
-    disablePruning: models.disablePruning,
+    disablePruning: detectModelFamily(modelId) === "claude" || models.disablePruning,
   };
   const agent = useExplore ? createExploreAgent(model, opts) : createCodeAgent(model, opts);
   return { agent, modelId, tier };
@@ -352,6 +353,7 @@ export function buildSubagentTools(models: SubagentModels) {
             const verified: string[] = [];
             const hallucinated: string[] = [];
             const onDiskOnly: string[] = [];
+            const symbolCache = new Map<string, ReturnType<RepoMap["getFileSymbolRanges"]>>();
             const cwd = process.cwd();
 
             for (const file of contract.filesNeeded) {
@@ -361,6 +363,7 @@ export function buildSubagentTools(models: SubagentModels) {
               // Tier 1: Soul Map (most reliable — has symbols, line ranges)
               if (repoMap) {
                 const symbols = repoMap.getFileSymbolRanges(norm);
+                symbolCache.set(norm, symbols);
                 if (symbols.length > 0) {
                   verified.push(norm);
                   continue;
@@ -444,7 +447,7 @@ export function buildSubagentTools(models: SubagentModels) {
               const fileList: string[] = [];
               for (const f of verified) {
                 if (repoMap) {
-                  const symbols = repoMap.getFileSymbolRanges(f);
+                  const symbols = symbolCache.get(f) ?? repoMap.getFileSymbolRanges(f);
                   if (symbols.length > 0) {
                     const top = symbols
                       .slice(0, 5)
@@ -776,7 +779,7 @@ export function buildSubagentTools(models: SubagentModels) {
               for (const s of matched) {
                 const truncated =
                   s.content.length > SKILL_MAX_INJECT_CHARS
-                    ? `${s.content.slice(0, SKILL_MAX_INJECT_CHARS)}\n[... truncated]`
+                    ? `${s.content.slice(0, SKILL_MAX_INJECT_CHARS)}\n[...]`
                     : s.content;
                 skillHint += `\n\n--- Relevant skill: ${s.name} ---\n${truncated}`;
               }
@@ -818,6 +821,8 @@ export function buildSubagentTools(models: SubagentModels) {
               dependsOn: t.dependsOn,
               taskId: t.taskId,
               tabId: getActiveTaskTab() ?? undefined,
+              targetFileCount: isWebTask ? 0 : t.targetFiles.length,
+              targetFiles: isWebTask ? [] : t.targetFiles,
             };
           });
 
@@ -1198,7 +1203,7 @@ export function buildSubagentTools(models: SubagentModels) {
           const limit = inCodeBlock || inStructuredSection ? 1500 : 600;
           if (line.length > limit) {
             truncatedLines++;
-            compact.push(`${line.slice(0, limit)} [truncated]`);
+            compact.push(`${line.slice(0, limit)} [...]`);
           } else {
             compact.push(line);
           }
@@ -1241,7 +1246,7 @@ export function buildSubagentTools(models: SubagentModels) {
 
         if (truncatedLines > 0) {
           compact.push(
-            `\n[${String(truncatedLines)} lines compacted — act on these results, do not re-read dispatched files]`,
+            `\n[${String(truncatedLines)} long lines shortened — act on these results, do not re-read dispatched files]`,
           );
         }
 
@@ -1257,7 +1262,7 @@ export function buildSubagentTools(models: SubagentModels) {
           value = value.slice(0, DISPATCH_OUTPUT_CAP);
           const lastNl = value.lastIndexOf("\n");
           if (lastNl > 0) value = value.slice(0, lastNl);
-          value += `\n[dispatch output truncated — ${String(Math.round((compact.join("\n").length - DISPATCH_OUTPUT_CAP) / 1024))}KB omitted. Use read_file for specific files.]`;
+          value += `\n[dispatch output capped at ${String(Math.round(DISPATCH_OUTPUT_CAP / 1024))}KB — use read_file for full file contents]`;
         }
 
         return { type: "text" as const, value };

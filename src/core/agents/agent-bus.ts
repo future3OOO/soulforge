@@ -50,6 +50,8 @@ export interface AgentTask {
   tier?: TaskTier;
   taskId?: number;
   tabId?: string;
+  targetFileCount?: number;
+  targetFiles?: string[];
 }
 
 export interface AgentResult {
@@ -662,7 +664,7 @@ export class AgentBus {
     const key = `${finding.agentId}:${finding.label}`;
     const content =
       finding.content.length > this.findingMaxContentBytes
-        ? `${finding.content.slice(0, this.findingMaxContentBytes)}… [truncated]`
+        ? `${finding.content.slice(0, this.findingMaxContentBytes)}…`
         : finding.content;
     const capped = { ...finding, content };
 

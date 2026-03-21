@@ -113,7 +113,7 @@ function getClaudeGen(model: string): ClaudeGen {
 
 type ModelFamily = "claude" | "openai" | "google" | "other";
 
-function detectModelFamily(modelId: string): ModelFamily {
+export function detectModelFamily(modelId: string): ModelFamily {
   const { provider } = parseModelId(modelId);
 
   // Direct providers — no guessing needed

@@ -754,7 +754,7 @@ export function App({
         verbose: effectiveConfig.verbose === true,
         diffStyle: effectiveConfig.diffStyle ?? "default",
         compactionStrategy: effectiveConfig.compaction?.strategy ?? "v2",
-        disablePruning: effectiveConfig.compaction?.disablePruning === true,
+        disablePruning: effectiveConfig.compaction?.disablePruning !== false,
         showReasoning: uiState.showReasoning,
         setShowReasoning: uiState.setShowReasoning,
         openSetup: () => uiState.openModal("setup"),

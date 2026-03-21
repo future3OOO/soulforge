@@ -103,7 +103,7 @@ describe("readFileTool", () => {
 
 		const result = await readFileTool.execute({ path: filePath });
 		expect(result.success).toBe(true);
-		expect(result.output).toContain("[Truncated");
+		expect(result.output).toContain("[file is");
 		expect(result.output).toContain("MB");
 		expect(result.output).toContain("startLine/endLine");
 	});
@@ -119,7 +119,7 @@ describe("readFileTool", () => {
 
 		const result = await readFileTool.execute({ path: filePath, startLine: 1, endLine: 10 });
 		expect(result.success).toBe(true);
-		expect(result.output).not.toContain("[Truncated");
+		expect(result.output).not.toContain("[file is");
 		expect(result.output).toContain("0:");
 	});
 

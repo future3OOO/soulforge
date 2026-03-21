@@ -64,7 +64,7 @@ export function truncateWithTee(
   const text = [
     output.slice(0, headSize),
     "",
-    `... [${String(removed)} chars / ~${String(lineCount)} lines truncated — full output: ${teeFile}] ...`,
+    `... [${String(removed)} chars / ~${String(lineCount)} lines omitted — full output: ${teeFile}] ...`,
     "",
     output.slice(-tailSize),
   ].join("\n");

@@ -203,7 +203,7 @@ async function runSearch(bin: string, args: string[]): Promise<ToolResult> {
         output = output.slice(0, MAX_SEARCH_OUTPUT_BYTES);
         const lastNl = output.lastIndexOf("\n");
         if (lastNl > 0) output = output.slice(0, lastNl);
-        output += `\n[truncated — ${String(Math.round((totalBytes - MAX_SEARCH_OUTPUT_BYTES) / 1024))}KB omitted. Use glob or path to narrow.]`;
+        output += `\n[output capped — narrow with glob or path params]`;
       }
       if (code === 0 || code === 1) {
         resolve(output || "No matches found.");

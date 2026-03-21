@@ -160,9 +160,8 @@ describe("synthesizeDoneFromResults — extractText robustness", () => {
 describe("synthesizeDoneFromResults — stub filtering", () => {
   const stubs = [
     "[Already in your context — 150 lines]",
-    "[stale — file edited since this read]",
-    "[summary] 350 lines — exports: foo, bar",
-    "[pruned] 44 matches for test",
+    "← file was edited later in this conversation",
+    "← 350 lines — exports: foo, bar",
     "[cached] from agent-1",
   ];
 
@@ -185,7 +184,7 @@ describe("synthesizeDoneFromResults — stub filtering", () => {
   }
 
   it("keeps real content that contains stub-like substring mid-text", () => {
-    const content = "This function handles the [summary] display for the UI component and does more stuff";
+    const content = "This function handles the ← display for the UI component and does more stuff";
     const result = makeResult("done", [
       {
         toolCalls: [{ toolName: "read_file", args: { path: "real.ts" } }],
@@ -199,7 +198,7 @@ describe("synthesizeDoneFromResults — stub filtering", () => {
       },
     ]);
     const done = synthesizeDoneFromResults(result, [], TASK);
-    // This is a real file that happens to contain "[summary]" — isStub should catch it
+    // This is a real file that happens to contain "←" — isStub should catch it
     // because isStub checks includes(), so this WILL be filtered. That's a known trade-off.
     // The test documents the behavior.
     const finding = done.keyFindings?.find((f) => f.file === "real.ts");
@@ -428,7 +427,7 @@ describe("formatDoneResult", () => {
     };
     const text = formatDoneResult(done);
     expect(text.length).toBeLessThanOrEqual(8200);
-    expect(text).toContain("[truncated");
+    expect(text).toContain("[... capped");
   });
 
   it("caps individual finding display at PER_FINDING_DISPLAY_CAP", () => {
@@ -494,7 +493,7 @@ describe("buildFallbackResult", () => {
   it("includes agent text (truncated if long)", () => {
     const result = makeResult("x".repeat(7000), []);
     const text = buildFallbackResult(result);
-    expect(text).toContain("[truncated]");
+    expect(text).toContain("[...]");
     expect(text.length).toBeLessThan(7000);
   });
 
@@ -521,13 +520,13 @@ describe("buildFallbackResult", () => {
           {
             toolName: "read_file",
             input: { path: "stale.ts" },
-            output: "[stale — file edited since this read]",
+            output: "← file was edited later in this conversation",
           },
         ],
       },
     ]);
     const text = buildFallbackResult(result);
-    expect(text).not.toContain("[stale");
+    expect(text).not.toContain("← file was edited");
   });
 
   it("extracts from grep tool results", () => {

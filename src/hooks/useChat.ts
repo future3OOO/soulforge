@@ -1397,7 +1397,7 @@ export function useChat({
           agentFeatures: effectiveConfig.agentFeatures,
           planExecution: planExecutionRef.current,
           drainSteering,
-          disablePruning: effectiveConfig.compaction?.disablePruning,
+          disablePruning: effectiveConfig.compaction?.disablePruning !== false,
         });
         let result!: StreamTextResult<ToolSet, never>;
         const MAX_TRANSIENT_RETRIES = 3;
@@ -1433,7 +1433,7 @@ export function useChat({
                           sessionId: sessionIdRef.current,
                           agentFeatures: effectiveConfig.agentFeatures,
                           planExecution: planExecutionRef.current,
-                          disablePruning: effectiveConfig.compaction?.disablePruning,
+                          disablePruning: effectiveConfig.compaction?.disablePruning !== false,
                         });
                       })();
                 result = (await currentAgent.stream({

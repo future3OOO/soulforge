@@ -201,7 +201,7 @@ export interface CompactionConfig {
   maxToolResults?: number;
   /** Use a cheap LLM gap-fill pass for fuzzy extraction (v2 only). Default: true */
   llmExtraction?: boolean;
-  /** Disable semantic pruning of old tool results in subagents. Default: false */
+  /** Disable semantic pruning of old tool results in subagents. Default: true (disabled). Pruning breaks prompt cache — Anthropic models use server-side context management instead. */
   disablePruning?: boolean;
 }
 

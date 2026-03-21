@@ -103,9 +103,7 @@ export function TabBar({
             {(activity?.editedFileCount ?? 0) > 0 && (
               <text fg="#4a7">
                 {" "}
-                {icon("pencil")}
-                {" "}
-                {String(activity?.editedFileCount ?? 0)}
+                {icon("pencil")} {String(activity?.editedFileCount ?? 0)}
               </text>
             )}
             {label && (

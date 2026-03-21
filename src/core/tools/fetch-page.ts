@@ -223,7 +223,7 @@ function truncate(text: string, siteLinks: string[]): string {
       ? `\n\n## Available pages (use these URLs with fetch_page instead of guessing)\n${siteLinks.map((l) => `- ${l}`).join("\n")}`
       : "";
   const budget = MAX_CONTENT_LENGTH - linksSection.length;
-  const body = text.length > budget ? `${text.slice(0, budget)}\n\n... [truncated]` : text;
+  const body = text.length > budget ? `${text.slice(0, budget)}\n\n[...]` : text;
   return body + linksSection;
 }
 

@@ -594,8 +594,10 @@ describe("Boundary — read_file line cap", () => {
 
 		const result = await readFileTool.execute({ path: filePath, startLine: 0, endLine: 2 });
 		expect(result.success).toBe(true);
-		// startLine 0 → (0-1) = -1, slice(-1, 2) gives unexpected results
-		// This tests whether the code handles it gracefully
+		// startLine 0 → (0-1) = -1, slice(-1, end=2) → slice clamps to empty
+		// The output should be empty or contain at most the first 2 lines
+		expect(result.output).toBeDefined();
+		expect(result.output).not.toContain("third");
 	});
 
 	it("negative startLine doesn't crash", async () => {
@@ -604,6 +606,10 @@ describe("Boundary — read_file line cap", () => {
 
 		const result = await readFileTool.execute({ path: filePath, startLine: -5, endLine: 2 });
 		expect(result.success).toBe(true);
+		// startLine -5 → (-5-1) = -6, clamps to 0; slice(0, 2) → first 2 lines
+		expect(result.output).toContain("alpha");
+		expect(result.output).toContain("bravo");
+		expect(result.output).not.toContain("charlie");
 	});
 });
 

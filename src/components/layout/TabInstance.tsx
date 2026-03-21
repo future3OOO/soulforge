@@ -500,11 +500,16 @@ export const TabInstance = memo(function TabInstance({
               question={chat.pendingQuestion}
               isActive={isFocused}
               onAnswer={(answer) => {
-                chat.setMessageQueue((prev) => [
+                chat.setMessages((prev) => [
                   ...prev,
-                  { content: answer, queuedAt: Date.now() },
-                ]);
-              }}
+                  {
+                      id: crypto.randomUUID(),
+                      role: "user" as const,
+                      content: answer,
+                      timestamp: Date.now(),
+                    },
+                  ]);
+                }}
             />
           </box>
           {showPlanProgress && chat.activePlan && (

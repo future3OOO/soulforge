@@ -90,6 +90,7 @@ describe("parseHeadlessArgs", () => {
 			"--model=openai/gpt-4o",
 			"test",
 		]);
+		expect(result!.type).toBe("run");
 		if (result!.type === "run") {
 			expect(result!.opts.modelId).toBe("openai/gpt-4o");
 		}
@@ -97,6 +98,7 @@ describe("parseHeadlessArgs", () => {
 
 	test("parses --json flag", async () => {
 		const result = await parseHeadlessArgs(["--headless", "--json", "test"]);
+		expect(result!.type).toBe("run");
 		if (result!.type === "run") {
 			expect(result!.opts.json).toBe(true);
 		}
@@ -104,6 +106,7 @@ describe("parseHeadlessArgs", () => {
 
 	test("parses --events flag", async () => {
 		const result = await parseHeadlessArgs(["--headless", "--events", "test"]);
+		expect(result!.type).toBe("run");
 		if (result!.type === "run") {
 			expect(result!.opts.events).toBe(true);
 		}
@@ -111,6 +114,7 @@ describe("parseHeadlessArgs", () => {
 
 	test("parses --quiet flag", async () => {
 		const result = await parseHeadlessArgs(["--headless", "--quiet", "test"]);
+		expect(result!.type).toBe("run");
 		if (result!.type === "run") {
 			expect(result!.opts.quiet).toBe(true);
 		}
@@ -118,6 +122,7 @@ describe("parseHeadlessArgs", () => {
 
 	test("parses -q shorthand", async () => {
 		const result = await parseHeadlessArgs(["--headless", "-q", "test"]);
+		expect(result!.type).toBe("run");
 		if (result!.type === "run") {
 			expect(result!.opts.quiet).toBe(true);
 		}
@@ -125,6 +130,7 @@ describe("parseHeadlessArgs", () => {
 
 	test("parses --max-steps", async () => {
 		const result = await parseHeadlessArgs(["--headless", "--max-steps", "10", "test"]);
+		expect(result!.type).toBe("run");
 		if (result!.type === "run") {
 			expect(result!.opts.maxSteps).toBe(10);
 		}
@@ -132,6 +138,7 @@ describe("parseHeadlessArgs", () => {
 
 	test("parses --timeout", async () => {
 		const result = await parseHeadlessArgs(["--headless", "--timeout", "30000", "test"]);
+		expect(result!.type).toBe("run");
 		if (result!.type === "run") {
 			expect(result!.opts.timeout).toBe(30000);
 		}
@@ -139,6 +146,7 @@ describe("parseHeadlessArgs", () => {
 
 	test("parses --cwd", async () => {
 		const result = await parseHeadlessArgs(["--headless", "--cwd", "/tmp/project", "test"]);
+		expect(result!.type).toBe("run");
 		if (result!.type === "run") {
 			expect(result!.opts.cwd).toBe("/tmp/project");
 		}
@@ -146,6 +154,7 @@ describe("parseHeadlessArgs", () => {
 
 	test("parses --mode default", async () => {
 		const result = await parseHeadlessArgs(["--headless", "--mode", "default", "test"]);
+		expect(result!.type).toBe("run");
 		if (result!.type === "run") {
 			expect(result!.opts.mode).toBe("default");
 		}
@@ -153,6 +162,7 @@ describe("parseHeadlessArgs", () => {
 
 	test("parses --mode architect", async () => {
 		const result = await parseHeadlessArgs(["--headless", "--mode", "architect", "test"]);
+		expect(result!.type).toBe("run");
 		if (result!.type === "run") {
 			expect(result!.opts.mode).toBe("architect");
 		}
@@ -160,6 +170,7 @@ describe("parseHeadlessArgs", () => {
 
 	test("parses --mode plan", async () => {
 		const result = await parseHeadlessArgs(["--headless", "--mode", "plan", "test"]);
+		expect(result!.type).toBe("run");
 		if (result!.type === "run") {
 			expect(result!.opts.mode).toBe("plan");
 		}
@@ -167,6 +178,7 @@ describe("parseHeadlessArgs", () => {
 
 	test("parses --mode auto", async () => {
 		const result = await parseHeadlessArgs(["--headless", "--mode", "auto", "test"]);
+		expect(result!.type).toBe("run");
 		if (result!.type === "run") {
 			expect(result!.opts.mode).toBe("auto");
 		}
@@ -197,6 +209,7 @@ describe("parseHeadlessArgs", () => {
 			"the",
 			"code",
 		]);
+		expect(result!.type).toBe("run");
 		if (result!.type === "run") {
 			expect(result!.opts.prompt).toBe("analyze the code");
 			expect(result!.opts.modelId).toBe("xai/grok-3");
@@ -210,6 +223,7 @@ describe("parseHeadlessArgs", () => {
 
 	test("parses --session to resume", async () => {
 		const result = await parseHeadlessArgs(["--headless", "--session", "abc123", "test"]);
+		expect(result!.type).toBe("run");
 		if (result!.type === "run") {
 			expect(result!.opts.prompt).toBe("test");
 			expect(result!.opts.sessionId).toBe("abc123");
@@ -218,6 +232,7 @@ describe("parseHeadlessArgs", () => {
 
 	test("parses --resume= syntax", async () => {
 		const result = await parseHeadlessArgs(["--headless", "--resume=abc123", "test"]);
+		expect(result!.type).toBe("run");
 		if (result!.type === "run") {
 			expect(result!.opts.sessionId).toBe("abc123");
 		}
@@ -225,6 +240,7 @@ describe("parseHeadlessArgs", () => {
 
 	test("parses --save-session", async () => {
 		const result = await parseHeadlessArgs(["--headless", "--save-session", "test"]);
+		expect(result!.type).toBe("run");
 		if (result!.type === "run") {
 			expect(result!.opts.saveSession).toBe(true);
 		}
@@ -237,6 +253,7 @@ describe("parseHeadlessArgs", () => {
 			"you are a security auditor",
 			"review the code",
 		]);
+		expect(result!.type).toBe("run");
 		if (result!.type === "run") {
 			expect(result!.opts.system).toBe("you are a security auditor");
 			expect(result!.opts.prompt).toBe("review the code");
@@ -245,6 +262,7 @@ describe("parseHeadlessArgs", () => {
 
 	test("parses --no-repomap", async () => {
 		const result = await parseHeadlessArgs(["--headless", "--no-repomap", "test"]);
+		expect(result!.type).toBe("run");
 		if (result!.type === "run") {
 			expect(result!.opts.noRepomap).toBe(true);
 		}
@@ -257,6 +275,7 @@ describe("parseHeadlessArgs", () => {
 			"src/types.ts",
 			"explain this",
 		]);
+		expect(result!.type).toBe("run");
 		if (result!.type === "run") {
 			expect(result!.opts.include).toEqual(["src/types.ts"]);
 		}
@@ -271,6 +290,7 @@ describe("parseHeadlessArgs", () => {
 			"b.ts",
 			"explain",
 		]);
+		expect(result!.type).toBe("run");
 		if (result!.type === "run") {
 			expect(result!.opts.include).toEqual(["a.ts", "b.ts"]);
 		}
@@ -278,6 +298,7 @@ describe("parseHeadlessArgs", () => {
 
 	test("parses --diff", async () => {
 		const result = await parseHeadlessArgs(["--headless", "--diff", "fix the bug"]);
+		expect(result!.type).toBe("run");
 		if (result!.type === "run") {
 			expect(result!.opts.diff).toBe(true);
 		}
@@ -325,6 +346,7 @@ describe("parseHeadlessArgs", () => {
 
 	test("--events and --json are independent flags", async () => {
 		const result = await parseHeadlessArgs(["--headless", "--events", "--json", "test"]);
+		expect(result!.type).toBe("run");
 		if (result!.type === "run") {
 			expect(result!.opts.events).toBe(true);
 			expect(result!.opts.json).toBe(true);
@@ -379,6 +401,7 @@ describe("parseHeadlessArgs", () => {
 
 	test("unknown flags are ignored (not treated as prompt parts)", async () => {
 		const result = await parseHeadlessArgs(["--headless", "--unknown-flag", "test"]);
+		expect(result!.type).toBe("run");
 		if (result!.type === "run") {
 			// --unknown-flag is skipped because it starts with --
 			expect(result!.opts.prompt).toBe("test");

@@ -16,7 +16,6 @@ const SHORTCUTS: ShortcutDef[] = [
   { k: "^G", ic: icon("git"), l: "Git", tier: 1 },
   { k: "^L", ic: icon("brain_alt"), l: "LLM", tier: 1 },
   { k: "^S", ic: icon("skills"), l: "Skills", tier: 2 },
-  { k: "⌥R", ic: icon("error"), l: "Errors", tier: 3 },
   { k: "⌥T", ic: icon("tabs"), l: "Tab", tier: 3 },
   { k: "^H", ic: icon("help"), l: "Help", tier: 1 },
   { k: "^C", ic: icon("quit"), l: "Quit", tier: 1 },

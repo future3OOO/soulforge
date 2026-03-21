@@ -111,7 +111,7 @@ export const readFileTool = {
         emitFileRead(filePath);
         return {
           success: true,
-          output: `${numbered}\n\n[Truncated — file is ${sizeStr}, showing first ${String(previewLines.length)} lines. Use startLine/endLine to read specific sections.]`,
+          output: `${numbered}\n\n[file is ${sizeStr}, showing first ${String(previewLines.length)} lines — use startLine/endLine for specific sections]`,
         };
       }
 
