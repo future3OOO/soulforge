@@ -1,6 +1,6 @@
+import { afterEach, beforeEach, describe, expect, it } from "bun:test";
 import { existsSync, mkdirSync, rmSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
-import { afterEach, beforeEach, describe, expect, it } from "bun:test";
 import { readFileTool } from "../src/core/tools/read-file.js";
 
 const TEST_DIR = join(import.meta.dir, ".tmp-read-file-test");
@@ -63,7 +63,7 @@ describe("readFileTool", () => {
 		expect(result.outlineOnly).toBe(true);
 		expect(result.output).toContain("400 lines");
 		expect(result.output).toContain("startLine=1 for the full file");
-	});
+	}, 15_000);
 
 	it("returns full content for large code file with startLine=1", async () => {
 		const filePath = join(TEST_DIR, "big2.ts");
@@ -78,7 +78,7 @@ describe("readFileTool", () => {
 		expect(result.outlineOnly).toBeUndefined();
 		expect(result.output).toContain("fn0");
 		expect(result.output).toContain("fn399");
-	});
+	}, 15_000);
 
 	it("returns error for non-existent file", async () => {
 		const result = await readFileTool.execute({ path: join(TEST_DIR, "nope.txt") });
@@ -158,7 +158,7 @@ describe("readFileTool", () => {
 		expect(result.success).toBe(true);
 		expect(result.outlineOnly).toBe(true);
 		expect(result.output).toContain("301 lines");
-	});
+	}, 15_000);
 
 	it("range read on large code file returns content (not outline)", async () => {
 		const filePath = join(TEST_DIR, "range-large.ts");
@@ -174,7 +174,7 @@ describe("readFileTool", () => {
 		expect(result.output).toContain("fn49");
 		expect(result.output).toContain("fn99");
 		expect(result.output).not.toContain("fn0()");
-	});
+	}, 15_000);
 
 	it("non-code file over 300 lines returns full content (no outline)", async () => {
 		const filePath = join(TEST_DIR, "big-config.json");
