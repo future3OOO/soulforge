@@ -576,7 +576,7 @@ export async function runAgentTask(
         }
       }
 
-      let resultText = formatDoneResult(doneResult);
+      const resultText = formatDoneResult(doneResult);
 
       // Post-edit diff verification: confirm code agent edits actually changed files
       let editVerificationWarning: string | undefined;

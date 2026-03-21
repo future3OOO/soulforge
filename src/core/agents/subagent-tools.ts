@@ -684,7 +684,7 @@ export function buildSubagentTools(models: SubagentModels) {
 
               const firstHalf = lines.slice(0, splitLineIdx).join("\n");
               const secondHalf =
-                (preamble ? preamble + "\n" : "") +
+                (preamble ? `${preamble}\n` : "") +
                 `Continue from where part 1 left off. Read the file first (it was modified by part 1).\n` +
                 lines.slice(splitLineIdx).join("\n");
 

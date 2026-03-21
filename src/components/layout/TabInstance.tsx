@@ -1,6 +1,6 @@
-import type { ScrollBoxRenderable } from "@opentui/core";
 import { existsSync, unlinkSync } from "node:fs";
 import { join } from "node:path";
+import type { ScrollBoxRenderable } from "@opentui/core";
 import { memo, useCallback, useEffect, useMemo, useRef } from "react";
 import { useShallow } from "zustand/react/shallow";
 import { ContextManager, type SharedContextResources } from "../../core/context/manager.js";

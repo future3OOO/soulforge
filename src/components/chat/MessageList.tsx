@@ -1,6 +1,6 @@
-import { TextAttributes } from "@opentui/core";
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
+import { TextAttributes } from "@opentui/core";
 import {
   createContext,
   memo,
