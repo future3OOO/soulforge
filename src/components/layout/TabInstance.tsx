@@ -536,7 +536,7 @@ export const TabInstance = memo(function TabInstance({
             </box>
           )}
           {(hasChangedFiles || chat.messageQueue.length > 0) && (
-            <box flexShrink={0} paddingX={1} flexDirection="row" gap={1}>
+            <box flexShrink={0} paddingX={1} flexDirection="row" gap={1} height={1}>
               {hasChangedFiles && <ChangedFilesBar messages={chat.messages} />}
               {chat.messageQueue.length > 0 &&
                 (() => {
