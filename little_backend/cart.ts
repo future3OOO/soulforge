@@ -4,15 +4,9 @@ import { getProduct, updateStock, createOrder } from "./db.js";
 const carts = new Map<string, Map<string, number>>();
 
 export function addToCart(userId: string, productId: string, qty: number): Result<null> {
-  if (!productId || typeof productId !== "string") {
-    return { ok: false, error: "invalid productId" };
-  }
-  if (!Number.isInteger(qty) || qty <= 0) {
-    return { ok: false, error: "qty must be a positive integer" };
-  }
-
   const product = getProduct(productId);
   if (!product) return { ok: false, error: "product not found" };
+  if (product.stock < qty) return { ok: false, error: "insufficient stock" };
 
   let cart = carts.get(userId);
   if (!cart) {
@@ -20,10 +14,7 @@ export function addToCart(userId: string, productId: string, qty: number): Resul
     carts.set(userId, cart);
   }
   const current = cart.get(productId) ?? 0;
-  const needed = current + qty;
-  if (product.stock < needed) return { ok: false, error: "insufficient stock" };
-
-  cart.set(productId, needed);
+  cart.set(productId, current + qty);
   return { ok: true, data: null };
 }
 
@@ -34,30 +25,17 @@ export function checkout(userId: string): Result<Order> {
   let total = 0;
   const items: Order["items"] = [];
 
-  // Phase 1: validate all products exist and have enough stock
   for (const [productId, qty] of cart) {
     const product = getProduct(productId);
     if (!product) return { ok: false, error: `product ${productId} gone` };
-    if (product.stock < qty) {
-      return { ok: false, error: `insufficient stock for ${productId}` };
-    }
 
     total += product.price * qty;
     items.push({ productId, qty });
   }
 
-  // Phase 2: decrement stock with rollback on failure
-  const decremented: { productId: string; qty: number }[] = [];
   for (const item of items) {
     const ok = updateStock(item.productId, -item.qty);
-    if (!ok) {
-      // Rollback previously decremented items
-      for (const prev of decremented) {
-        updateStock(prev.productId, prev.qty);
-      }
-      return { ok: false, error: `stock failed for ${item.productId}` };
-    }
-    decremented.push(item);
+    if (!ok) return { ok: false, error: `stock failed for ${item.productId}` };
   }
 
   const order: Order = {
