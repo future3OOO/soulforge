@@ -1,5 +1,7 @@
 import { inventoryAlerts, salesReport } from "./analytics.js";
-import { createProduct, createUser, handle, sendMail } from "./god.js";
+import { createProduct, createUser } from "./db.js";
+import { handle } from "./god.js";
+import { sendMail } from "./notifications.js";
 import { logRequest, rateLimit } from "./middleware.js";
 
 export function processRequest(
