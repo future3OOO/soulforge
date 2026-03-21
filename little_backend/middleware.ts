@@ -1,16 +1,16 @@
+import { checkAdmin, verify } from "./auth.js";
 import type { Res } from "./types.js";
-import { verify, chkAdmin, getUsr } from "./god.js";
 
 export function authMiddleware(token: string | undefined): Res<string> {
   if (!token) return { ok: false, error: "missing token" };
   const s = verify(token);
   if (!s.ok) return s as Res<string>;
-  return { ok: true, data: s.data.uid };
+  return { ok: true, data: s.data.userId };
 }
 
 export function adminMiddleware(token: string | undefined): Res<null> {
   if (!token) return { ok: false, error: "missing token" };
-  return chkAdmin(token);
+  return checkAdmin(token);
 }
 
 export function rateLimit(ip: string): boolean {
@@ -31,18 +31,18 @@ export function rateLimit(ip: string): boolean {
 
 const rateLimits = new Map<string, { count: number; resetAt: number }>();
 
-export function logRequest(method: string, path: string, uid?: string) {
+export function logRequest(method: string, path: string, userId?: string) {
   const entry = {
     ts: Date.now(),
     method,
     path,
-    uid: uid ?? "anon",
+    userId: userId ?? "anon",
   };
   requestLog.push(entry);
   if (requestLog.length > 1000) requestLog.shift();
 }
 
-const requestLog: Array<{ ts: number; method: string; path: string; uid: string }> = [];
+const requestLog: Array<{ ts: number; method: string; path: string; userId: string }> = [];
 
 export function getRecentRequests(limit = 50) {
   return requestLog.slice(-limit);

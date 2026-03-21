@@ -1,31 +1,29 @@
 import type { Order, Product } from "./types.js";
-import { getUser, listOrders, listProducts, getUserOrders } from "./god.js";
+import { getUser, listOrders, listProducts, getUserOrders } from "./db.js";
 
 interface SalesReport {
   totalRevenue: number;
   orderCount: number;
-  topProducts: Array<{ pid: string; qty: number; revenue: number }>;
+  topProducts: Array<{ productId: string; qty: number; revenue: number }>;
 }
 
-export function salesReport(startDate?: number, endDate?: number): SalesReport {
+export function salesReport(_startDate?: number, _endDate?: number): SalesReport {
   const prods = listProducts();
-  let allOrders = listOrders();
-  if (startDate) allOrders = allOrders.filter((o) => o.ts >= startDate);
-  if (endDate) allOrders = allOrders.filter((o) => o.ts <= endDate);
+  const allOrders = listOrders();
 
   const productSales = new Map<string, { qty: number; revenue: number }>();
   for (const ord of allOrders) {
     for (const item of ord.items) {
-      const existing = productSales.get(item.pid) ?? { qty: 0, revenue: 0 };
-      const prod = prods.find((p) => p.id === item.pid);
+      const existing = productSales.get(item.productId) ?? { qty: 0, revenue: 0 };
+      const prod = prods.find((p) => p.id === item.productId);
       existing.qty += item.qty;
-      existing.revenue += (prod?.pr ?? 0) * item.qty;
-      productSales.set(item.pid, existing);
+      existing.revenue += (prod?.price ?? 0) * item.qty;
+      productSales.set(item.productId, existing);
     }
   }
 
   const topProducts = [...productSales.entries()]
-    .map(([pid, stats]) => ({ pid, ...stats }))
+    .map(([productId, stats]) => ({ productId, ...stats }))
     .sort((a, b) => b.revenue - a.revenue)
     .slice(0, 10);
 
@@ -35,10 +33,10 @@ export function salesReport(startDate?: number, endDate?: number): SalesReport {
   return { totalRevenue, orderCount: allOrders.length, topProducts };
 }
 
-export function userActivity(uid: string) {
-  const u = getUser(uid);
+export function userActivity(userId: string) {
+  const u = getUser(userId);
   if (!u) return null;
-  const ords = getUserOrders(uid);
+  const ords = getUserOrders(userId);
   const totalSpent = ords.reduce((sum, o) => sum + o.total, 0);
   return {
     user: u,
@@ -50,6 +48,6 @@ export function userActivity(uid: string) {
 
 export function inventoryAlerts(): Array<{ product: Product; status: "low" | "out" }> {
   return listProducts()
-    .filter((p) => p.stk <= 5)
-    .map((p) => ({ product: p, status: p.stk === 0 ? "out" as const : "low" as const }));
+    .filter((p) => p.stock <= 5)
+    .map((p) => ({ product: p, status: p.stock === 0 ? "out" as const : "low" as const }));
 }

@@ -7,7 +7,7 @@ export interface User {
 
 export interface Session {
   token: string;
-  uid: string;
+  userId: string;
   exp: number;
 }
 
@@ -23,8 +23,8 @@ export interface Product {
 
 export interface Order {
   id: string;
-  uid: string;
-  items: { pid: string; qty: number }[];
+  userId: string;
+  items: { productId: string; qty: number }[];
   total: number;
   status: "pending" | "paid" | "shipped";
 }
