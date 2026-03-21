@@ -1,29 +1,32 @@
-export interface Usr {
+export interface User {
   id: string;
-  nm: string;
+  name: string;
   email: string;
   role: "admin" | "user";
 }
 
-export interface Sess {
-  tok: string;
+export interface Session {
+  token: string;
   uid: string;
   exp: number;
 }
 
-export interface Prod {
+export interface Product {
   id: string;
-  nm: string;
-  pr: number;
-  stk: number;
+  name: string;
+  desc: string;
+  category: string;
+  tags: string[];
+  price: number;
+  stock: number;
 }
 
-export interface Ord {
+export interface Order {
   id: string;
   uid: string;
   items: { pid: string; qty: number }[];
-  tot: number;
-  st: "pending" | "paid" | "shipped";
+  total: number;
+  status: "pending" | "paid" | "shipped";
 }
 
 export type Res<T> = { ok: true; data: T } | { ok: false; error: string };

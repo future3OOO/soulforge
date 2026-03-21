@@ -1,5 +1,5 @@
-import type { Ord, Prod } from "./types.js";
-import { usrOrds, listProds, getUsr } from "./god.js";
+import type { Order, Product } from "./types.js";
+import { getUser, listOrders, listProducts, getUserOrders } from "./god.js";
 
 interface SalesReport {
   totalRevenue: number;
@@ -8,12 +8,10 @@ interface SalesReport {
 }
 
 export function salesReport(startDate?: number, endDate?: number): SalesReport {
-  const allOrders: Ord[] = [];
-  const prods = listProds();
-  for (const p of prods) {
-    const ords = usrOrds(p.id);
-    allOrders.push(...ords);
-  }
+  const prods = listProducts();
+  let allOrders = listOrders();
+  if (startDate) allOrders = allOrders.filter((o) => o.ts >= startDate);
+  if (endDate) allOrders = allOrders.filter((o) => o.ts <= endDate);
 
   const productSales = new Map<string, { qty: number; revenue: number }>();
   for (const ord of allOrders) {
@@ -32,16 +30,16 @@ export function salesReport(startDate?: number, endDate?: number): SalesReport {
     .slice(0, 10);
 
   let totalRevenue = 0;
-  for (const ord of allOrders) totalRevenue += ord.tot;
+  for (const ord of allOrders) totalRevenue += ord.total;
 
   return { totalRevenue, orderCount: allOrders.length, topProducts };
 }
 
 export function userActivity(uid: string) {
-  const u = getUsr(uid);
+  const u = getUser(uid);
   if (!u) return null;
-  const ords = usrOrds(uid);
-  const totalSpent = ords.reduce((sum, o) => sum + o.tot, 0);
+  const ords = getUserOrders(uid);
+  const totalSpent = ords.reduce((sum, o) => sum + o.total, 0);
   return {
     user: u,
     orderCount: ords.length,
@@ -50,8 +48,8 @@ export function userActivity(uid: string) {
   };
 }
 
-export function inventoryAlerts(): Array<{ product: Prod; status: "low" | "out" }> {
-  return listProds()
+export function inventoryAlerts(): Array<{ product: Product; status: "low" | "out" }> {
+  return listProducts()
     .filter((p) => p.stk <= 5)
     .map((p) => ({ product: p, status: p.stk === 0 ? "out" as const : "low" as const }));
 }
