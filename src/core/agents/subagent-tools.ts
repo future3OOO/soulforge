@@ -334,6 +334,7 @@ export function buildSubagentTools(models: SubagentModels) {
         const bus = new AgentBus(cacheRef.current);
         const dispatchTabId = getActiveTaskTab();
         if (dispatchTabId) getWorkspaceCoordinator().agentStarted(dispatchTabId);
+        let editingDone = false;
         try {
           const WEB_MARKER = "web";
 
@@ -1117,6 +1118,11 @@ export function buildSubagentTools(models: SubagentModels) {
           );
           if (desloppifyResult) sections.push(desloppifyResult);
 
+          // Release git lock: code agents + desloppify are done editing.
+          // Verifier is read-only (role: "explore", no edit tools) — safe to unlock.
+          editingDone = true;
+          if (dispatchTabId) getWorkspaceCoordinator().agentFinished(dispatchTabId);
+
           const verifyResult = await runVerifier(bus, tasks, models, toolCallId, combinedAbort);
           if (verifyResult) sections.push(verifyResult);
 
@@ -1143,7 +1149,7 @@ export function buildSubagentTools(models: SubagentModels) {
             output: sections.join("\n"),
           } satisfies DispatchOutput;
         } finally {
-          if (dispatchTabId) getWorkspaceCoordinator().agentFinished(dispatchTabId);
+          if (dispatchTabId && !editingDone) getWorkspaceCoordinator().agentFinished(dispatchTabId);
           try {
             cacheRef.current = bus.exportCaches();
           } catch (err) {

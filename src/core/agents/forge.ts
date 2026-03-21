@@ -228,8 +228,8 @@ function buildForgePrepareStep(
       result.system = `${result.system ?? ""}\n\n${taskBlock}`.trim();
     }
 
-    // Inject fresh cross-tab claims (live from coordinator, not stale from system prompt)
-    if (contextManager && stepNumber > 0) {
+    // Inject fresh cross-tab claims on every step (always live from coordinator)
+    if (contextManager) {
       const crossTab = contextManager.buildCrossTabSection();
       if (crossTab) {
         result.system = `${result.system ?? ""}\n\n${crossTab}`.trim();

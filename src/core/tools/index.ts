@@ -76,11 +76,17 @@ function deferExecute<T, R>(fn: (args: T) => Promise<R>): (args: T) => Promise<R
 
 /**
 /** @internal — exported for testing */
-export const GIT_MUTATING_SHELL_RE =
-  /\bgit\s+(commit|stash|restore|switch|merge|rebase|cherry-pick|reset)\b|\bgit\s+checkout\s+--/;
+const GIT_MUTATING_ACTIONS = /\b(commit|stash|restore|switch|merge|rebase|cherry-pick|reset)\b/;
+const GIT_CHECKOUT_DASHDASH = /\bcheckout\s+--/;
 
 export function isGitMutatingShellCommand(command: string): boolean {
-  return GIT_MUTATING_SHELL_RE.test(command);
+  const stripped = command
+    .replace(/^(?:env\s+\S+=\S+\s+)*/, "")
+    .replace(/^(?:command|builtin)\s+/, "");
+  const gitIdx = stripped.search(/\bgit\b/);
+  if (gitIdx === -1) return false;
+  const afterGit = stripped.slice(gitIdx + 3).replace(/^\s+(-\S+\s+\S+\s+)*/, "");
+  return GIT_MUTATING_ACTIONS.test(afterGit) || GIT_CHECKOUT_DASHDASH.test(afterGit);
 }
 
 /** Detect shell commands that write to specific files (sed -i, cp, mv, tee, etc.) */
@@ -518,7 +524,7 @@ export function buildTools(
             const tabNames = activeTabs.map((t: string) => `"${t}"`).join(", ");
             return {
               success: false,
-              output: `Cannot run git command: Tab ${tabNames} has dispatch agents actively editing files. Wait for dispatch to complete, or use the git tool instead.`,
+              output: `BLOCKED: Tab ${tabNames} has dispatch agents actively editing files. Your edits are saved to disk. Inform the user the git command is pending — do not attempt again.`,
               error: "active dispatch",
             };
           }

@@ -5,6 +5,7 @@ import { generateText } from "ai";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { StreamSegment } from "../components/chat/StreamSegmentList.js";
 import type { LiveToolCall } from "../components/chat/ToolCallDisplay.js";
+import { normalizePath } from "../core/agents/agent-bus.js";
 import { createForgeAgent } from "../core/agents/index.js";
 import { getSmoothStreamOptions } from "../core/agents/stream-options.js";
 import { onAgentStats, onMultiAgentEvent } from "../core/agents/subagent-events.js";
@@ -405,9 +406,10 @@ export function useChat({
           if (!ref.current) return;
           const prefix = cwd.endsWith("/") ? cwd : `${cwd}/`;
           const rel = absPath.startsWith(prefix) ? absPath.slice(prefix.length) : absPath;
-          ref.current.files.set(rel, content);
-          for (const key of ref.current.toolResults.keys()) {
-            if (key.includes(rel)) ref.current.toolResults.delete(key);
+          const key = normalizePath(rel);
+          ref.current.files.set(key, content);
+          for (const k of ref.current.toolResults.keys()) {
+            if (k.includes(key)) ref.current.toolResults.delete(k);
           }
         },
       };
@@ -2010,6 +2012,7 @@ export function useChat({
         unsubAgentStats();
         unsubMultiAgent();
         if (visibleRef.current) useStatusBarStore.getState().setSubagentChars(0);
+        if (abortController.signal.aborted) getWorkspaceCoordinator().releaseAll(tabId);
         setIsLoading(false);
         abortRef.current = null;
         planExecutionRef.current = false;
@@ -2209,7 +2212,6 @@ export function useChat({
       abortRef.current = null;
       setIsLoading(false);
       resetInProgressTasks(tabId);
-      getWorkspaceCoordinator().releaseAll(tabId);
       setLiveToolCalls([]);
       setStreamSegments([]);
       messageQueueRef.current = [];

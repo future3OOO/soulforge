@@ -1395,7 +1395,7 @@ describe("gitTool.execute cross-tab blocking integration", () => {
       "tab-2",
     );
     expect(result.success).toBe(false);
-    expect(result.output).toContain("Cannot commit");
+    expect(result.output).toContain("BLOCKED");
     expect(result.output).toContain("Feature X");
     expect(result.error).toBe("active dispatch");
   });
@@ -1409,7 +1409,7 @@ describe("gitTool.execute cross-tab blocking integration", () => {
       "tab-2",
     );
     expect(result.success).toBe(false);
-    expect(result.output).toContain("Cannot stash");
+    expect(result.output).toContain("BLOCKED");
     expect(result.error).toBe("active dispatch");
   });
 
@@ -1422,7 +1422,7 @@ describe("gitTool.execute cross-tab blocking integration", () => {
       "tab-2",
     );
     expect(result.success).toBe(false);
-    expect(result.output).toContain("Cannot restore");
+    expect(result.output).toContain("BLOCKED");
     expect(result.error).toBe("active dispatch");
   });
 
@@ -1435,7 +1435,7 @@ describe("gitTool.execute cross-tab blocking integration", () => {
       "tab-2",
     );
     expect(result.success).toBe(false);
-    expect(result.output).toContain("Cannot branch");
+    expect(result.output).toContain("BLOCKED");
     expect(result.error).toBe("active dispatch");
   });
 
@@ -1707,9 +1707,28 @@ describe("shell git-mutating — edge cases", () => {
   });
 
   it("git checkout without -- (not detected as mutating)", () => {
-    // "git checkout branch" is handled by "git switch", and "checkout" without "--" is not in the regex
     expect(isGitMutatingShellCommand("git checkout feature-branch")).toBe(false);
     expect(isGitMutatingShellCommand("git checkout -- file.ts")).toBe(true);
+  });
+
+  it("detects env prefix: env VAR=x git commit", () => {
+    expect(isGitMutatingShellCommand('env GIT_AUTHOR_NAME=x git commit -m "y"')).toBe(true);
+  });
+
+  it("detects git flags before subcommand: git -c key=val commit", () => {
+    expect(isGitMutatingShellCommand('git -c user.name=x commit -m "y"')).toBe(true);
+  });
+
+  it("detects command prefix: command git commit", () => {
+    expect(isGitMutatingShellCommand("command git commit -m msg")).toBe(true);
+  });
+
+  it("detects builtin prefix: builtin git stash", () => {
+    expect(isGitMutatingShellCommand("builtin git stash")).toBe(true);
+  });
+
+  it("env prefix with non-git command — not detected", () => {
+    expect(isGitMutatingShellCommand("env FOO=bar echo hello")).toBe(false);
   });
 });
 

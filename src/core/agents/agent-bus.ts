@@ -176,7 +176,7 @@ export class AgentBus {
     if (shared) {
       const now = Date.now();
       for (const [path, content] of shared.files) {
-        this.fileCache.set(path, {
+        this.fileCache.set(normalizePath(path), {
           agentId: "_shared",
           state: "done",
           content,

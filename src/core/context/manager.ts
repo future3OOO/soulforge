@@ -884,9 +884,8 @@ export class ContextManager {
       parts.push("Skills: none loaded. Ctrl+S or /skills to browse.");
     }
 
-    // Cross-tab file claims awareness
-    const crossTabSection = this.buildCrossTabSection();
-    if (crossTabSection) parts.push(crossTabSection);
+    // Cross-tab claims injected via prepareStep (fresh on every step),
+    // not here in the system prompt (would go stale as claims change).
 
     return parts.filter(Boolean).join("\n");
   }

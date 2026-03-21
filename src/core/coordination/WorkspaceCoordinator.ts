@@ -13,6 +13,8 @@ const IDLE_RELEASE_MS = 60_000;
 const STALE_RELEASE_MS = 5 * 60_000;
 /** How often to sweep for stale claims */
 const SWEEP_INTERVAL_MS = 30_000;
+/** Max age for active agents — leaked entries cleared after this */
+const MAX_AGENT_AGE_MS = 15 * 60_000;
 
 /**
  * Normalize path for cross-OS consistency.
@@ -36,6 +38,8 @@ export class WorkspaceCoordinator {
   private listeners = new Set<CoordinatorListener>();
   /** Track active agent count per tab — don't idle-release while agents are running */
   private activeAgents = new Map<string, number>();
+  /** Timestamp of last agentStarted per tab — sweep clears entries older than MAX_AGENT_AGE_MS */
+  private agentStartedAt = new Map<string, number>();
   /** Tabs that have been closed — reject new claims/agents from dead tabs */
   private closedTabs = new Set<string>();
   /** Debounce event emission — batch rapid claim/release into one event per tick */
@@ -111,6 +115,7 @@ export class WorkspaceCoordinator {
     for (const p of released) this.claims.delete(p);
     this.clearIdleTimer(tabId);
     this.activeAgents.delete(tabId);
+    this.agentStartedAt.delete(tabId);
     if (released.length > 0) this.scheduleEvent(tabId, "release", released);
   }
 
@@ -118,6 +123,7 @@ export class WorkspaceCoordinator {
   closeTab(tabId: string): void {
     this.releaseAll(tabId);
     this.activeAgents.delete(tabId);
+    this.agentStartedAt.delete(tabId);
     this.closedTabs.add(tabId);
     // Trim closedTabs to prevent unbounded growth in long sessions
     if (this.closedTabs.size > 50) {
@@ -216,15 +222,19 @@ export class WorkspaceCoordinator {
   agentStarted(tabId: string): void {
     if (this.closedTabs.has(tabId)) return;
     this.activeAgents.set(tabId, (this.activeAgents.get(tabId) ?? 0) + 1);
+    this.agentStartedAt.set(tabId, Date.now());
     this.clearIdleTimer(tabId);
   }
 
   /** Decrement active agent count — triggers idle when all agents done */
   agentFinished(tabId: string): void {
     if (this.closedTabs.has(tabId)) return;
-    const count = (this.activeAgents.get(tabId) ?? 1) - 1;
+    const current = this.activeAgents.get(tabId);
+    if (current == null || current <= 0) return;
+    const count = current - 1;
     if (count <= 0) {
       this.activeAgents.delete(tabId);
+      this.agentStartedAt.delete(tabId);
     } else {
       this.activeAgents.set(tabId, count);
     }
@@ -291,6 +301,13 @@ export class WorkspaceCoordinator {
     for (const [tabId, paths] of byTab) {
       this.scheduleEvent(tabId, "release", paths);
     }
+
+    for (const [tabId, startedAt] of this.agentStartedAt) {
+      if (now - startedAt > MAX_AGENT_AGE_MS) {
+        this.activeAgents.delete(tabId);
+        this.agentStartedAt.delete(tabId);
+      }
+    }
   }
 
   // ── Batched Events ──────────────────────────────────────────────────
@@ -337,6 +354,7 @@ export class WorkspaceCoordinator {
     this.claims.clear();
     for (const tabId of tabIds) this.clearIdleTimer(tabId);
     this.activeAgents.clear();
+    this.agentStartedAt.clear();
     this.closedTabs.clear();
   }
 
@@ -351,6 +369,7 @@ export class WorkspaceCoordinator {
     this.claims.clear();
     this.listeners.clear();
     this.activeAgents.clear();
+    this.agentStartedAt.clear();
     this.closedTabs.clear();
     this.pendingEvents.clear();
   }

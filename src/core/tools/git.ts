@@ -91,7 +91,7 @@ export const gitTool = {
         const tabNames = activeTabs.map((t) => `"${t}"`).join(", ");
         return {
           success: false,
-          output: `Cannot ${args.action}: Tab ${tabNames} has dispatch agents actively editing files. Wait for dispatch to complete.`,
+          output: `BLOCKED: Tab ${tabNames} has dispatch agents actively editing files. Your edits are saved to disk. Inform the user the ${args.action} is pending — do not attempt again.`,
           error: "active dispatch",
         };
       }
@@ -145,6 +145,19 @@ export const gitTool = {
     if (claimWarning && result.success) {
       result = { ...result, output: `${claimWarning}\n\n${result.output}` };
     }
+
+    if (args.action === "commit" && result.success && tabId) {
+      const coordinator = getWorkspaceCoordinator();
+      const myClaims = coordinator.getClaimsForTab(tabId);
+      if (myClaims.size > 0) {
+        const paths = [...myClaims.keys()].map((p) => relative(cwd, p) || p);
+        result = {
+          ...result,
+          output: `${result.output}\n\nFiles you edited this session: ${paths.join(", ")}`,
+        };
+      }
+    }
+
     return result;
   },
 };
