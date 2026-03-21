@@ -1724,10 +1724,25 @@ export function useChat({
                 (typeof err === "string" ? err : null) ||
                 JSON.stringify(err);
               const errStack = err instanceof Error ? err.stack : undefined;
-              appendText(`\n\n_Error: ${errText}_`);
+              const sErr =
+                err != null && typeof err === "object"
+                  ? (err as Record<string, unknown>)
+                  : null;
+              const sBody =
+                sErr && typeof sErr.responseBody === "string" && sErr.responseBody.length > 0
+                  ? (sErr.responseBody as string).slice(0, 500)
+                  : undefined;
+              const sData =
+                sErr?.data != null ? JSON.stringify(sErr.data).slice(0, 500) : undefined;
+              const enriched = sBody ?? sData;
+              const displayErr = enriched ? `${errText} · ${enriched}` : errText;
+              logBackgroundError("api", displayErr);
+              appendText(`\n\n_Error: ${displayErr}_`);
               if (streamErrors.length < 50) {
                 streamErrors.push(
-                  errStack ? `Error: ${errText}\n\n${errStack}` : `Error: ${errText}`,
+                  errStack
+                    ? `Error: ${displayErr}\n\n${errStack}`
+                    : `Error: ${displayErr}`,
                 );
               }
               break;
@@ -1854,9 +1869,17 @@ export function useChat({
         const isTransientStream = /overloaded|529|429|rate.?limit|too many requests|503|502/i.test(
           rawMsg,
         );
+        const errObj = err != null && typeof err === "object" ? (err as Record<string, unknown>) : null;
+        const apiBody =
+          errObj && typeof errObj.responseBody === "string" && errObj.responseBody.length > 0
+            ? errObj.responseBody
+            : undefined;
+        const apiData = errObj?.data != null ? JSON.stringify(errObj.data).slice(0, 500) : undefined;
+        const detail = apiBody?.slice(0, 500) ?? apiData;
+        const enrichedMsg = detail ? `${rawMsg} · ${detail}` : rawMsg;
         const errorMsg = isTransientStream
           ? `Provider returned a transient error (${rawMsg.slice(0, 120)}). Please retry.`
-          : rawMsg;
+          : enrichedMsg;
         const errorStack = !isTransientStream && err instanceof Error ? err.stack : undefined;
         // Mark in-flight tool calls as interrupted so they don't show stuck spinners
         if (isAbort) {

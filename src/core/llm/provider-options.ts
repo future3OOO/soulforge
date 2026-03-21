@@ -283,7 +283,7 @@ function supportsAnthropicOptions(modelId: string): boolean {
 }
 
 const TASK_EFFORT: Record<TaskType, string> = {
-  planning: "max",
+  planning: "high",
   coding: "high",
   exploration: "medium",
   webSearch: "medium",
