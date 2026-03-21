@@ -657,15 +657,21 @@ const ToolRow = memo(
                 [{OUTSIDE_BADGE[outsideKind].label}]{" "}
               </span>
             ) : null}
-            <span
-              fg={isDone ? COLORS.textDone : COLORS.toolNameActive}
-              attributes={!isDone ? TextAttributes.BOLD : undefined}
-            >
-              {label}
-            </span>
-            {argStr ? (
-              <span fg={isDone ? COLORS.textDone : COLORS.argsActive}> {argStr}</span>
-            ) : null}
+            {isDone && isEditTool(tc.toolName) && tc.result ? (
+              <span fg={COLORS.textDone}>{formatResult(tc.toolName, tc.result)}</span>
+            ) : (
+              <>
+                <span
+                  fg={isDone ? COLORS.textDone : COLORS.toolNameActive}
+                  attributes={!isDone ? TextAttributes.BOLD : undefined}
+                >
+                  {label}
+                </span>
+                {argStr ? (
+                  <span fg={isDone ? COLORS.textDone : COLORS.argsActive}> {argStr}</span>
+                ) : null}
+              </>
+            )}
             {suffix ? (
               <span
                 fg={

@@ -240,9 +240,12 @@ function ToolCallRow({ tc }: { tc: ToolCall }) {
   const isError = !!tc.result && !tc.result.success && !denied;
   const statusIcon = tc.result ? (tc.result.success ? "✓" : denied ? "⊘" : "✗") : "●";
   const statusColor = tc.result ? (tc.result.success ? "#4a7" : denied ? "#666" : "#f44") : "#666";
+  const isEditTool = tc.name === "edit_file" || tc.name === "multi_edit";
   const shortResult = tc.result
     ? tc.result.success
-      ? "ok"
+      ? isEditTool
+        ? (tc.result.output ?? "ok")
+        : "ok"
       : denied
         ? "denied"
         : "failed"
@@ -277,17 +280,30 @@ function ToolCallRow({ tc }: { tc: ToolCall }) {
       ? `${displayResult.slice(0, previewLen - 3)}…`
       : displayResult;
 
+  // Edit tools: when done, show result directly (it already contains the path);
+  // when pending, show "Editing: <path>"
+  const editDone = isEditTool && tc.result?.success;
   return (
     <box height={1} flexShrink={0}>
       <text truncate>
         <span fg={statusColor}>{statusIcon} </span>
         <span fg={iconColor}>{icon} </span>
         {category ? <span fg={categoryColor}>[{category}] </span> : null}
-        <span fg="#999">{label}</span>
-        {argStr ? <span fg="#777"> {argStr}</span> : null}
-        <span fg="#555"> → </span>
-        <span fg={isError ? "#a55" : statusColor}>{preview}</span>
-        {isError ? <span fg="#333"> ^T</span> : null}
+        {editDone ? (
+          <span fg="#999">{shortResult}</span>
+        ) : (
+          <>
+            <span fg="#999">{label}</span>
+            {argStr ? <span fg="#777"> {argStr}</span> : null}
+            {tc.result ? (
+              <>
+                <span fg="#555"> → </span>
+                <span fg={isError ? "#a55" : statusColor}>{preview}</span>
+              </>
+            ) : null}
+          </>
+        )}
+        {isError ? <span fg="#333"> ^O</span> : null}
       </text>
     </box>
   );
