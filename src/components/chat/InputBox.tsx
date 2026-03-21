@@ -337,12 +337,12 @@ export const InputBox = memo(function InputBox({
   useEffect(() => {
     if (!fuzzyMode && pendingCursorEnd.current) {
       pendingCursorEnd.current = false;
-      // Small delay to let the textarea mount and set initialValue
       const t = setTimeout(() => {
         textareaRef.current?.gotoBufferEnd();
       }, 0);
       return () => clearTimeout(t);
     }
+    return undefined;
   }, [fuzzyMode]);
 
   // Recalculate visual lines on terminal width change
