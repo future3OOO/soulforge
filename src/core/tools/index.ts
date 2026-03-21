@@ -1,6 +1,6 @@
-import { resolve } from "node:path";
 import { createAnthropic } from "@ai-sdk/anthropic";
 import { tool } from "ai";
+import { resolve } from "node:path";
 import { z } from "zod";
 import type { EditorIntegration } from "../../types/index.js";
 import { checkAndClaim, prependWarning } from "../coordination/tool-wrapper.js";
@@ -178,7 +178,12 @@ export function buildTools(
             return { success: false, output: msg, error: msg };
           }
         }
-        return editFileTool.execute(args);
+        const warning = checkAndClaim(opts?.tabId, opts?.tabLabel, resolve(args.path));
+        const result = await editFileTool.execute(args);
+        if (warning && typeof result === "string") {
+          return prependWarning(result, warning);
+        }
+        return result;
       }),
     }),
 
@@ -215,7 +220,12 @@ export function buildTools(
             return { success: false, output: msg, error: msg };
           }
         }
-        return multiEditTool.execute(args);
+        const warning = checkAndClaim(opts?.tabId, opts?.tabLabel, resolve(args.path));
+        const result = await multiEditTool.execute(args);
+        if (warning && typeof result === "string") {
+          return prependWarning(result, warning);
+        }
+        return result;
       }),
     }),
 
