@@ -4,6 +4,7 @@ export { google } from "./google.js";
 export { llmgateway } from "./llmgateway.js";
 export { ollama } from "./ollama.js";
 export { openai } from "./openai.js";
+export { openrouter } from "./openrouter.js";
 export { proxy } from "./proxy.js";
 export type { CustomProviderConfig, ProviderDefinition, ProviderModelInfo } from "./types.js";
 export { vercelGatewayProvider } from "./vercel-gateway.js";
@@ -15,6 +16,7 @@ import { google } from "./google.js";
 import { llmgateway } from "./llmgateway.js";
 import { ollama } from "./ollama.js";
 import { openai } from "./openai.js";
+import { openrouter } from "./openrouter.js";
 import { proxy } from "./proxy.js";
 import type { CustomProviderConfig, ProviderDefinition } from "./types.js";
 import { vercelGatewayProvider } from "./vercel-gateway.js";
@@ -27,6 +29,7 @@ const BUILTIN_PROVIDERS: ProviderDefinition[] = [
   openai,
   xai,
   google,
+  openrouter,
   ollama,
   proxy,
 ];

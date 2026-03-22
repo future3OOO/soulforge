@@ -9,7 +9,7 @@
   <a href="LICENSE"><img src="https://img.shields.io/badge/License-BSL%201.1-blue.svg" alt="License" /></a>
   <a href="#"><img src="https://img.shields.io/badge/version-1.0.0-brightgreen.svg" alt="Version" /></a>
   <a href="https://www.typescriptlang.org/"><img src="https://img.shields.io/badge/TypeScript-strict-blue.svg" alt="TypeScript" /></a>
-  <a href="#testing"><img src="https://img.shields.io/badge/tests-1942%20passing-brightgreen.svg" alt="Tests" /></a>
+  <a href="#testing"><img src="https://img.shields.io/badge/tests-1979%20passing-brightgreen.svg" alt="Tests" /></a>
   <a href="https://bun.sh"><img src="https://img.shields.io/badge/runtime-Bun-f472b6.svg" alt="Bun" /></a>
 </p>
 
@@ -118,7 +118,7 @@ Up to 5 concurrent tabs with advisory file claims. Agents see what other tabs ar
 <td>
 
 ### Project Toolchain
-Auto-detects lint, typecheck, test, and build commands across 22 ecosystems from config files. Pre-commit gate blocks `git commit` on lint/type errors. Monorepo package discovery. [Deep dive →](docs/project-tool.md)
+Auto-detects lint, typecheck, test, and build commands across 17 ecosystems from config files. Pre-commit gate blocks `git commit` on lint/type errors. Monorepo package discovery. [Deep dive →](docs/project-tool.md)
 
 </td>
 <td>
@@ -263,6 +263,7 @@ soulforge --headless --max-steps 10          # Limit steps
 soulforge --headless --timeout 60000         # Abort after 60s
 soulforge --headless --no-repomap "prompt"   # Skip repo map
 soulforge --headless --diff "fix the bug"    # Show changed files
+soulforge --headless --no-render "prompt"    # Raw output (no ANSI styling)
 soulforge --headless --chat                  # Interactive multi-turn chat
 soulforge --headless --chat --events         # Chat with JSONL events
 echo "prompt" | soulforge --headless         # Pipe from stdin
@@ -291,7 +292,7 @@ soulforge --version                          # Version info
 
 ### Slash Commands
 
-74 commands available — press `/` or `Ctrl+K` to browse. Key ones by category:
+75 commands available — press `/` or `Ctrl+K` to browse. Key ones by category:
 
 **Models & Providers**
 `/model` `/router` `/provider` `/model-scope`
@@ -306,7 +307,7 @@ soulforge --version                          # Version info
 `/git` `/commit` `/push` `/pull` `/branch` `/log` `/diff` `/stash` `/lazygit` `/co-author-commits`
 
 **Intelligence & LSP**
-`/lsp` `/lsp-install` `/diagnose` `/repo-map` `/web-search` `/keys`
+`/lsp` `/lsp-install` `/lsp-restart` `/diagnose` `/repo-map` `/web-search` `/keys`
 
 **Context & Memory**
 `/compact` `/context` `/memory` `/compaction` `/instructions`
@@ -337,7 +338,7 @@ soulforge --version                          # Version info
 
 ## Tool Suite
 
-SoulForge ships 30+ tools organized by capability:
+SoulForge ships 39 tools organized by capability:
 
 ### Code Intelligence
 
@@ -598,7 +599,7 @@ See [GETTING_STARTED.md](GETTING_STARTED.md) for the full reference.
 ## Testing
 
 ```bash
-bun test              # 1942 tests across 40 files
+bun test              # 1979 tests across 42 files
 bun run typecheck     # tsc --noEmit
 bun run lint          # biome check (lint + format)
 bun run lint:fix      # auto-fix
@@ -610,7 +611,7 @@ bun run lint:fix      # auto-fix
 
 | Document | Description |
 |----------|-------------|
-| **[Command Reference](docs/commands-reference.md)** | All 74 slash commands by category |
+| **[Command Reference](docs/commands-reference.md)** | All 75 slash commands by category |
 | **[Headless Mode](docs/headless.md)** | Non-interactive CLI for CI/CD, scripting, automation |
 | **[Architecture](docs/architecture.md)** | System overview, data flow, component lifecycle |
 | **[Repo Map](docs/repo-map.md)** | PageRank, cochange, blast radius, clone detection |

@@ -243,10 +243,14 @@ For each operation, the router tries backends in tier order. If tier 1 returns n
 
 **File**: `src/core/intelligence/backends/lsp/`
 
-- Auto-discovers language servers via PATH and Mason (`~/.local/share/nvim/mason/bin/`)
+Dual-backend architecture — the agent always has LSP access regardless of editor state:
+
+- **Neovim bridge** (`nvim-bridge.ts`): When the editor is open, routes LSP requests through Neovim's running LSP servers via Lua RPC. Zero startup cost since servers are already warm.
+- **Standalone client** (`standalone-client.ts`): When the editor is closed, spawns LSP servers directly as child processes with JSON-RPC over stdin/stdout. Full protocol support: definitions, references, hover, diagnostics, rename, code actions, call/type hierarchy, formatting.
+- **Multi-language warmup**: On boot, `detectAllLanguages()` scans project config files and spawns standalone LSP servers for all detected languages in parallel — not just the primary language. Standalone servers stay warm as hot standby even when Neovim is open.
+- Server discovery: PATH → `~/.soulforge/lsp-servers/` → `~/.local/share/soulforge/mason/bin/`
 - Per-language client pool cached by `(language, projectRoot)`
-- Standalone mode (no Neovim) and bridge mode (via running Neovim instance)
-- Anchor-file discovery for workspace-wide queries without an open buffer
+- Mason servers auto-installed via LazyVim's mason-tool-installer on first editor launch
 
 ### Post-Edit Diagnostics
 

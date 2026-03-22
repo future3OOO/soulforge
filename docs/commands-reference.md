@@ -1,6 +1,6 @@
 # Command Reference
 
-73 slash commands available. Press `/` in the chat input or `Ctrl+K` to open the command picker.
+75 slash commands available. Press `/` in the chat input or `Ctrl+K` to open the command picker.
 
 ## Models & Providers
 
@@ -62,6 +62,7 @@
 |---------|-------------|
 | `/lsp` | LSP server status — running servers, PIDs, diagnostics per file |
 | `/lsp-install` | LSP server manager — search 200+ servers (Mason registry), install, uninstall, enable/disable |
+| `/lsp-restart` | Restart standalone LSP servers — all or filtered by language/server name |
 | `/diagnose` | Intelligence health check — probes all backends (LSP, ts-morph, tree-sitter, regex) |
 | `/repo-map` | Repo map settings and status |
 | `/web-search` | Web search configuration (API keys, page fetcher) |
