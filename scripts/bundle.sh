@@ -7,7 +7,7 @@ set -euo pipefail
 #   arch: arm64 (default) or x64
 
 ARCH="${1:-arm64}"
-VERSION="1.0.0"
+VERSION="$(bun -e "console.log(require('./package.json').version)")"
 BUNDLE_NAME="soulforge-${VERSION}-darwin-${ARCH}"
 STAGE_DIR="dist/bundle/${BUNDLE_NAME}"
 DEPS_DIR="${STAGE_DIR}/deps"
@@ -121,6 +121,12 @@ sed -i '' 's|var fs = require("fs")|var fs = __require("fs")|g' "${DEPS_DIR}/ope
 sed -i '' 's|var nodePath = require("path")|var nodePath = __require("path")|g' "${DEPS_DIR}/opentui-assets/parser.worker.js"
 sed -i '' 's|require("url")|__require("url")|g' "${DEPS_DIR}/opentui-assets/parser.worker.js"
 cp src/core/editor/init.lua "${DEPS_DIR}/init.lua"
+
+# Neovim LICENSE (not included in official release tarball — download from repo)
+if [[ ! -f "${CACHE_DIR}/nvim-LICENSE.txt" ]]; then
+  curl -fSL --retry 3 "https://raw.githubusercontent.com/neovim/neovim/v${NVIM_VERSION}/LICENSE.txt" -o "${CACHE_DIR}/nvim-LICENSE.txt"
+fi
+cp "${CACHE_DIR}/nvim-LICENSE.txt" "${DEPS_DIR}/nvim/LICENSE.txt"
 
 # Nerd Font Symbols Only — enables icons without requiring a full Nerd Font
 NERD_FONTS_VERSION="v3.4.0"
