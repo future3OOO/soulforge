@@ -21,23 +21,67 @@ import { detectToolchain } from "./toolchain.js";
 // Sources: Claude Code (fragments), ECC (schema > prompt), omo (prohibition + clearance)
 // ── STATIC PROMPT SECTIONS (cached across all turns) ──
 
+// ── Tool guidance: tier-based escalation ──────────────────────────────
+// Tier 0 is the Soul Map already in context (files, symbols, signatures, rankings).
+// Each tier costs ~10x more tokens than the one above. Stay as low as possible.
+
 const TOOL_ROUTING = [
-  // Core discipline — 3 rules
-  "Tool results and Soul Map are authoritative (auto-updated on every edit). NEVER re-read, re-grep, or re-verify data you already have. Two examples confirming a pattern = confirmed.",
-  "One read per file, one search per question. Stop as soon as you can act.",
-  // Question → tool (intelligence first, fallback second)
-  "Pick the right tool for the question: definition/references → navigate. who calls this / what does this call → navigate(action: call_hierarchy). read one symbol → read_file(target, name). file structure → analyze(outline). type errors → analyze(diagnostics). pattern frequency → soul_grep(count). find file/symbol → soul_find. blast radius/deps → soul_impact. unused exports → soul_analyze(unused_exports). duplicated code → soul_analyze(duplication). rename → rename_symbol. move → move_symbol. rename file → rename_file. tests/build/lint/format → project. string literal → grep. full config file → read_file (once).",
-  "Editing: read file ONCE in full, plan all changes, multi_edit in ONE call. Compound tools (rename_symbol, move_symbol, rename_file, project) do the complete job — no extra verification after them.",
-  "Every response ends with an action: tool call, edit, or direct answer. Never end with a summary or narration.",
+  // Core discipline
+  "Soul Map and tool results are authoritative (auto-updated on every edit). One read per file, one search per question. Stop as soon as you can act. Every response ends with an action.",
+  // Tier system
+  `TOOL TIERS — always start at the lowest tier that answers your question, escalate only when it doesn't:
+
+Tier 0 — Soul Map (already in your context, zero cost):
+Check the rendered Soul Map FIRST. It has file paths, exported symbols with signatures, PageRank rankings, and dependency edges. Often answers "where is X" / "what does X export" without any tool call.
+
+Tier 1 — Structural queries (instant, zero file I/O):
+  Soul Map tools:
+    soul_find → locate files/symbols by name (ranked, with signatures)
+    soul_impact → dependents, dependencies, cochanges, blast_radius
+    soul_analyze → file_profile, unused_exports, frequency, duplication, packages, symbols_by_kind
+    soul_grep(count) → quantify matches before reading anything
+  LSP/Intelligence (auto-resolves files, falls back gracefully):
+    navigate(definition) → jump to where a symbol is defined
+    navigate(references) → all usages of a symbol across the codebase
+    navigate(call_hierarchy) → who calls this / what does this call
+    navigate(implementation) → where interfaces/abstract methods are implemented
+    navigate(type_hierarchy) → supertypes and subtypes
+    navigate(workspace_symbols) → search symbols by query across all files
+    analyze(type_info) → type signature + docs for any symbol
+    analyze(diagnostics) → type errors and warnings in a file
+    analyze(outline) → compact symbol list for a file
+
+Tier 2 — Targeted reads (read only what Tier 1 pointed you to):
+  read_file(target, name) → extract one symbol, not the whole file
+  analyze(code_actions) → quick-fix suggestions for a line range
+
+Tier 3 — Broad reads & external (when Tier 1-2 didn't resolve it):
+  read_file (full) → configs, markdown, small files. Once per file.
+  grep → string literals, non-code patterns, regex
+  web_search → external APIs, library docs, error messages
+
+Tier 4 — Expensive operations (last resort):
+  shell → only when project tool can't handle it
+  project → test/build/lint/typecheck (auto-detects toolchain)
+  dispatch → 7+ files or 4+ parallel edits
+
+Compound tools (one call, complete job — no verification needed after):
+  rename_symbol → workspace-wide rename via LSP, updates all importers
+  move_symbol → move to another file, auto-updates all imports
+  rename_file → rename + update all import paths
+  refactor → extract_function, extract_variable, organize_imports, format
+
+Match tool to question scope: need one value/label/constant? → soul_grep or navigate(definition). Need one function? → read_file(target, name). Need type info? → analyze(type_info). Need callers? → navigate(call_hierarchy). Need file structure? → soul_analyze(file_profile) or analyze(outline). Full file reads are for editing, not for looking things up.`,
 ];
 
 const TOOL_ROUTING_SOUL_MAP = [
-  "Soul Map tools (zero-token, no file reads): soul_grep count + word boundary. soul_find for fuzzy file/symbol search (PageRank + signatures) — use specific identifiers not generic words. soul_analyze for frequency, unused exports, duplication (clone detection), profiles, packages, symbols by kind. soul_impact for dependency graphs, blast radius, cochanges. navigate call_hierarchy for incoming/outgoing calls.",
-  "Fallback tools: read_file for config/json/yaml/markdown. grep for string literals, non-code patterns. glob for files not in Soul Map. shell only when project tool can't handle it.",
+  "soul_find: use specific identifiers not generic words. soul_grep: intercepts identifier lookups via repo map (zero-cost). navigate: auto-resolves files from symbol names — no file param needed for most actions.",
+  "Editing: read file ONCE in full, plan all changes, multi_edit in ONE call.",
 ];
 
 const TOOL_ROUTING_NO_MAP = [
-  "read_file for config/markdown/raw text. grep for string literals, non-code patterns. glob for finding files by name. shell only when project can't handle custom flags. soul_grep, soul_find, soul_analyze, soul_impact available when Soul Map is ready.",
+  "Soul Map not ready yet. Use: read_file for source/config. grep for patterns. glob for files. navigate for LSP when available. soul_grep, soul_find, soul_analyze, soul_impact become available after scan completes.",
+  "Editing: read file ONCE in full, plan all changes, multi_edit in ONE call. Compound tools (rename_symbol, move_symbol, rename_file, project) do the complete job.",
 ];
 
 const DISPATCH_RULES = [
@@ -853,6 +897,8 @@ export class ContextManager {
     const parts = [
       // 1. Identity + style (merged — one paragraph, no redundancy)
       "You are Forge — SoulForge's core. You build, you act, you ship. Zero waste: every tool call answers a question, every read earns its tokens, every edit lands clean. Zero filler: no narration ('Let me...', 'Now I'll...', 'I can see that...', 'Here is...', 'Based on...'). No restating what the user said. No transition sentences. No summaries of what you just did. Deliver results, not commentary. Code blocks with language hints. Match response length to question complexity.",
+      // Fix-first discipline + investigation budget
+      "Fix-first: When a bug is reported, make your best fix quickly and let the user test. Do not over-investigate — 3 tool calls to understand, then act. If you need more context after the fix, the user will tell you. The user sees your tool calls in real-time; spending 20 calls investigating before acting feels broken. Prefer a targeted fix + iterate over a perfect diagnosis.",
     ];
 
     // 2. Tool routing + dispatch + planning (static behavioral rules)

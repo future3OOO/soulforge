@@ -1702,11 +1702,37 @@ export function useChat({
               }
               toolCharsRef.current += resultStr.length;
               const parsedArgs = safeParseArgs(toolCallArgs.get(part.toolCallId));
+              // Extract structured result — part.output is already our {success, output, error?} object
+              let toolResult: import("../types/index.js").ToolResult;
+              if (
+                typeof part.output === "object" &&
+                part.output !== null &&
+                "success" in part.output
+              ) {
+                const r = part.output as {
+                  success: boolean;
+                  output?: string;
+                  error?: string;
+                  backend?: string;
+                  outlineOnly?: boolean;
+                  filesEdited?: string[];
+                };
+                toolResult = {
+                  success: r.success,
+                  output: r.output ?? "",
+                  error: r.error,
+                  backend: r.backend,
+                  outlineOnly: r.outlineOnly,
+                  filesEdited: r.filesEdited,
+                };
+              } else {
+                toolResult = { success: true, output: resultStr };
+              }
               completedCalls.push({
                 id: part.toolCallId,
                 name: part.toolName,
                 args: parsedArgs,
-                result: { success: true, output: resultStr },
+                result: toolResult,
               });
               if (workingStateRef.current) {
                 extractFromToolCall(workingStateRef.current, part.toolName, parsedArgs);

@@ -40,11 +40,10 @@ const STEP_NUDGE_CODE = 10;
 // Consecutive read operations before injecting a "stop reading, start editing" hint
 const CONSECUTIVE_READ_LIMIT = 3;
 
-const READ_TOOL_NAMES = new Set(["read_file", "read_code", "navigate", "soul_find", "list_dir"]);
+const READ_TOOL_NAMES = new Set(["read_file", "navigate", "soul_find", "list_dir"]);
 
 const SUMMARIZABLE_TOOLS = new Set([
   "read_file",
-  "read_code",
   "grep",
   "glob",
   "navigate",
@@ -93,7 +92,7 @@ function buildSummary(toolName: string, text: string, ctx?: SummaryContext): str
   const args = ctx?.args;
   const tag = "←";
 
-  if (toolName === "read_file" || toolName === "read_code") {
+  if (toolName === "read_file") {
     const parts = [`${tag} ${String(lineCount)} lines`];
     if (ctx?.symbolHint) parts.push(ctx.symbolHint);
     return parts.join(" — ");
@@ -188,7 +187,7 @@ function buildToolCallPathMap(messages: ModelMessage[]): Map<string, string> {
     if (!Array.isArray(msg.content)) continue;
     for (const part of msg.content) {
       if (part.type !== "tool-call") continue;
-      if (part.toolName !== "read_file" && part.toolName !== "read_code") continue;
+      if (part.toolName !== "read_file") continue;
       const input = part.input as Record<string, unknown>;
       const path = input.path ?? input.file ?? input.filePath;
       if (typeof path === "string") {
@@ -238,7 +237,7 @@ function semanticPrune(messages: ModelMessage[], pathMap?: Map<string, string>):
     const newContent = msg.content.map((part) => {
       if (part.type !== "tool-result") return part;
 
-      if (part.toolName === "read_file" || part.toolName === "read_code") {
+      if (part.toolName === "read_file") {
         const filePath = pathMap?.get(part.toolCallId);
         if (filePath) {
           // 1. Prune read results for files that were LATER edited
@@ -365,11 +364,7 @@ function compactOldToolResults(
       const text = extractText(part.output);
 
       let symbolHint: string | undefined;
-      if (
-        symbolLookup &&
-        resolvedPathMap &&
-        (part.toolName === "read_file" || part.toolName === "read_code")
-      ) {
+      if (symbolLookup && resolvedPathMap && part.toolName === "read_file") {
         const absPath = resolvedPathMap.get(part.toolCallId);
         if (absPath) {
           try {

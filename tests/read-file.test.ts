@@ -62,7 +62,7 @@ describe("readFileTool", () => {
 		expect(result.success).toBe(true);
 		expect(result.outlineOnly).toBe(true);
 		expect(result.output).toContain("400 lines");
-		expect(result.output).toContain("startLine=1 for the full file");
+		expect(result.output).toContain("Pass fresh=true to force full read");
 	}, 30_000);
 
 	it("returns full content for large code file with startLine=1", async () => {

@@ -167,18 +167,6 @@ describe("groupToolCalls", () => {
     expect(groups[3]!.type).toBe("batch"); // 2 searches
   });
 
-  it("read_code groups with read_file", () => {
-    const groups = groupToolCalls([
-      tc("read_file", true, "a.ts"),
-      tc("read_code", true, "b.ts"),
-    ]);
-    expect(groups).toHaveLength(1);
-    expect(groups[0]!.type).toBe("batch");
-    if (groups[0]!.type === "batch") {
-      expect(groups[0]!.kind).toBe("reads");
-    }
-  });
-
   it("navigate groups with grep as search", () => {
     const groups = groupToolCalls([
       tc("navigate"),

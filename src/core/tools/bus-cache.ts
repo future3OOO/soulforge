@@ -49,7 +49,7 @@ export function wrapWithBusCache(
     const stub = [
       `[Cached — ${String(lineCount)} lines, already read by another agent]`,
       symbolHint,
-      `Use read_code(target, name, "${path}") for specific symbols, or read_file with startLine/endLine for a range.`,
+      `Use read_file(target, name, "${path}") for specific symbols, or read_file with startLine/endLine for a range.`,
       `Use check_findings to see what peer agents found in this file.`,
     ].join("\n");
 

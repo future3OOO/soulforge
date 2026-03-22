@@ -99,7 +99,6 @@ function makeSteps(totalTokens: number) {
 
 const TOOLS = {
 	read_file: {},
-	read_code: {},
 	grep: {},
 	glob: {},
 	edit_file: {},
@@ -220,17 +219,6 @@ describe("summary formats", () => {
 		expect(resultText(result, 1)).toBe(
 			"← 100 lines — exports: Foo, bar",
 		);
-	});
-
-	it("read_code uses same format as read_file", () => {
-		const msgs = buildPaddedConversation({
-			id: "1",
-			name: "read_code",
-			input: { file: "/a.ts" },
-			output: LONG_CONTENT,
-		});
-		const result = callCompact(msgs);
-		expect(resultText(result, 1)).toBe("← 100 lines");
 	});
 
 	it("grep: includes pattern in summary", () => {
@@ -542,14 +530,14 @@ describe("symbol enrichment", () => {
 		expect(resultText(result, 1)).toBe("← 100 lines");
 	});
 
-	it("resolves read_code 'file' input key", () => {
+	it("resolves read_file 'file' input key", () => {
 		const symbolLookup = (p: string) =>
 			p === "/models.ts"
 				? [{ name: "User", kind: "interface", isExported: true }]
 				: [];
 		const msgs = buildPaddedConversation({
 			id: "1",
-			name: "read_code",
+			name: "read_file",
 			input: { file: "/models.ts", target: "interface" },
 			output: LONG_CONTENT,
 		});
@@ -1509,7 +1497,7 @@ describe("compactOldToolResults + stripBookkeepingTools — audit conversation s
 		const [a2, t2] = buildMultiToolStep([
 			{ id: "sg1", name: "soul_grep", input: { pattern: "style={{" }, outputChars: 2000 },
 			{ id: "sg2", name: "soul_grep", input: { pattern: "useState<any>" }, outputChars: 1500 },
-			{ id: "rc1", name: "read_code", input: { target: "function", name: "FeedScreen", file: "app/index.tsx" }, outputChars: 3000 },
+			{ id: "rc1", name: "read_file", input: { target: "function", name: "FeedScreen", file: "app/index.tsx" }, outputChars: 3000 },
 			{ id: "rf1", name: "read_file", input: { path: "hooks/useSocial.ts" }, outputChars: 4000 },
 		]);
 		msgs.push(a2, t2);

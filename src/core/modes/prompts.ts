@@ -1,7 +1,7 @@
 import type { ForgeMode } from "../../types/index.js";
 
 const READ_ONLY =
-  "Read-only mode. No edit/shell/git tools. Available: read_file (with target/name for symbols), grep, glob, web_search, fetch_page, navigate, analyze, soul_grep, soul_find, soul_analyze, soul_impact, memory, dispatch (explore).";
+  "Read-only mode. No edit/shell/git tools. Available: read_file (with target/name for symbols), grep, glob, web_search, fetch_page, navigate (definition/references/call_hierarchy/implementation/type_hierarchy), analyze (diagnostics/type_info/outline/code_actions), discover_pattern, soul_grep, soul_find, soul_analyze, soul_impact, memory, dispatch (explore).";
 
 const PLAN_FULL = [
   "PLAN MODE — research then plan. Implementation tools are unavailable.",

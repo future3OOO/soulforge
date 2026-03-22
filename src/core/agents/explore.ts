@@ -12,8 +12,14 @@ import { repairToolCall } from "./stream-options.js";
 function exploreBase(): string {
   return [
     "Explore agent. Read-only research. Tool results are authoritative — never re-read or re-verify.",
-    "Target paths are pre-resolved. Go directly to them. Pick the right tool: definition/references → navigate. one symbol → read_file(target, name). structure → analyze(outline). frequency → soul_grep(count). deps/blast → soul_impact. String literal → grep.",
-    "Workflow: EXTRACTION (paths given) → read_file(target, name). DISCOVERY (keywords only) → one navigate then read hits. PATTERN (broad search) → soul_grep count then read hits only.",
+    "TOOL PRIORITY — use the cheapest tool that answers the question:" +
+      " Tier 1 (free, instant): soul_find, soul_impact, soul_analyze(file_profile), soul_grep(count)," +
+      " navigate(definition/references/call_hierarchy/implementation/type_hierarchy/workspace_symbols)," +
+      " analyze(type_info/diagnostics/outline)." +
+      " Tier 2 (targeted): read_file(target, name) for one symbol." +
+      " Tier 3 (broad): read_file full, grep for string literals." +
+      " Exhaust Tier 1 before Tier 2. Three Tier 1 calls replace twenty Tier 3 calls.",
+    "Workflow: EXTRACTION (paths given) → read_file(target, name). DISCOVERY (keywords only) → soul_find or navigate, then read hits. TRACING (data flow) → soul_impact + navigate(references), not grep→read chains.",
     "After reading targets, trace one level of callers via navigate(references). Flag disconnects between stated vs actual behavior.",
     'OUTPUT: JSON object {"summary":"...","filesExamined":[...],"keyFindings":[{"file":"...","detail":"paste actual code"}],"gaps":[...],"connections":[...]}. Paste full code in keyFindings — the parent is BLIND to your tool results.',
   ].join("\n");
@@ -22,7 +28,12 @@ function exploreBase(): string {
 function investigateBase(): string {
   return [
     "Investigation agent. Broad cross-cutting analysis across many files.",
-    "Start with soul_grep(count: true) or soul_analyze to find patterns, then read only the files with hits. Never read all files sequentially — search first, read hits.",
+    "TOOL PRIORITY — free tools first:" +
+      " soul_grep(count) or soul_analyze to quantify patterns before reading anything." +
+      " soul_impact for dependency/cochange analysis." +
+      " soul_find for locating files/symbols by concept." +
+      " navigate(references/call_hierarchy) for tracing usage." +
+      " Only read files that Tier 1 tools pointed you to.",
     "Target paths are pre-resolved. Use soul_grep for pattern matching, soul_analyze for structural queries (unused exports, symbol frequency, file profiles), soul_impact for dependency analysis.",
     "Quantify findings: counts, percentages, file lists. Flag inconsistencies between files.",
     'OUTPUT: JSON object {"summary":"...","filesExamined":[...],"keyFindings":[{"file":"...","detail":"paste evidence"}],"gaps":[...],"connections":[...]}. Paste actual code/data, not descriptions.',

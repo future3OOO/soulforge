@@ -157,7 +157,11 @@ async function autoResolveFile(
 
 export const navigateTool = {
   name: "navigate",
-  description: "Find symbol definitions, references, imports, exports, and type hierarchy.",
+  description:
+    "LSP-powered symbol navigation. Actions: definition (where defined), references (all usages), " +
+    "call_hierarchy (who calls / what calls), implementation (where interfaces are implemented), " +
+    "type_hierarchy (supertypes/subtypes), symbols (all symbols in file), imports, exports, " +
+    "workspace_symbols (search by query). Auto-resolves file from symbol name — file param often optional.",
   execute: async (args: NavigateArgs, repoMap?: RepoMapLike): Promise<ToolResult> => {
     try {
       const router = getIntelligenceRouter(process.cwd());

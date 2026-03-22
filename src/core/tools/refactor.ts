@@ -105,7 +105,9 @@ function formatResult(result: RefactorResult, applied: boolean): string {
 
 export const refactorTool = {
   name: "refactor",
-  description: "Extract functions/variables, format code, organize imports.",
+  description:
+    "Code transformations via LSP. Actions: extract_function (lines → new function), extract_variable (expression → variable), " +
+    "organize_imports (sort/dedupe), format (whole file), format_range (line range). Atomic multi-file updates. Set apply=false to preview.",
   execute: async (args: RefactorArgs): Promise<ToolResult> => {
     try {
       const router = getIntelligenceRouter(process.cwd());

@@ -56,7 +56,7 @@ function hasToolCall(messages: ModelMessage[], toolName: string): boolean {
   return false;
 }
 
-const READ_TOOL_NAMES = new Set(["read_file", "read_code"]);
+const READ_TOOL_NAMES = new Set(["read_file"]);
 
 function countReadsAfterLastDispatch(messages: ModelMessage[]): number {
   let lastDispatchIdx = -1;
@@ -224,7 +224,6 @@ function buildForgePrepareStep(
       // Detect excessive reads without action — language-agnostic
       const READ_TOOLS = new Set([
         "read_file",
-        "read_code",
         "grep",
         "soul_grep",
         "soul_find",

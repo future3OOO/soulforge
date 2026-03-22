@@ -40,7 +40,7 @@ const SUMMARY_MAX_LEN = 500;
 const BUDGET_OVERHEAD = 50;
 const MIN_CONTENT_LEN = 20;
 
-const READ_TOOLS = new Set(["read_file", "read_code", "navigate", "soul_analyze"]);
+const READ_TOOLS = new Set(["read_file", "navigate", "soul_analyze"]);
 const EDIT_TOOLS = new Set(["edit_file", "write_file", "create_file"]);
 const SEARCH_TOOLS = new Set(["grep", "glob", "soul_grep", "soul_find", "soul_impact"]);
 
@@ -154,7 +154,7 @@ export function buildFallbackResult(
 
 /**
  * Auto-synthesize a DoneToolResult from the agent's tool results when done wasn't called.
- * Extracts actual code from read_file/read_code results so the parent gets usable content.
+ * Extracts actual code from read_file results so the parent gets usable content.
  * This guarantees 100% done results — the parent ALWAYS gets structured output.
  */
 export function synthesizeDoneFromResults(

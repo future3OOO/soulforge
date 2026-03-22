@@ -2,7 +2,7 @@ import type { ToolCall } from "../../types/index.js";
 
 const META_TOOLS = new Set(["plan", "update_plan_step", "ask_user", "editor_panel"]);
 const EDIT_NAMES = new Set(["edit_file", "multi_edit"]);
-const READ_NAMES = new Set(["read_file", "read_code"]);
+const READ_NAMES = new Set(["read_file"]);
 const SEARCH_NAMES = new Set([
   "grep",
   "soul_grep",
@@ -34,7 +34,7 @@ export { EDIT_NAMES, META_TOOLS };
  * Rules:
  * - META_TOOLS (plan, update_plan_step, ask_user) → collapsed meta group
  * - Consecutive edits (edit_file, multi_edit) → batch "edits"
- * - Consecutive reads (read_file, read_code) → batch "reads"
+ * - Consecutive reads (read_file) → batch "reads"
  * - Consecutive search (grep, soul_grep, glob, etc.) → batch "search"
  * - Different kinds break the batch (read → edit → read = 3 groups)
  * - Single tool calls stay as "normal" (no batch for 1 item)

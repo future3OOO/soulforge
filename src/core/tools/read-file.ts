@@ -54,9 +54,9 @@ const OUTLINE_THRESHOLD = 300;
 export const readFileTool = {
   name: "read_file",
   description:
-    "Read file contents, or read a specific symbol (function/class/type) by name. " +
-    "Pass target + name for symbol extraction (AST-based). " +
-    "Large files (300+ lines) return an outline first — use startLine=1 to read the full file.",
+    "Read file contents, or read a specific symbol by name. " +
+    "Pass target (function/class/type/interface/variable/enum/scope) + name for AST-based extraction. " +
+    "Large code files (300+ lines) return an outline with line numbers first — use target+name or startLine/endLine from the outline.",
   execute: async (args: ReadFileArgs): Promise<ToolResult> => {
     try {
       const filePath = resolve(args.path);
@@ -149,7 +149,8 @@ export const readFileTool = {
             output:
               `${outline}\n` +
               `[${String(lines.length)} lines, ${String(sizeKB)}KB — ` +
-              `use target + name to read a symbol, startLine/endLine for a range, or startLine=1 for the full file]`,
+              `outline above has line numbers. Use read_file(target, name) for a specific symbol, or startLine/endLine for a range. ` +
+              `Only use startLine=1 (full file) if you need to edit and must see exact content. Pass fresh=true to force full read.]`,
             outlineOnly: true,
           };
         }

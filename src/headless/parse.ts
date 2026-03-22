@@ -81,7 +81,7 @@ export async function parseHeadlessArgs(argv: string[]): Promise<HeadlessAction 
   let system: string | undefined;
   let noRepomap = false;
   let diff = false;
-  let render = false;
+  let render = process.stdout.isTTY ?? false;
   const include: string[] = [];
   const promptParts: string[] = [];
 
@@ -130,6 +130,8 @@ export async function parseHeadlessArgs(argv: string[]): Promise<HeadlessAction 
       diff = true;
     } else if (arg === "--render") {
       render = true;
+    } else if (arg === "--no-render") {
+      render = false;
     } else if (arg === "--chat") {
       chat = true;
     } else if (arg && !arg.startsWith("--")) {

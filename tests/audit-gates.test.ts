@@ -318,7 +318,7 @@ describe("sequential read counter — real audit sequences", () => {
 		for (const t of tools) {
 			if (SEARCH_TOOLS.has(t)) {
 				counter = 0;
-			} else if (t === "read_file" || t === "read_code") {
+			} else if (t === "read_file") {
 				counter++;
 				if (counter >= READ_NUDGE_HARD) hard++;
 				else if (counter >= READ_NUDGE_SOFT) soft++;

@@ -9,7 +9,6 @@ import type { WorkingStateManager } from "./working-state.js";
 
 const READ_TOOLS = new Set([
   "read_file",
-  "read_code",
   "navigate",
   "grep",
   "glob",
@@ -95,7 +94,7 @@ export function extractFromToolResult(
     );
   }
 
-  if (toolName === "read_file" || toolName === "read_code") {
+  if (toolName === "read_file") {
     const lineCount = resultStr.split("\n").length;
     const outline = extractFileOutline(resultStr);
     if (outline) {
@@ -205,8 +204,6 @@ function buildReadSummary(toolName: string, args: Record<string, unknown>): stri
       return `impact analysis`;
     case "navigate":
       return `navigate to ${truncate(String(args.symbol ?? args.query ?? ""), 100)}`;
-    case "read_code":
-      return `read code${args.outline ? " (outline)" : ""}`;
     default:
       return "read";
   }

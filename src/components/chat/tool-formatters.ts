@@ -334,6 +334,11 @@ export function formatResult(toolName: string, result?: string): string {
   } catch {
     // fallback
   }
+  // Don't show raw JSON like {"success": true} — the ✓/✗ icon + file path is enough
+  try {
+    const p = JSON.parse(result);
+    if (p.success !== undefined && !p.output && !p.error) return "";
+  } catch {}
   const lines = result.split("\n").length;
   if (lines > 3) return `${String(lines)} lines`;
   return result.length > 40 ? `${result.slice(0, 37)}...` : result;
