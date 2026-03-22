@@ -34,7 +34,7 @@ User Input
                     ▼                ▼                ▼
              ┌───────────┐   ┌───────────┐   ┌───────────┐
              │   Tools   │   │Intelligence│   │  Neovim   │
-             │ 30+ tools │   │  Router    │   │ (msgpack) │
+             │ 39 tools │   │  Router    │   │ (msgpack) │
              └───────────┘   └─────┬─────┘   └───────────┘
                                    │
                         ┌──────────┼──────────┐
@@ -234,7 +234,7 @@ Routes code intelligence operations to the best available backend.
 |---------|------|-------------|
 | **LSP** | 1 | definitions, references, rename, diagnostics, code actions, call hierarchy, type info, formatting |
 | **ts-morph** | 2 | TypeScript/JavaScript — AST definitions, references, rename, extract function/variable, unused detection, type info |
-| **tree-sitter** | 2 | 20+ languages — symbol extraction, imports/exports, scopes, outlines via WASM grammars |
+| **tree-sitter** | 2 | 33 languages — symbol extraction, imports/exports, scopes, outlines via WASM grammars |
 | **regex** | 3 | Universal fallback — symbol search, simple definitions, import patterns |
 
 For each operation, the router tries backends in tier order. If tier 1 returns null or throws, tier 2 is tried, then tier 3.
@@ -521,7 +521,7 @@ src/
     ├── security/               # Forbidden file patterns
     ├── sessions/               # Session persistence + rebuild
     ├── setup/                  # Prerequisite checks
-    └── tools/                  # All 30+ tools
+    └── tools/                  # All 39 tools
         ├── rename-symbol.ts
         ├── move-symbol.ts
         ├── project.ts

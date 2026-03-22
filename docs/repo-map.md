@@ -193,7 +193,7 @@ CREATE VIRTUAL TABLE symbols_fts USING fts5(name, content=symbols, content_rowid
 
 ## Language Support
 
-The repo map supports 30+ languages with convention-based visibility detection:
+The repo map supports 33 languages with convention-based visibility detection:
 
 | Convention | Languages | Rule |
 |---|---|---|

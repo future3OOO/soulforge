@@ -48,7 +48,7 @@ Your real Neovim — config, plugins, LSP — embedded in an AI agent that under
 <td width="50%">
 
 ### Embedded Neovim + LazyVim
-Your actual Neovim — LazyVim distribution with 30+ plugins, LSP servers auto-installed via Mason, Catppuccin theme, bufferline, noice, treesitter highlighting. The AI reads, navigates, and edits through the same editor you use. Your config, your muscle memory.
+Your actual Neovim — LazyVim distribution with 30+ plugins, LSP servers auto-installed via Mason, Catppuccin theme, noice, lualine, treesitter highlighting. The AI reads, navigates, and edits through the same editor you use. Your config, your muscle memory.
 
 </td>
 <td width="50%">
@@ -68,7 +68,7 @@ SQLite-backed codebase graph with PageRank ranking, cochange analysis, blast rad
 <td>
 
 ### 4-Tier Code Intelligence
-LSP → ts-morph → tree-sitter → regex fallback chain. 30+ languages with convention-based visibility detection. Dual LSP backend: bridges to Neovim's LSP when the editor is open, spawns standalone servers when it's not. [Deep dive →](docs/architecture.md)
+LSP → ts-morph → tree-sitter → regex fallback chain. 33 languages with convention-based visibility detection. Dual LSP backend: bridges to Neovim's LSP when the editor is open, spawns standalone servers when it's not. [Deep dive →](docs/architecture.md)
 
 </td>
 </tr>
@@ -134,7 +134,7 @@ Installable skill system for domain-specific capabilities. Destructive action ap
 
 ## Architecture
 
-The Forge Agent is the orchestrator. It holds 30+ tools including the `dispatch` tool, which creates an AgentBus and launches parallel subagents. Subagents share file/tool caches through the bus and coordinate edits via ownership tracking.
+The Forge Agent is the orchestrator. It holds 39 tools including the `dispatch` tool, which creates an AgentBus and launches parallel subagents. Subagents share file/tool caches through the bus and coordinate edits via ownership tracking.
 
 ```mermaid
 graph TB
@@ -142,7 +142,7 @@ graph TB
     Chat --> Forge[Forge Agent]
 
     subgraph Forge Tools
-        Tools[30+ Direct Tools]
+        Tools[39 Direct Tools]
         Dispatch[dispatch tool]
     end
 
@@ -364,7 +364,7 @@ SoulForge ships 39 tools organized by capability:
 
 | Tool | What it does |
 |------|-------------|
-| `project` | Auto-detected lint, format, test, build, typecheck across [22 ecosystems](#project-toolchain-detection) |
+| `project` | Auto-detected lint, format, test, build, typecheck across [17 ecosystems](#project-toolchain-detection) |
 | `project(list)` | Discover monorepo packages with per-package capabilities |
 | `dispatch` | Parallel multi-agent execution (up to 8 agents, 3 concurrent) |
 | `git` | Structured git operations with auto co-author tracking |
@@ -449,7 +449,7 @@ SQLite-backed graph of your entire codebase, updated in real-time as files are e
 
 ```mermaid
 graph LR
-    Scan[File Scanner<br/>watches edits] --> Parse[tree-sitter<br/>20+ languages]
+    Scan[File Scanner<br/>watches edits] --> Parse[tree-sitter<br/>33 languages]
     Parse --> Symbols[(Symbols<br/>name · kind · line · exports)]
     Parse --> Refs[(References<br/>cross-file imports)]
     Refs --> Graph[Dependency Graph]
@@ -468,7 +468,7 @@ graph LR
 
 **Powers:** `soul_find` (PageRank-ranked search with signatures), `soul_grep` (zero-cost identifier counts), `soul_analyze` (unused exports with dead code vs unnecessary export classification, file profiles, top files, external packages, symbol-by-kind queries with signatures), `soul_impact` (blast radius, dependency chains), dispatch enrichment (auto-injects symbol line ranges), AST semantic summaries (docstrings for top 500 symbols).
 
-**Language support:** Convention-based visibility detection for 30+ languages. Export inference via Go capitalization, Rust/Zig `pub`, Python/Dart underscore convention, Java/Kotlin/Swift/C#/Scala not-private, PHP, Elixir `def`/`defp`, C/C++/ObjC header files, Solidity, and more. Identifier extraction patterns cover camelCase, PascalCase, snake_case, and hyphenated (Elisp) naming conventions across all supported languages.
+**Language support:** Convention-based visibility detection for 33 languages. Export inference via Go capitalization, Rust/Zig `pub`, Python/Dart underscore convention, Java/Kotlin/Swift/C#/Scala not-private, PHP, Elixir `def`/`defp`, C/C++/ObjC header files, Solidity, and more. Identifier extraction patterns cover camelCase, PascalCase, snake_case, and hyphenated (Elisp) naming conventions across all supported languages.
 
 **Monorepo support:** Partial. The repo map indexes files within the working directory. Cross-package dependencies within a monorepo are not yet tracked — each package is treated as an independent unit. The `project` tool handles monorepo workspace discovery separately.
 
@@ -641,7 +641,7 @@ sf --headless              CLI mode — CI/CD, scripts, automation  ✓ shipped
 SoulForge TUI              Full experience (what you're looking at now)
 ```
 
-- **`@soulforge/intelligence`** — graph intelligence, 30+ tools, and agent orchestration as an importable package. Build your own AI tools on top of SoulForge's brain.
+- **`@soulforge/intelligence`** — graph intelligence, 39 tools, and agent orchestration as an importable package. Build your own AI tools on top of SoulForge's brain.
 - **`@soulforge/mcp`** — expose soul_grep, soul_find, soul_analyze, soul_impact, navigate, read_code as MCP tools. Any AI tool that supports MCP gets SoulForge's graph intelligence.
 - **`sf --headless`** — non-interactive mode. Pipe in a prompt, get back results. For CI/CD, automation, and benchmarks. [Documentation →](docs/headless.md)
 

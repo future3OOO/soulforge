@@ -1279,20 +1279,7 @@ export function buildSubagentExploreTools(opts?: {
       }),
     }),
 
-    task_list: tool({
-      description: taskListTool.description,
-      inputSchema: z.object({
-        action: z.enum(["add", "update", "remove", "list", "clear"]).describe("Task action"),
-        title: z.string().optional().describe("Single task title (for add/update)"),
-        titles: z.array(z.string()).optional().describe("Batch add — multiple task titles at once"),
-        id: z.number().optional().describe("Task ID (for update/remove)"),
-        status: z
-          .enum(["pending", "in-progress", "done", "blocked"])
-          .optional()
-          .describe("Task status (for add/update)"),
-      }),
-      execute: deferExecute((args) => taskListTool.execute({ ...args, tabId: opts?.tabId })),
-    }),
+    // task_list omitted from subagents — session-scoped, subagents are ephemeral
 
     list_dir: tool({
       description: listDirTool.description,
@@ -1384,7 +1371,7 @@ export function buildSubagentExploreTools(opts?: {
   };
 }
 
-/** Lean tools for code subagents — explore tools + edit_file, shell */
+/** Lean tools for code subagents — core read/edit tools only (no investigation tools) */
 export function buildSubagentCodeTools(opts?: {
   webSearchModel?: import("ai").LanguageModel;
   onApproveWebSearch?: (query: string) => Promise<boolean>;
@@ -1393,8 +1380,22 @@ export function buildSubagentCodeTools(opts?: {
   tabId?: string;
   tabLabel?: string;
 }) {
+  const explore = buildSubagentExploreTools(opts);
+  // Code agents have exact targets — drop investigation/discovery tools they never use
+  const {
+    soul_analyze: _sa,
+    soul_impact: _si,
+    soul_find: _sf,
+    analyze: _an,
+    web_search: _ws,
+    fetch_page: _fp,
+    discover_pattern: _dp,
+    task_list: _tl,
+    list_dir: _ld,
+    ...coreExploreTools
+  } = explore as Record<string, unknown>;
   return {
-    ...buildSubagentExploreTools(opts),
+    ...coreExploreTools,
 
     edit_file: tool({
       description: editFileTool.description,
