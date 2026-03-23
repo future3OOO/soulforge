@@ -43,11 +43,7 @@ export function useConfigSync({
     }
   }, [effectiveConfig.editorIntegration, contextManager]);
 
-  useEffect(() => {
-    if (effectiveConfig.repoMap !== undefined) {
-      contextManager.setRepoMapEnabled(effectiveConfig.repoMap);
-    }
-  }, [effectiveConfig.repoMap, contextManager]);
+  // repoMap config is deprecated — always enabled (SOULFORGE_NO_REPOMAP=1 env var for debug)
 
   useEffect(() => {
     contextManager.setTaskRouter(effectiveConfig.taskRouter);

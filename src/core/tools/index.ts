@@ -795,7 +795,25 @@ export function buildTools(
           .optional()
           .describe("For terminal_output: max lines to read (default: 100)"),
       }),
-      execute: deferExecute((args) => editorTool.execute(args)),
+      execute: deferExecute((args) => {
+        const access = _editorSettings?.agentAccess ?? "on";
+        if (access === "off") {
+          return Promise.resolve({
+            success: false,
+            output: "Editor tool is disabled. Change in /editor-config → Agent editor access.",
+            error: "editor access disabled",
+          });
+        }
+        if (access === "when-open" && opts?.contextManager && !opts.contextManager.isEditorOpen()) {
+          return Promise.resolve({
+            success: false,
+            output:
+              "Editor tool requires the editor panel to be open (agent access = when-open). Use edit_file instead, or open the editor panel.",
+            error: "editor not open",
+          });
+        }
+        return editorTool.execute(args);
+      }),
     }),
 
     navigate: tool({

@@ -64,7 +64,9 @@ async function setupAgent(
     if (showProgress) stderrDim(step);
   });
 
-  if (!opts.noRepomap) {
+  // --no-repomap is deprecated; use SOULFORGE_NO_REPOMAP=1 env var. Flag still honored for compat.
+  const repoMapDisabled = opts.noRepomap || process.env.SOULFORGE_NO_REPOMAP === "1";
+  if (!repoMapDisabled) {
     const REPO_MAP_TIMEOUT = 15_000;
     if (!contextManager.isRepoMapReady()) {
       const start = Date.now();
@@ -76,7 +78,7 @@ async function setupAgent(
   }
 
   const repoMap =
-    !opts.noRepomap && contextManager.isRepoMapReady() ? contextManager.getRepoMap() : undefined;
+    !repoMapDisabled && contextManager.isRepoMapReady() ? contextManager.getRepoMap() : undefined;
 
   const { loadInstructions, buildInstructionPrompt } = await import("../core/instructions.js");
   const instructions = loadInstructions(cwd, merged.instructionFiles);

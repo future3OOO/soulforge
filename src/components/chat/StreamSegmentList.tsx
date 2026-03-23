@@ -1,7 +1,8 @@
-import { memo, useMemo } from "react";
+import { memo, useEffect, useMemo, useState } from "react";
 import { Markdown } from "./Markdown.js";
 import { ReasoningBlock } from "./ReasoningBlock.js";
 import { type LiveToolCall, ToolCallDisplay } from "./ToolCallDisplay.js";
+import { useTextDrip } from "./useTextDrip.js";
 
 type StreamSegment =
   | { type: "text"; content: string }
@@ -14,7 +15,33 @@ function trimToCompleteLines(text: string): string {
   return text;
 }
 
-const STREAMING_OPACITY = 0.7;
+const OPACITY_SETTLED = 0.75;
+const OPACITY_FRESH = 0.45;
+const FRESH_DECAY_MS = 80;
+
+/** Wrapper that applies the drip buffer + dim→bright to the active streaming text. */
+function DripText({ content, streaming }: { content: string; streaming: boolean }) {
+  const { text: display, freshCount } = useTextDrip(content, streaming);
+  const [bright, setBright] = useState(true);
+
+  // Pulse dim when fresh chars arrive, then brighten
+  useEffect(() => {
+    if (freshCount <= 0) return;
+    setBright(false);
+    const timer = setTimeout(() => setBright(true), FRESH_DECAY_MS);
+    return () => clearTimeout(timer);
+  }, [freshCount]);
+
+  if (display.length === 0) return null;
+
+  const opacity = bright ? OPACITY_SETTLED : OPACITY_FRESH;
+
+  return (
+    <box flexDirection="column" opacity={opacity}>
+      <Markdown text={`${display}▊`} streaming />
+    </box>
+  );
+}
 
 export const StreamSegmentList = memo(function StreamSegmentList({
   segments,
@@ -55,14 +82,16 @@ export const StreamSegmentList = memo(function StreamSegmentList({
           const isActiveSegment = i === lastTextIndex;
           const display = trimToCompleteLines(seg.content);
           if (display.length === 0) return null;
+          if (isActiveSegment) {
+            return (
+              <box key={`text-${String(i)}`} flexDirection="column" marginTop={needsGap}>
+                <DripText content={display} streaming={streaming} />
+              </box>
+            );
+          }
           return (
-            <box
-              key={`text-${String(i)}`}
-              flexDirection="column"
-              marginTop={needsGap}
-              opacity={isActiveSegment ? STREAMING_OPACITY : undefined}
-            >
-              <Markdown text={isActiveSegment ? `${display}▊` : display} streaming />
+            <box key={`text-${String(i)}`} flexDirection="column" marginTop={needsGap}>
+              <Markdown text={display} streaming />
             </box>
           );
         }

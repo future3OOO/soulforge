@@ -1,6 +1,6 @@
 # Command Reference
 
-75 slash commands available. Press `/` in the chat input or `Ctrl+K` to open the command picker.
+76 slash commands available. Press `/` in the chat input or `Ctrl+K` to open the command picker.
 
 ## Models & Providers
 
@@ -98,6 +98,7 @@ Supports installation via npm, pip, cargo, go, and GitHub binaries.
 | `/export` | Export current tab to markdown file |
 | `/export json` | Export current tab as JSON file |
 | `/export clipboard` | Copy current tab to clipboard (markdown) |
+| `/export all` | Full diagnostic export — system prompt, core messages, chat messages, token usage |
 | `/new-tab` | Open a new tab |
 | `/close-tab` | Close current tab |
 | `/rename` | Rename current tab |

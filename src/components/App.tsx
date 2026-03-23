@@ -1123,7 +1123,7 @@ export function App({
       <RepoMapStatusPopup
         visible={modalRepoMapStatus}
         onClose={getCloser("repoMapStatus")}
-        enabled={effectiveConfig.repoMap !== false}
+        enabled={true}
         currentMode={
           effectiveConfig.semanticSummaries === true
             ? "synthetic"
@@ -1136,28 +1136,14 @@ export function App({
         currentLimit={effectiveConfig.semanticSummaryLimit ?? 300}
         currentAutoRegen={effectiveConfig.semanticAutoRegen ?? false}
         currentScope={detectScope("semanticSummaries")}
-        onToggle={(nowEnabled, scope) => {
-          contextManager.setRepoMapEnabled(nowEnabled);
-          saveToScope({ repoMap: nowEnabled }, scope);
-          if (nowEnabled) {
-            if (!contextManager.isRepoMapReady()) contextManager.refreshRepoMap().catch(() => {});
-          } else {
-            if (contextManager.isSemanticEnabled()) {
-              contextManager.setSemanticSummaries("off");
-              saveToScope({ semanticSummaries: "off" }, scope);
-            }
-            contextManager.clearRepoMap();
-          }
-        }}
+        onToggle={undefined}
         onRefresh={() => contextManager.refreshRepoMap().catch(() => {})}
         onClear={(scope) => {
           if (contextManager.isSemanticEnabled()) {
             contextManager.setSemanticSummaries("off");
             saveToScope({ semanticSummaries: "off" }, scope);
           }
-          contextManager.setRepoMapEnabled(false);
           contextManager.clearRepoMap();
-          saveToScope({ repoMap: false }, scope);
         }}
         onRegenerate={() => {
           contextManager.setActiveModel(activeModelForHeader);

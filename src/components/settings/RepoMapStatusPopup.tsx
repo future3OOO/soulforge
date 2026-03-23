@@ -205,10 +205,6 @@ export function RepoMapStatusPopup({
     if (evt.ctrl) return; // Ignore Ctrl+letter combos (Ctrl+C to quit, etc.)
     // Reset confirm state on any key that isn't 'c'
     if (evt.sequence !== "c" && confirmClear) setConfirmClear(false);
-    if (evt.sequence === "e" && onToggle) {
-      onToggle(!enabled, selectedScope);
-      return;
-    }
     if (evt.sequence === "r" && onRefresh && enabled) {
       onRefresh();
       return;
@@ -373,19 +369,11 @@ export function RepoMapStatusPopup({
               <text bg={POPUP_BG}>{""}</text>
             </PopupRow>
             <PopupRow w={innerW}>
-              {enabled ? (
-                <text bg={POPUP_BG}>
-                  {"  "}
-                  <span fg="#c55">{"e disable"}</span>
-                  <span fg="#5CBBF6">{"   r refresh"}</span>
-                  <span fg="#FF8C00">{"   x clear index"}</span>
-                </text>
-              ) : (
-                <text bg={POPUP_BG}>
-                  {"  "}
-                  <span fg="#2d5">{"e enable"}</span>
-                </text>
-              )}
+              <text bg={POPUP_BG}>
+                {"  "}
+                <span fg="#5CBBF6">{"r refresh"}</span>
+                <span fg="#FF8C00">{"   x clear index"}</span>
+              </text>
             </PopupRow>
           </>
         )}

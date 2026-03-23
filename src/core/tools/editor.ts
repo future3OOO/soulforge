@@ -53,8 +53,7 @@ interface EditorArgs {
 
 export const editorTool = {
   name: "editor" as const,
-  description:
-    "Neovim editor integration. Actions: read (use file param to switch buffers), edit, navigate, diagnostics, symbols, hover, references, definition, actions, rename, lsp_status, format, select (visual select lines), goto_cursor (jump + center), yank (put text in register), highlight (ephemeral highlight), cursor_context (function/symbol at cursor), buffers (list open buffers), quickfix (read quickfix/location list), terminal_output (read last N lines from terminal buffers).",
+  description: "Neovim editor integration. Requires editor panel to be open.",
   execute: async (args: EditorArgs): Promise<ToolResult> => {
     switch (args.action) {
       case "read":

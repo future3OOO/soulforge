@@ -138,7 +138,8 @@ export class ContextManager {
   private projectInfoCache: { info: string | null; at: number } | null = null;
   private repoMap: RepoMap;
   private repoMapReady = false;
-  private repoMapEnabled = true;
+  /** Repo map is always enabled unless SOULFORGE_NO_REPOMAP=1 env var is set (debug only). */
+  private repoMapEnabled = process.env.SOULFORGE_NO_REPOMAP !== "1";
   private editedFiles = new Set<string>();
   private mentionedFiles = new Set<string>();
   private conversationTerms: string[] = [];
@@ -171,9 +172,11 @@ export class ContextManager {
     } else {
       this.memoryManager = new MemoryManager(cwd);
       this.repoMap = new RepoMap(cwd);
-      this.wireRepoMapCallbacks();
       this.wireFileEventHandlers();
-      this.startRepoMapScan();
+      if (this.repoMapEnabled) {
+        this.wireRepoMapCallbacks();
+        this.startRepoMapScan();
+      }
     }
   }
 
@@ -347,6 +350,14 @@ export class ContextManager {
     this.editorIntegration = settings;
   }
 
+  getEditorIntegration(): EditorIntegration | undefined {
+    return this.editorIntegration ?? undefined;
+  }
+
+  isEditorOpen(): boolean {
+    return this.editorOpen;
+  }
+
   /** Update editor state so Forge knows what's open in neovim */
   setEditorState(
     open: boolean,
@@ -446,13 +457,10 @@ export class ContextManager {
     return this.repoMapReady;
   }
 
-  setRepoMapEnabled(enabled: boolean): void {
-    this.repoMapEnabled = enabled;
-    if (!enabled) {
-      this.syncRepoMapStore("off");
-    } else if (this.repoMapReady) {
-      this.syncRepoMapStore("ready");
-    }
+  /** @deprecated Repo map is always enabled. Use SOULFORGE_NO_REPOMAP=1 env var to disable (debug only). */
+  setRepoMapEnabled(_enabled: boolean): void {
+    // No-op — repo map is always enabled at runtime.
+    // Kept for backward compat with callers that haven't been updated yet.
   }
 
   setSemanticSummaries(

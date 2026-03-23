@@ -292,7 +292,7 @@ soulforge --version                          # Version info
 
 ### Slash Commands
 
-75 commands available — press `/` or `Ctrl+K` to browse. Key ones by category:
+76 commands available — press `/` or `Ctrl+K` to browse. Key ones by category:
 
 **Models & Providers**
 `/model` `/router` `/provider` `/model-scope`

@@ -26,20 +26,7 @@ interface SoulAnalyzeArgs {
 
 export const soulAnalyzeTool = {
   name: "soul_analyze",
-  description:
-    "AST and soul-map powered codebase analysis. Zero LLM token cost — all computed locally from the indexed database.\n" +
-    "Actions:\n" +
-    "- identifier_frequency: top N most referenced identifiers across the codebase (which files use them). " +
-    "Answers 'most reused variable' instantly. Optional name param to check a specific identifier.\n" +
-    "- unused_exports: comprehensive dead code report — dead files, dead barrels, export clusters, test-only exports, scattered dead/unnecessary. Sorted by impact.\n" +
-    "- file_profile: dependencies, dependents, blast radius, cochanges, and top symbols for a file. Requires file param.\n" +
-    "- duplication: find duplicated code across the codebase. Three tiers: exact structural clones (AST shape hash), " +
-    "near-duplicates (>70% token similarity via MinHash), and repeated code fragments (same token patterns across functions). " +
-    "Optional file param to check clones of a specific file. Catches patterns invisible to grep.\n" +
-    "- top_files: most important files ranked by PageRank. Instant codebase overview.\n" +
-    "- packages: external dependencies with usage counts and specifiers. Answers 'what does this project use?'\n" +
-    "- symbols_by_kind: all exported symbols of a given kind (interface, class, function, type, enum, trait, struct, etc.). " +
-    "Requires kind param. Optional name param to get signature of a specific symbol.",
+  description: "Codebase analysis from Soul Map — zero file I/O, instant results.",
 
   createExecute: (repoMap?: RepoMap) => {
     return async (args: SoulAnalyzeArgs): Promise<ToolResult> => {

@@ -45,6 +45,11 @@ const LINES: HelpLine[] = [
   { type: "entry", label: "/export", desc: "export chat to markdown (.soulforge/exports/)" },
   { type: "entry", label: "/export json", desc: "export chat as JSON" },
   { type: "entry", label: "/export clipboard", desc: "copy chat to clipboard (markdown)" },
+  {
+    type: "entry",
+    label: "/export all",
+    desc: "full diagnostic export (system prompt, messages, tools)",
+  },
   { type: "entry", label: "/font", desc: "show installed fonts & current terminal font" },
   { type: "entry", label: "/force-claim <path>", desc: "steal a file claim from another tab" },
   { type: "entry", label: "/font set <name>", desc: "auto-set terminal font (e.g. fira-code)" },

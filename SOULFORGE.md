@@ -36,7 +36,7 @@ AI-Powered Terminal IDE by proxySoul.
 - `--headless --save-session` — save session after completion
 - `--headless --max-steps <n>` — limit agent steps
 - `--headless --timeout <ms>` — abort after timeout
-- `--headless --no-repomap` — skip repo map scan
+- `--headless --no-repomap` — skip repo map scan (deprecated: use `SOULFORGE_NO_REPOMAP=1` env var)
 - `--headless --diff` — show files changed after run
 - `--headless --quiet` / `-q` — suppress header/footer
 - `--headless --cwd <dir>` — set working directory

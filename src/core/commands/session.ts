@@ -3,9 +3,74 @@ import { clearTasks } from "../tools/task-list.js";
 import type { CommandContext, CommandHandler } from "./types.js";
 import { sysMsg } from "./utils.js";
 
+async function handleExportAll(ctx: CommandContext): Promise<void> {
+  const { mkdirSync, writeFileSync } = await import("node:fs");
+  const { join } = await import("node:path");
+
+  const exportDir = join(ctx.cwd, ".soulforge", "exports");
+  mkdirSync(exportDir, { recursive: true });
+  const stamp = new Date().toISOString().slice(0, 19).replace(/[T:]/g, "-");
+  const outPath = join(exportDir, `diagnostic-${stamp}.json`);
+
+  const systemPrompt = ctx.contextManager.buildSystemPrompt();
+  const coreMessages = ctx.chat.coreMessages;
+  const chatMessages = ctx.chat.messages;
+  const tokenUsage = ctx.chat.tokenUsage;
+  const activeModel = ctx.chat.activeModel;
+  const forgeMode = ctx.chat.forgeMode;
+  const repoMapReady = ctx.contextManager.isRepoMapReady();
+
+  const payload = {
+    exportedAt: new Date().toISOString(),
+    model: activeModel,
+    mode: forgeMode,
+    repoMapReady,
+    tokenUsage,
+    systemPrompt,
+    coreMessages,
+    chatMessages: chatMessages.map((m) => ({
+      id: m.id,
+      role: m.role,
+      content: m.content,
+      timestamp: m.timestamp,
+      toolCalls: m.toolCalls?.map((tc) => ({
+        id: tc.id,
+        name: tc.name,
+        args: tc.args,
+        result: tc.result
+          ? {
+              success: tc.result.success,
+              output: tc.result.output.slice(0, 2000),
+              error: tc.result.error,
+            }
+          : undefined,
+      })),
+      segments: m.segments,
+    })),
+    messageCount: chatMessages.length,
+    coreMessageCount: coreMessages.length,
+    systemPromptLength: systemPrompt.length,
+  };
+
+  writeFileSync(outPath, JSON.stringify(payload, null, 2), "utf-8");
+
+  const relPath = outPath.startsWith(ctx.cwd) ? outPath.slice(ctx.cwd.length + 1) : outPath;
+  sysMsg(
+    ctx,
+    `Diagnostic export → \`${relPath}\` (system prompt: ${String(Math.round(systemPrompt.length / 4))} tokens, ${String(coreMessages.length)} core messages, ${String(chatMessages.length)} chat messages)`,
+  );
+  const { dirname } = await import("node:path");
+  Bun.spawn([process.platform === "darwin" ? "open" : "xdg-open", dirname(outPath)]);
+}
+
 async function handleExport(input: string, ctx: CommandContext): Promise<void> {
   const trimmed = input.trim();
   const arg = trimmed.slice(7).trim();
+
+  if (arg === "all" || arg === "diagnostic") {
+    await handleExportAll(ctx);
+    return;
+  }
 
   if (arg === "clipboard" || arg === "clip") {
     const { exportToClipboard } = await import("../sessions/export.js");

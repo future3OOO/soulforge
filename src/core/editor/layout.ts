@@ -8,8 +8,10 @@ const EDITOR_BORDER_WIDTH = 2; // left border(1) + right border(1)
 export const EDITOR_COL_OFFSET = 1; // left border(1)
 
 // Fixed rows consumed by app chrome around the editor content area:
-// Header(1) + footer(1) + border-top(1) + border-bottom(1) + title(1) + sep-top(1) + sep-bottom(1) + status(1) + extra(1) = 9
-const BASE_FIXED_ROWS = 9;
+// App: header(1) + footer(1)
+// Editor panel: border-top(1) + border-bottom(1) + title(1) + sep-top(1) + sep-bottom(1) + status(1)
+// Total = 8
+const BASE_FIXED_ROWS = 8;
 const HINTS_ROWS = 2;
 // TabBar when visible: marginTop(1) + bar(1) = 2 rows
 const TAB_BAR_ROWS = 2;

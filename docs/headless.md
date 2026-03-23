@@ -56,7 +56,7 @@ soulforge --headless --chat --events
 | `--cwd <dir>` | Set working directory (default: current directory). |
 | `--system "..."` | Inject custom system prompt instructions for this run. |
 | `--include <file>` | Pre-load a file into context (repeatable). |
-| `--no-repomap` | Skip repo map scan for faster startup. |
+| `--no-repomap` | Skip repo map scan (deprecated: use `SOULFORGE_NO_REPOMAP=1` env var). |
 | `--diff` | Show list of files changed after the run. |
 | `--no-render` | Output raw text without ANSI styling (default when piped). When stdout is a TTY, output is automatically rendered with syntax highlighting and markdown formatting. |
 | `--session <id>` | Resume a previous session by ID (prefix match supported). |

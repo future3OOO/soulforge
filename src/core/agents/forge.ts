@@ -162,7 +162,11 @@ function buildForgePrepareStep(
   isPlanMode: boolean,
   drainSteering?: () => string | null,
   _repoMap?: import("../intelligence/repo-map.js").RepoMap,
-  contextManager?: { buildCrossTabSection(): string | null },
+  contextManager?: {
+    buildCrossTabSection(): string | null;
+    isEditorOpen(): boolean;
+    getEditorIntegration(): import("../../types/index.js").EditorIntegration | undefined;
+  },
 ) {
   // biome-ignore lint/suspicious/noExplicitAny: PrepareStepFunction generic is invariant
   return ({ stepNumber, messages }: { stepNumber: number; messages: ModelMessage[] }): any => {

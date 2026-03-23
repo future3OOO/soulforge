@@ -261,7 +261,7 @@ export interface AppConfig {
   coAuthorCommits?: boolean;
   /** Default forge mode for new sessions. Default: "default" */
   defaultForgeMode?: ForgeMode;
-  /** Enable AST-based repo map in system prompt instead of file tree. Default: true */
+  /** @deprecated Repo map is always enabled. Use SOULFORGE_NO_REPOMAP=1 env var to disable. Kept for config file compat. */
   repoMap?: boolean;
   /** Semantic summary mode: "off", "ast" (docstrings only), "synthetic" (ast + name-derived, free), "llm" (ast + AI-generated), "full" (ast + llm + synthetic). Boolean compat: true → "synthetic", false → "off". "on" is legacy alias for "full". */
   semanticSummaries?: "off" | "ast" | "synthetic" | "llm" | "full" | "on" | boolean;
@@ -284,6 +284,8 @@ export type ForgeMode = "default" | "architect" | "socratic" | "challenge" | "pl
 
 export type ChatStyle = "accent" | "bubble";
 
+export type AgentEditorAccess = "on" | "off" | "when-open";
+
 export interface EditorIntegration {
   diagnostics: boolean;
   symbols: boolean;
@@ -295,4 +297,6 @@ export interface EditorIntegration {
   rename: boolean;
   lspStatus: boolean;
   format: boolean;
+  /** Whether the AI agent can use the editor tool. "on"=always, "off"=never, "when-open"=only when editor panel is open. Default: "on" */
+  agentAccess?: AgentEditorAccess;
 }

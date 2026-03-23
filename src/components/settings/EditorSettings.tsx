@@ -2,9 +2,21 @@ import { TextAttributes } from "@opentui/core";
 import { useKeyboard, useTerminalDimensions } from "@opentui/react";
 import { useEffect, useState } from "react";
 import { usePopupScroll } from "../../hooks/usePopupScroll.js";
-import type { EditorIntegration } from "../../types/index.js";
+import type { AgentEditorAccess, EditorIntegration } from "../../types/index.js";
 import type { ConfigScope } from "../layout/shared.js";
 import { CONFIG_SCOPES, Overlay, POPUP_BG, POPUP_HL, PopupRow } from "../layout/shared.js";
+
+const AGENT_ACCESS_MODES: AgentEditorAccess[] = ["on", "off", "when-open"];
+const AGENT_ACCESS_LABELS: Record<AgentEditorAccess, string> = {
+  on: "Always",
+  off: "Never",
+  "when-open": "When editor open",
+};
+const AGENT_ACCESS_COLORS: Record<AgentEditorAccess, string> = {
+  on: "#2d5",
+  off: "#c55",
+  "when-open": "#FF8C00",
+};
 
 const MAX_POPUP_WIDTH = 70;
 const CHROME_ROWS = 8;
@@ -113,6 +125,13 @@ export function EditorSettings({ visible, settings, initialScope, onUpdate, onCl
       onUpdate({ ...ALL_OFF }, scope);
       return;
     }
+    if (evt.sequence === "e") {
+      const currentAccess = current.agentAccess ?? "on";
+      const idx = AGENT_ACCESS_MODES.indexOf(currentAccess);
+      const next = AGENT_ACCESS_MODES[(idx + 1) % AGENT_ACCESS_MODES.length] ?? "on";
+      onUpdate({ ...current, agentAccess: next }, scope);
+      return;
+    }
     if (evt.name === "left" || evt.name === "right") {
       setScope((prev) => {
         const idx = CONFIG_SCOPES.indexOf(prev);
@@ -213,8 +232,34 @@ export function EditorSettings({ visible, settings, initialScope, onUpdate, onCl
         </PopupRow>
 
         <PopupRow w={innerW}>
+          <text bg={POPUP_BG} fg="#333">
+            {"─".repeat(innerW - 2)}
+          </text>
+        </PopupRow>
+
+        <PopupRow w={innerW}>
+          <text bg={POPUP_BG} fg="#888">
+            {"  Agent editor access: "}
+          </text>
+          {AGENT_ACCESS_MODES.map((mode) => {
+            const active = (current.agentAccess ?? "on") === mode;
+            return (
+              <text
+                key={mode}
+                bg={POPUP_BG}
+                fg={active ? AGENT_ACCESS_COLORS[mode] : "#444"}
+                attributes={active ? TextAttributes.BOLD : undefined}
+              >
+                {active ? `[${AGENT_ACCESS_LABELS[mode]}]` : ` ${AGENT_ACCESS_LABELS[mode]} `}
+                {"  "}
+              </text>
+            );
+          })}
+        </PopupRow>
+
+        <PopupRow w={innerW}>
           <text bg={POPUP_BG} fg="#555">
-            {"↑↓"} navigate | {"⏎"} toggle | a all on | n all off | {"← →"} scope | esc close
+            {"↑↓"} navigate | {"⏎"} toggle | a all | n none | e agent access | {"← →"} scope | esc
           </text>
         </PopupRow>
       </box>
