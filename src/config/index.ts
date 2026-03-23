@@ -45,6 +45,14 @@ const DEFAULT_CONFIG: AppConfig = {
   },
   codeExecution: false,
   webSearch: true,
+  compaction: {
+    strategy: "v2",
+    triggerThreshold: 0.7,
+    resetThreshold: 0.4,
+    keepRecent: 4,
+    maxToolResults: 30,
+    llmExtraction: true,
+  },
 };
 
 /** Load global config from ~/.soulforge/config.json */
