@@ -38,8 +38,16 @@ export function useProviderModels(providerId: string | null): UseProviderModelsR
     setError(undefined);
     let cancelled = false;
 
+    const timer = setTimeout(() => {
+      if (!cancelled) {
+        setLoading(false);
+        setError("Model fetch timed out — showing cached models");
+      }
+    }, 15_000);
+
     fetchProviderModels(providerId).then((result) => {
       if (!cancelled) {
+        clearTimeout(timer);
         setModels(result.models);
         setError(result.error);
         setLoading(false);
@@ -48,6 +56,7 @@ export function useProviderModels(providerId: string | null): UseProviderModelsR
 
     return () => {
       cancelled = true;
+      clearTimeout(timer);
     };
   }, [providerId]);
 

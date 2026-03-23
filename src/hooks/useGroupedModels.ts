@@ -41,8 +41,16 @@ export function useGroupedModels(providerId: string | null): UseGroupedModelsRet
     setError(undefined);
     let cancelled = false;
 
+    const timer = setTimeout(() => {
+      if (!cancelled) {
+        setLoading(false);
+        setError("Provider fetch timed out — showing cached data");
+      }
+    }, 15_000);
+
     fetchGroupedModels(providerId).then((result) => {
       if (!cancelled) {
+        clearTimeout(timer);
         setSubProviders(result.subProviders);
         setModelsByProvider(result.modelsByProvider);
         setError(result.error);
@@ -52,6 +60,7 @@ export function useGroupedModels(providerId: string | null): UseGroupedModelsRet
 
     return () => {
       cancelled = true;
+      clearTimeout(timer);
     };
   }, [providerId]);
 

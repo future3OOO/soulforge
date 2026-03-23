@@ -12,6 +12,7 @@ import { onAgentStats, onMultiAgentEvent } from "../core/agents/subagent-events.
 import type { SharedCacheRef } from "../core/agents/subagent-tools.js";
 import {
   buildV2Summary,
+  DEFAULT_COMPACTION_CONFIG,
   extractFromAssistantMessage,
   extractFromToolCall,
   extractFromToolResult,
@@ -519,7 +520,8 @@ export function useChat({
   const isCompactingRef = useRef(false);
   const compactAbortRef = useRef<AbortController | null>(null);
   const pendingCompactRef = useRef(false);
-  const initialStrategy = effectiveConfig.compaction?.strategy ?? "v2";
+  const initialStrategy =
+    effectiveConfig.compaction?.strategy ?? DEFAULT_COMPACTION_CONFIG.strategy;
   const workingStateRef = useRef<WorkingStateManager | null>(
     initialStrategy === "v2" ? new WorkingStateManager(effectiveConfig.compaction) : null,
   );
@@ -562,7 +564,7 @@ export function useChat({
   // React to compaction strategy changes: create/destroy WSM as needed
   if (effectiveConfig.compaction?.strategy !== prevCompactionStrategy.current) {
     prevCompactionStrategy.current = effectiveConfig.compaction?.strategy;
-    const strategy = effectiveConfig.compaction?.strategy ?? "v2";
+    const strategy = effectiveConfig.compaction?.strategy ?? DEFAULT_COMPACTION_CONFIG.strategy;
     if (visible) useStatusBarStore.getState().setCompactionStrategy(strategy);
     logCompaction("strategy-change", `Strategy → ${strategy}`);
     if (strategy === "v2") {
@@ -1002,8 +1004,12 @@ export function useChat({
     if (contextTokens <= 0) return;
     const ctxWindow = getModelContextWindow(activeModelRef.current);
     const pct = contextTokens / ctxWindow;
-    const triggerAt = effectiveConfig.compaction?.triggerThreshold ?? 0.7;
-    const resetAt = effectiveConfig.compaction?.resetThreshold ?? 0.4;
+    const triggerAt =
+      effectiveConfig.compaction?.triggerThreshold ??
+      DEFAULT_COMPACTION_CONFIG.triggerThreshold ??
+      0.7;
+    const resetAt =
+      effectiveConfig.compaction?.resetThreshold ?? DEFAULT_COMPACTION_CONFIG.resetThreshold ?? 0.4;
     if (pct > triggerAt && !autoSummarizedRef.current && coreMessagesRef.current.length >= 6) {
       autoSummarizedRef.current = true;
       const strategy = effectiveConfig.compaction?.strategy === "v2" ? "v2" : "v1";
