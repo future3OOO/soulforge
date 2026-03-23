@@ -909,7 +909,7 @@ export class ContextManager {
         // Soul Map orientation — always present, map is injected as a message pair
         "A Soul Map of the codebase is provided at the start of the conversation — it lists every file, exported symbol, signature, and dependency. Consult it before any tool call to identify relevant files and symbols.",
         // Tool routing
-        ...buildToolGuidance(true),
+        ...buildToolGuidance(this.repoMapReady),
       );
 
       if (this.repoMapReady && this.repoMap.getStats().symbols === 0) {
@@ -919,7 +919,7 @@ export class ContextManager {
       }
 
       // Dispatch
-      parts.push("", ...buildDispatchGuidance(true));
+      parts.push("", ...buildDispatchGuidance(this.repoMapReady));
 
       // Planning
       parts.push(

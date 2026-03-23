@@ -50,7 +50,7 @@ const DEFAULT_CONFIG: AppConfig = {
 /** Load global config from ~/.soulforge/config.json */
 export function loadConfig(): AppConfig {
   if (!existsSync(CONFIG_DIR)) {
-    mkdirSync(CONFIG_DIR, { recursive: true });
+    mkdirSync(CONFIG_DIR, { recursive: true, mode: 0o700 });
   }
 
   if (!existsSync(CONFIG_FILE)) {
@@ -125,7 +125,7 @@ export function mergeConfigs(global: AppConfig, project: Partial<AppConfig> | nu
 /** Save global config to ~/.soulforge/config.json */
 export function saveConfig(config: AppConfig): void {
   if (!existsSync(CONFIG_DIR)) {
-    mkdirSync(CONFIG_DIR, { recursive: true });
+    mkdirSync(CONFIG_DIR, { recursive: true, mode: 0o700 });
   }
   writeFileSync(CONFIG_FILE, JSON.stringify(config, null, 2));
 }
@@ -156,7 +156,7 @@ export function saveProjectConfig(cwd: string, patch: Partial<AppConfig>): void 
 
 /** Save a partial config to ~/.soulforge/config.json (deep-merge). */
 export function saveGlobalConfig(patch: Partial<AppConfig>): void {
-  if (!existsSync(CONFIG_DIR)) mkdirSync(CONFIG_DIR, { recursive: true });
+  if (!existsSync(CONFIG_DIR)) mkdirSync(CONFIG_DIR, { recursive: true, mode: 0o700 });
 
   let existing: AppConfig = DEFAULT_CONFIG;
   try {

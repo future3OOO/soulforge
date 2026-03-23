@@ -3581,6 +3581,10 @@ export class RepoMap {
       clearTimeout(this.regenTimer);
       this.regenTimer = null;
     }
+    if (this.reindexTimer) {
+      clearTimeout(this.reindexTimer);
+      this.reindexTimer = null;
+    }
     this.db.close();
   }
 }
