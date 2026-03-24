@@ -55,14 +55,16 @@ function BarRow({
   const labelW = 18;
   const barW = Math.max(8, innerW - labelW - desc.length - 8);
   const filled = Math.round((pct / 100) * barW);
-  const bar = "█".repeat(filled) + "░".repeat(barW - filled);
   return (
     <PopupRow w={innerW}>
       <text fg="#888" bg={POPUP_BG}>
         {label.padEnd(labelW)}
       </text>
       <text fg={barColor} bg={POPUP_BG}>
-        {bar}
+        {"▰".repeat(filled)}
+      </text>
+      <text fg="#222" bg={POPUP_BG}>
+        {"▱".repeat(barW - filled)}
       </text>
       <text fg={descColor} bg={POPUP_BG}>
         {" "}
@@ -173,23 +175,26 @@ export function StatusDashboard({
 
   const contextLines = useMemo(() => {
     const breakdown = contextManager.getContextBreakdown();
-    const totalChars = breakdown.reduce((sum, s) => sum + s.chars, 0);
+    const systemChars = breakdown.reduce((sum, s) => sum + s.chars, 0);
     const ctxWindow = sb.contextWindow > 0 ? sb.contextWindow : getModelContextInfo(modelId).tokens;
-    const apiCtx = chat?.contextTokens ?? 0;
-    const usedTokens = apiCtx > 0 ? apiCtx : Math.ceil(totalChars / 4);
-    const fillPct = Math.min(100, Math.round((usedTokens / ctxWindow) * 100));
+    const isApi = sb.contextTokens > 0;
+    const charEstimate = (systemChars + sb.chatChars + sb.subagentChars) / 4;
+    const usedTokens = Math.round(isApi ? sb.contextTokens + sb.subagentChars / 4 : charEstimate);
+    const fillPct =
+      usedTokens > 0 ? Math.min(100, Math.max(1, Math.round((usedTokens / ctxWindow) * 100))) : 0;
     const activeSections = breakdown.filter((s) => s.active && s.chars > 0);
     const totalSysChars = activeSections.reduce((sum, s) => sum + s.chars, 0);
 
     const lines: React.ReactNode[] = [];
 
+    const pctLabel = isApi ? `${String(fillPct)}%` : `~${String(fillPct)}%`;
     lines.push(
       <BarRow
         key="ctx-bar"
         label="Context Window"
         pct={fillPct}
-        desc={`${fmtTokens(usedTokens)} / ${fmtTokens(ctxWindow)} (${String(fillPct)}%)`}
-        barColor={fillPct > 75 ? "#FF0040" : fillPct > 50 ? "#FF8C00" : "#4a7"}
+        desc={`${fmtTokens(usedTokens)} / ${fmtTokens(ctxWindow)} (${pctLabel})`}
+        barColor={fillPct > 75 ? "#FF0040" : fillPct > 50 ? "#FF8C00" : "#1a6"}
         descColor={fillPct > 75 ? "#FF0040" : fillPct > 50 ? "#FF8C00" : "#888"}
         innerW={innerW}
       />,
@@ -329,7 +334,17 @@ export function StatusDashboard({
     }
 
     return lines;
-  }, [contextManager, sb.contextWindow, modelId, tu, chat?.contextTokens, tabMgr, innerW]);
+  }, [
+    contextManager,
+    sb.contextWindow,
+    modelId,
+    tu,
+    tabMgr,
+    innerW,
+    sb.chatChars,
+    sb.contextTokens,
+    sb.subagentChars,
+  ]);
 
   const systemLines = useMemo(() => {
     const ctxWindow = sb.contextWindow > 0 ? sb.contextWindow : getModelContextInfo(modelId).tokens;
@@ -544,7 +559,7 @@ export function StatusDashboard({
         {/* Title + tabs */}
         <PopupRow w={innerW}>
           <text fg={TAB_COLORS[tab]} bg={POPUP_BG}>
-            {icon("info")}{" "}
+            {icon("gauge")}{" "}
           </text>
           {TABS.map((t, i) => {
             const isActive = t === tab;
