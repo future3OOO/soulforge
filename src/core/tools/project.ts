@@ -591,7 +591,14 @@ function formatPackageList(packages: PackageInfo[]): string {
 // Each entry: substring to match in command → transform to apply fix mode
 const FIX_RULES: Array<{ match: string; apply: (cmd: string) => string }> = [
   // JS/TS
-  { match: "biome", apply: (c) => c.replace(" .", " --write .") },
+  {
+    match: "biome",
+    apply: (c) => {
+      // biome check src/ → biome check --write src/  |  biome check . → biome check --write .
+      const m = c.match(/(biome\s+\S+)(\s+)/);
+      return m ? c.replace(m[0], `${m[1]} --write${m[2]}`) : `${c} --write`;
+    },
+  },
   { match: "eslint", apply: (c) => `${c} --fix` },
   { match: "oxlint", apply: (c) => `${c} --fix` },
   { match: "prettier", apply: (c) => c.replace("--check", "--write") },
@@ -685,10 +692,20 @@ export const projectTool = {
       case "build":
         command = profile.build;
         break;
-      case "format":
+      case "format": {
+        // Prefer dedicated formatter; fall back to lint with fix flags
+        command = profile.format ?? profile.lint;
+        if (command && !profile.format && !args.raw) {
+          command = applyFixFlag(command);
+        }
+        if (command && args.file) {
+          command = `${command} ${shellQuote(args.file)}`;
+        }
+        break;
+      }
       case "lint": {
         command = profile.lint;
-        if (command && (args.action === "format" || args.fix) && !args.raw) {
+        if (command && args.fix && !args.raw) {
           command = applyFixFlag(command);
         }
         if (command && args.file) {
