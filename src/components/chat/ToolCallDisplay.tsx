@@ -778,31 +778,11 @@ export const ToolCallDisplay = memo(function ToolCallDisplay({
 
   return (
     <box flexDirection="column">
-      <box height={1} flexShrink={0}>
-        <text truncate>
-          {headerIcon ? (
-            <span fg={headerColor}>{headerIcon} </span>
-          ) : (
-            <>
-              <Spinner color={headerColor} />
-              <span> </span>
-            </>
-          )}
-          <span fg={allDone ? "#555" : "#999"}>parallel ×{String(visible.length)}</span>
-          {allDone ? null : (
-            <span fg="#555">
-              {" "}
-              · {String(visible.filter((tc) => tc.state !== "running").length)}/
-              {String(visible.length)} done
-            </span>
-          )}
-        </text>
-      </box>
       {visible.map((tc, i) =>
         renderToolCall(tc, elapsed.get(tc.id), diffStyle, {
           isLast: i === visible.length - 1,
-        }),
-      )}
-    </box>
-  );
+          }),
+        )}
+      </box>
+    );
 });

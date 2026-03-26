@@ -8,6 +8,7 @@ import type { UseTabsReturn } from "./useTabs.js";
 interface GlobalKeyboardParams {
   shutdownPhase: number;
   handleExit: () => void;
+  newSession: () => void;
   toggleEditor: () => void;
   focusMode: "chat" | "editor";
   renderer: { getSelection: () => Selection | null };
@@ -20,6 +21,7 @@ interface GlobalKeyboardParams {
 export function useGlobalKeyboard({
   shutdownPhase,
   handleExit,
+  newSession,
   toggleEditor,
   focusMode,
   renderer,
@@ -85,6 +87,7 @@ export function useGlobalKeyboard({
     if (evt.ctrl && evt.name === "s")
       return consume(() => useUIStore.getState().toggleModal("skillSearch"));
     if (evt.ctrl && evt.name === "t") return consume(() => tabMgr.createTab());
+    if (evt.ctrl && evt.name === "n") return consume(() => newSession());
     if (evt.ctrl && evt.name === "d") return consume(() => cycleMode());
     if (evt.ctrl && evt.name === "g")
       return consume(() => useUIStore.getState().toggleModal("gitMenu"));

@@ -361,7 +361,8 @@ export async function fetchVercelGatewayModels(): Promise<GroupedModelsResult> {
 }
 
 async function fetchVercelGatewayGrouped(): Promise<GroupedModelsResult> {
-  if (!getProviderApiKey("AI_GATEWAY_API_KEY")) {
+  const apiKey = getProviderApiKey("AI_GATEWAY_API_KEY");
+  if (!apiKey) {
     return {
       subProviders: [],
       modelsByProvider: {},
@@ -370,7 +371,6 @@ async function fetchVercelGatewayGrouped(): Promise<GroupedModelsResult> {
   }
 
   try {
-    const apiKey = getProviderApiKey("AI_GATEWAY_API_KEY");
     const res = await fetch("https://ai-gateway.vercel.sh/v1/models", {
       headers: { Authorization: `Bearer ${apiKey}` },
     });

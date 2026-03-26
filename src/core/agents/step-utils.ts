@@ -28,6 +28,16 @@ const MAX_SUBAGENT_CONTEXT = 200_000;
 
 const KEEP_RECENT_MESSAGES = 4;
 
+// Token-budget pruning (OpenCode-style): protect last N tokens of tool results,
+// blank everything older. More forgiving than message-count for subagents.
+const PRUNE_PROTECT_TOKENS = 40_000;
+const PRUNE_MINIMUM_TOKENS = 20_000;
+const PRUNED_PLACEHOLDER = "[Old tool result content cleared]";
+
+function estimateTokens(text: string): number {
+  return Math.ceil(text.length / 4);
+}
+
 // Step-count limits — hard caps to prevent runaway loops.
 // Bumped +3 from original (25/15) to compensate for the final step being
 // forced to toolChoice:"none" (text-only) — agents need room to finish work
@@ -423,6 +433,60 @@ function compactOldToolResults(
   }) as ModelMessage[];
 }
 
+/** Token-budget pruning: walk backward through tool results, protect last
+ *  PRUNE_PROTECT_TOKENS worth of content, blank everything older.
+ *  Less aggressive than message-count pruning — suitable for subagents. */
+function pruneByTokenBudget(messages: ModelMessage[]): ModelMessage[] {
+  // Walk backward, accumulate tool result token estimates
+  type PruneTarget = { msgIdx: number; partIdx: number; tokens: number };
+  const targets: PruneTarget[] = [];
+  let totalTokens = 0;
+
+  for (let mi = messages.length - 1; mi >= 0; mi--) {
+    const msg = messages[mi];
+    if (!msg || msg.role !== "tool" || !Array.isArray(msg.content)) continue;
+    for (let pi = msg.content.length - 1; pi >= 0; pi--) {
+      const part = msg.content[pi] as { type: string; toolName: string; output: unknown } | undefined;
+      if (!part || part.type !== "tool-result") continue;
+      if (EDIT_TOOLS.has(part.toolName)) continue;
+      const text = extractText(part.output);
+      const tokens = estimateTokens(text);
+      if (tokens <= 50) continue;
+      totalTokens += tokens;
+      targets.push({ msgIdx: mi, partIdx: pi, tokens });
+    }
+  }
+
+  // Only prune if we'd free enough tokens
+  const excess = totalTokens - PRUNE_PROTECT_TOKENS;
+  if (excess < PRUNE_MINIMUM_TOKENS) return messages;
+
+  // Mark oldest targets for pruning (they're in reverse order, so the end of the array is oldest)
+  let freed = 0;
+  const pruneSet = new Set<string>();
+  for (let i = targets.length - 1; i >= 0 && freed < excess; i--) {
+    const t = targets[i];
+    if (!t) continue;
+    pruneSet.add(`${String(t.msgIdx)}:${String(t.partIdx)}`);
+    freed += t.tokens;
+  }
+
+  if (pruneSet.size === 0) return messages;
+
+  return messages.map((msg, mi) => {
+    if (msg.role !== "tool" || !Array.isArray(msg.content)) return msg;
+    let changed = false;
+    const newContent = msg.content.map((part, pi) => {
+      if (pruneSet.has(`${String(mi)}:${String(pi)}`)) {
+        changed = true;
+        return { ...part, output: { type: "text" as const, value: PRUNED_PLACEHOLDER } };
+      }
+      return part;
+    });
+    return changed ? { ...msg, content: newContent } : msg;
+  }) as ModelMessage[];
+}
+
 interface PrepareStepResult {
   // biome-ignore lint/suspicious/noExplicitAny: TOOLS generic is invariant — tool-agnostic functions use <any> (same as SDK's stepCountIs/hasToolCall)
   prepareStep: PrepareStepFunction<any>;
@@ -502,11 +566,11 @@ export function buildPrepareStep({
       }
     }
 
-    // Semantic pruning: stale reads + canceled plans + re-read stubbing
-    // Tool result compaction: old tool results → one-line summaries (keeps last KEEP_RECENT_MESSAGES full)
+    // Pruning: semantic (stale reads, canceled plans) + token-budget (blank old tool results)
     if (stepNumber >= 1 && !disablePruning) {
       let msgs = result.messages ?? messages;
       msgs = semanticPrune(msgs, pathMap);
+      msgs = pruneByTokenBudget(msgs);
       msgs = stripOldEditArgs(msgs, msgs.length - KEEP_RECENT_MESSAGES);
       result.messages = msgs;
     }
@@ -692,4 +756,4 @@ export function buildSymbolLookup(repoMap?: {
   };
 }
 
-export { compactOldToolResults, KEEP_RECENT_MESSAGES };
+export { compactOldToolResults, KEEP_RECENT_MESSAGES, pruneByTokenBudget };

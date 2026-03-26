@@ -14,6 +14,7 @@ Sub-commands (like `/proxy login`) work when typed directly but are grouped unde
 | `Ctrl+G` | Git menu |
 | `Ctrl+P` | Browse sessions |
 | `Ctrl+S` | Browse skills |
+| `Ctrl+N` | New session (saves current, starts fresh) |
 | `Ctrl+T` | New tab |
 | `Ctrl+W` | Close tab |
 | `Ctrl+D` | Cycle forge mode |

@@ -357,6 +357,7 @@ export const shellTool = {
         env: buildSafeEnv(),
       });
 
+      let cleanupAbortListener: (() => void) | undefined;
       if (abortSignal) {
         const onAbort = () => {
           try {
@@ -372,6 +373,7 @@ export const shellTool = {
           onAbort();
         } else {
           abortSignal.addEventListener("abort", onAbort, { once: true });
+          cleanupAbortListener = () => abortSignal.removeEventListener("abort", onAbort);
         }
       }
 
@@ -385,6 +387,7 @@ export const shellTool = {
       });
 
       proc.on("close", (code: number | null) => {
+        cleanupAbortListener?.();
         let raw = sanitizeOutput(chunks.join(""));
         if (stdoutBytes > MAX_COLLECT_BYTES) {
           raw += `\n[output truncated — ${String(Math.round(stdoutBytes / 1024))}KB total, showing first ${String(Math.round(MAX_COLLECT_BYTES / 1024))}KB]`;

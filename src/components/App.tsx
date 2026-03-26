@@ -37,7 +37,7 @@ import { useGlobalKeyboard } from "../hooks/useGlobalKeyboard.js";
 import { useNeovim } from "../hooks/useNeovim.js";
 import { buildSessionMeta } from "../hooks/useSessionBuilder.js";
 import { useTabs } from "../hooks/useTabs.js";
-import { cleanupAndExit, setExitSessionId } from "../index.js";
+import { cleanupAndExit, restart, setExitSessionId } from "../index.js";
 import { logBackgroundError } from "../stores/errors.js";
 import { startMemoryPoll } from "../stores/statusbar.js";
 import { type ModalName, selectIsAnyModalOpen, useUIStore } from "../stores/ui.js";
@@ -828,9 +828,40 @@ export function App({
     useUIStore.getState().openModal("gitCommit");
   }, []);
 
+  const handleNewSession = useCallback(async () => {
+    const activeChat = tabMgrRef.current?.getActiveChat();
+    const hasContent = activeChat?.messages.some(
+      (m: ChatMessage) => m.role === "user" || m.role === "assistant",
+    );
+    if (hasContent && activeChat) {
+      const snapshot = workspaceSnapshotRef.current?.();
+      if (snapshot) {
+        try {
+          const { meta, tabMessages } = buildSessionMeta({
+            sessionId: activeChat.sessionId,
+            title: SessionManager.deriveTitle(activeChat.messages),
+            cwd,
+            snapshot,
+            currentTabMessages: activeChat.messages.filter(
+              (m: ChatMessage) => m.role !== "system" || m.showInChat,
+            ),
+          });
+          await sessionManager.saveSession(meta, tabMessages);
+        } catch (err) {
+          logBackgroundError(
+            "new-session",
+            `session save failed: ${err instanceof Error ? err.message : String(err)}`,
+          );
+        }
+      }
+    }
+    restart();
+  }, [cwd, sessionManager]);
+
   useGlobalKeyboard({
     shutdownPhase,
     handleExit,
+    newSession: handleNewSession,
     toggleEditor,
     focusMode,
     renderer,

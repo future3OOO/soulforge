@@ -16,17 +16,17 @@ interface SlotItem {
 }
 
 const SLOTS: SlotItem[] = [
-  { key: "planning", label: "Planning", desc: "[PLAN MODE] & plan tool" },
-  { key: "coding", label: "Coding", desc: "code subagent" },
-  { key: "exploration", label: "Exploration", desc: "explore subagent" },
-  { key: "webSearch", label: "Web Search", desc: "browser & web search tasks" },
-  { key: "compact", label: "Compact", desc: "context compaction summarizer" },
-  { key: "semantic", label: "Semantic", desc: "soul map summary generation" },
-  { key: "trivial", label: "Trivial", desc: "single-file reads, small edits (fast/cheap)" },
-  { key: "desloppify", label: "De-sloppify", desc: "cleanup pass after code agents" },
-  { key: "verify", label: "Verify", desc: "adversarial review after code agents" },
-  { key: "editing", label: "Editing", desc: "main agent edit steps (switches after first edit)" },
-  { key: "default", label: "Default", desc: "everything else" },
+  { key: "planning", label: "Planning", desc: "[main] plan mode & plan tool" },
+  { key: "coding", label: "Coding", desc: "[dispatch] code subagents" },
+  { key: "exploration", label: "Exploration", desc: "[dispatch] explore/investigate subagents" },
+  { key: "webSearch", label: "Web Search", desc: "[dispatch] web search subagent" },
+  { key: "compact", label: "Compact", desc: "[main] context compaction summarizer" },
+  { key: "semantic", label: "Semantic", desc: "[main] soul map summary generation" },
+  { key: "trivial", label: "Trivial", desc: "[dispatch] small single-file tasks (fast/cheap)" },
+  { key: "desloppify", label: "De-sloppify", desc: "[dispatch] cleanup pass after code agents" },
+  { key: "verify", label: "Verify", desc: "[dispatch] adversarial review after code agents" },
+  { key: "editing", label: "Editing", desc: "[main] switches after first edit tool call" },
+  { key: "default", label: "Default", desc: "[main][dispatch] fallback for all" },
 ];
 
 interface Props {

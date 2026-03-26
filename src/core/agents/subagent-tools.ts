@@ -17,7 +17,6 @@ import {
   runAgentTask,
   selectModel,
   sleep,
-  stripContextManagement,
 } from "./agent-runner.js";
 import { runDesloppify, runEvaluator, runVerifier } from "./agent-verification.js";
 import { createCodeAgent } from "./code.js";
@@ -175,7 +174,7 @@ export function createAgent(
     task.role === "explore" || task.role === "investigate" || models.readOnly === true;
   const { model } = selectModel(task, models);
   const tier = detectTaskTier(task);
-  let subagentProviderOptions = stripContextManagement(models.providerOptions);
+  let subagentProviderOptions = models.providerOptions;
   if (useExplore && subagentProviderOptions) {
     const patched: Record<string, unknown> = {};
     for (const [provider, val] of Object.entries(subagentProviderOptions)) {
@@ -201,7 +200,7 @@ export function createAgent(
     onApproveFetchPage: models.onApproveFetchPage,
     repoMap: models.repoMap,
     contextWindow,
-    disablePruning: true, // Subagents have 15-step max — pruning causes re-reads, context never gets large enough to matter
+    disablePruning: false,
     role: task.role === "investigate" ? ("investigate" as const) : ("explore" as const),
   };
   const agent = useExplore ? createExploreAgent(model, opts) : createCodeAgent(model, opts);
@@ -1118,9 +1117,7 @@ export function buildSubagentTools(models: SubagentModels) {
           for (const r of results) {
             const done = r.result.startsWith("[done]");
             const status = r.success ? (done ? "✓" : "⚠") : "✗";
-            // Slim output: summary only + context file path. Full tool results are on disk.
             const taskSummary = r.task.split("\n")[0]?.slice(0, 200) ?? r.task.slice(0, 200);
-            const contextPath = `.soulforge/dispatch/tab-${dispatchTabId}/${toolCallId}/${r.agentId}.md`;
             // Extract just the summary from [done] prefix — strip the verbose formatDoneResult output
             const summaryText = done
               ? (r.result
@@ -1129,7 +1126,7 @@ export function buildSubagentTools(models: SubagentModels) {
                   ?.slice(0, 500) ?? r.result.slice(0, 500))
               : r.result.slice(0, 500);
             sections.push(
-              `\n### ${status} Agent: ${r.agentId} (${r.role})\nTask: ${taskSummary}\n${summaryText}\n\nFull context: \`${contextPath}\`\n\n---`,
+              `\n### ${status} Agent: ${r.agentId} (${r.role})\nTask: ${taskSummary}\n${summaryText}\n\n---`,
             );
           }
 
@@ -1224,100 +1221,52 @@ export function buildSubagentTools(models: SubagentModels) {
       },
       toModelOutput({ output }: { toolCallId: string; input: unknown; output: unknown }) {
         const dispatch = output as DispatchOutput | string;
-        const rawText = typeof dispatch === "string" ? dispatch : dispatch.output;
-
-        // Strip skill blocks echoed back from subagent prompts — main agent already has them
-        const stripped = rawText.replace(
-          /\n*--- Relevant skill: .+? ---\n[\s\S]*?(?=\n--- Relevant skill:|\n###|\n---\n|\n## |$)/g,
-          "",
-        );
-
-        const lines = stripped.split("\n");
-        const compact: string[] = [];
-        let blankRun = 0;
-        let inCodeBlock = false;
-        let inStructuredSection = false;
-        let truncatedLines = 0;
-
-        for (const line of lines) {
-          if (line.startsWith("```")) inCodeBlock = !inCodeBlock;
-          if (/^(?:Files edited:|Key findings:|###.*Agent:)/.test(line)) {
-            inStructuredSection = true;
-          } else if (line.startsWith("## ") || line.startsWith("### Cache")) {
-            inStructuredSection = false;
-          }
-          if (line.trim() === "") {
-            blankRun++;
-            if (blankRun <= 1) compact.push("");
-            continue;
-          }
-          blankRun = 0;
-          const limit = inCodeBlock || inStructuredSection ? 1500 : 600;
-          if (line.length > limit) {
-            truncatedLines++;
-            compact.push(`${line.slice(0, limit)} [...]`);
-          } else {
-            compact.push(line);
-          }
+        if (typeof dispatch === "string") {
+          return { type: "text" as const, value: `<dispatch_result>\n${dispatch}\n</dispatch_result>` };
         }
 
-        if (
-          typeof dispatch !== "string" &&
-          (dispatch.reads.length > 0 || dispatch.filesEdited.length > 0)
-        ) {
-          const header: string[] = [];
-          if (dispatch.reads.length > 0) {
-            header.push("Files already read by dispatch:");
-            const seen = new Set<string>();
-            for (const r of dispatch.reads) {
-              const range =
-                r.startLine != null
-                  ? r.endLine != null
-                    ? `:${String(r.startLine)}-${String(r.endLine)}`
-                    : `:${String(r.startLine)}`
-                  : "";
-              const symbol = r.name
-                ? ` ${r.target ?? ""} ${r.name}`
-                : r.target === "scope"
-                  ? " scope"
-                  : "";
-              const cache = r.cached ? " [cached]" : "";
-              const label = `  ${r.tool} ${r.path}${range}${symbol}${cache}`;
-              if (!seen.has(label)) {
-                seen.add(label);
-                header.push(label);
-              }
+        const parts: string[] = [];
+
+        if (dispatch.filesEdited.length > 0) {
+          parts.push(`Files edited: ${dispatch.filesEdited.join(", ")}`);
+        }
+
+        // Extract just the summary from each agent — drop verbose findings/gaps/connections
+        const rawText = dispatch.output;
+        const agentSummaries = rawText.match(/### [✓✗!] Agent: .+[\s\S]*?(?=### [✓✗!] Agent:|$)/g);
+        if (agentSummaries) {
+          for (const section of agentSummaries) {
+            const headerMatch = section.match(/^### [✓✗!] Agent: (.+)/);
+            const header = headerMatch?.[1]?.trim() ?? "agent";
+            // Take only lines before "Key findings:" / "Files examined:" / "Gaps:" sections
+            const lines = section.split("\n").slice(1);
+            const summaryLines: string[] = [];
+            for (const line of lines) {
+              if (/^(?:Key findings:|Files examined:|Gaps:|Connections:|Verified:)/.test(line)) break;
+              if (line.trim()) summaryLines.push(line.trim());
+            }
+            if (summaryLines.length > 0) {
+              parts.push(`[${header}] ${summaryLines.join(" ")}`);
             }
           }
-          if (dispatch.filesEdited.length > 0) {
-            header.push(`Files edited: ${dispatch.filesEdited.join(", ")}`);
-          }
-          header.push("These files are already in context. Do NOT re-read them.\n");
-          compact.unshift(...header);
+        } else if (rawText.trim()) {
+          // Single agent or unstructured — take first 2000 chars
+          const text = rawText.trim();
+          parts.push(text.length > 2000 ? `${text.slice(0, 2000)}...` : text);
         }
 
-        if (truncatedLines > 0) {
-          compact.push(
-            `\n[${String(truncatedLines)} long lines shortened — act on these results, do not re-read dispatched files]`,
-          );
-        }
-
-        if (typeof dispatch !== "string") {
-          compact.push(
-            "\n---\n**Next step: act on these results.** FORBIDDEN: re-reading files that agents already examined. The findings above contain the code you need.",
-          );
-        }
-
-        let value = compact.join("\n");
-        const DISPATCH_OUTPUT_CAP = 24_000;
+        const DISPATCH_OUTPUT_CAP = 8_000;
+        let value = parts.join("\n");
         if (value.length > DISPATCH_OUTPUT_CAP) {
           value = value.slice(0, DISPATCH_OUTPUT_CAP);
           const lastNl = value.lastIndexOf("\n");
           if (lastNl > 0) value = value.slice(0, lastNl);
-          value += `\n[dispatch output capped at ${String(Math.round(DISPATCH_OUTPUT_CAP / 1024))}KB — use read_file for full file contents]`;
         }
 
-        return { type: "text" as const, value };
+        return {
+          type: "text" as const,
+          value: `<dispatch_result>\n${value}\n</dispatch_result>`,
+        };
       },
     }),
   };
