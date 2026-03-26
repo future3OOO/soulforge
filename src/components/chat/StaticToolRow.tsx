@@ -8,7 +8,13 @@ import {
   type ToolCategory,
 } from "../../core/tool-display.js";
 import { DiffView } from "./DiffView.js";
-import { detectOutsideCwd, formatArgs, formatResult, OUTSIDE_BADGE } from "./tool-formatters.js";
+import {
+  detectCodeExecution,
+  detectOutsideCwd,
+  formatArgs,
+  formatResult,
+  OUTSIDE_BADGE,
+} from "./tool-formatters.js";
 
 export const ROW_COLORS = {
   textDone: "#555",
@@ -237,10 +243,32 @@ export function buildLiveToolRowProps(
   const isRepoMapHit = extra?.isRepoMapHit ?? false;
   const toolDisplay = resolveToolDisplay(tc.toolName);
 
-  const iconVal = isRepoMapHit ? (extra?.repoMapIcon ?? "◈") : toolDisplay.icon;
-  const labelVal = isRepoMapHit ? "Soul Map" : toolDisplay.label;
-  const iconColorVal = isRepoMapHit ? "#2dd4bf" : toolDisplay.iconColor;
-  const toolCategory = isRepoMapHit ? ("soul-map" as ToolCategory) : toolDisplay.category;
+  // Detect code execution (node -e, bun -e, python -c, etc.) for distinct UI
+  let codeExec: ReturnType<typeof detectCodeExecution> = null;
+  if (tc.toolName === "shell" && tc.args) {
+    try {
+      const parsed = JSON.parse(tc.args);
+      if (parsed.command) codeExec = detectCodeExecution(String(parsed.command));
+    } catch {}
+  }
+
+  const codeExecDisplay = codeExec ? resolveToolDisplay("code_execution") : null;
+  const iconVal = isRepoMapHit
+    ? (extra?.repoMapIcon ?? "◈")
+    : codeExecDisplay
+      ? codeExecDisplay.icon
+      : toolDisplay.icon;
+  const labelVal = isRepoMapHit ? "Soul Map" : codeExec ? codeExec.runtime : toolDisplay.label;
+  const iconColorVal = isRepoMapHit
+    ? "#2dd4bf"
+    : codeExecDisplay
+      ? codeExecDisplay.iconColor
+      : toolDisplay.iconColor;
+  const toolCategory = isRepoMapHit
+    ? ("soul-map" as ToolCategory)
+    : codeExecDisplay
+      ? (codeExecDisplay.category as ToolCategory)
+      : toolDisplay.category;
 
   // Backend from result or prop
   let backend: string | null = null;
@@ -323,6 +351,19 @@ export function buildFinalToolRowProps(tc: {
   const toolDisplay = resolveToolDisplay(tc.name);
   const argsJson = JSON.stringify(tc.args);
   const resultJson = tc.result ? JSON.stringify(tc.result) : undefined;
+
+  // Detect code execution for completed shell calls
+  let finalCodeExec: ReturnType<typeof detectCodeExecution> = null;
+  if (tc.name === "shell" && typeof tc.args.command === "string") {
+    finalCodeExec = detectCodeExecution(tc.args.command);
+  }
+  const finalCodeDisplay = finalCodeExec ? resolveToolDisplay("code_execution") : null;
+  if (finalCodeDisplay && finalCodeExec) {
+    toolDisplay.icon = finalCodeDisplay.icon;
+    toolDisplay.iconColor = finalCodeDisplay.iconColor;
+    toolDisplay.label = finalCodeExec.runtime;
+    toolDisplay.category = finalCodeDisplay.category;
+  }
 
   const argStr = formatArgs(tc.name, argsJson);
   const outsideKind = detectOutsideCwd(tc.name, argsJson);

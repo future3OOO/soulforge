@@ -24,6 +24,8 @@ export function formatArgs(toolName: string, args?: string): string {
     }
     if (toolName === "shell" && parsed.command) {
       const cmd = String(parsed.command);
+      const codeExec = detectCodeExecution(cmd);
+      if (codeExec) return codeExec.preview;
       return cmd.length > 60 ? `${cmd.slice(0, 57)}...` : cmd;
     }
     if (toolName === "grep" && parsed.pattern) return `/${parsed.pattern}/`;
@@ -373,3 +375,48 @@ export const OUTSIDE_BADGE: Record<OutsideKind, { label: string; color: string }
   config: { label: "config", color: "#888" },
   tmp: { label: "tmp", color: "#888" },
 };
+
+// Language-agnostic code execution detection for shell commands.
+// Matches: node -e, bun -e, deno eval, python -c, python3 -c, ruby -e, perl -e, etc.
+const CODE_EXEC_RE =
+  /^(?:node|bun|deno|tsx|ts-node|python3?|ruby|perl|lua|php|swift)\s+(?:-[ec]|eval)\s+/;
+
+const RUNTIME_LABELS: Record<string, string> = {
+  node: "node",
+  bun: "bun",
+  deno: "deno",
+  tsx: "tsx",
+  "ts-node": "ts-node",
+  python: "python",
+  python3: "python",
+  ruby: "ruby",
+  perl: "perl",
+  lua: "lua",
+  php: "php",
+  swift: "swift",
+};
+
+export interface CodeExecInfo {
+  runtime: string;
+  code: string;
+  preview: string;
+}
+
+export function detectCodeExecution(command: string): CodeExecInfo | null {
+  const trimmed = command.trim();
+  if (!CODE_EXEC_RE.test(trimmed)) return null;
+
+  const runtime = trimmed.split(/\s/)[0] ?? "";
+  const label = RUNTIME_LABELS[runtime] ?? runtime;
+
+  // Extract code from -e "..." / -c '...' / eval "..."
+  const codeMatch = trimmed.match(/\s-[ec]\s+(?:"((?:[^"\\]|\\.)*)"|'([^']*)')/);
+  const evalMatch = !codeMatch ? trimmed.match(/\seval\s+(?:"((?:[^"\\]|\\.)*)"|'([^']*)')/) : null;
+  const code = codeMatch?.[1] ?? codeMatch?.[2] ?? evalMatch?.[1] ?? evalMatch?.[2] ?? "";
+
+  const firstLine = code.split("\\n")[0] ?? code;
+  const preview =
+    firstLine.length > 50 ? `${label}: ${firstLine.slice(0, 47)}...` : `${label}: ${firstLine}`;
+
+  return { runtime: label, code, preview };
+}
