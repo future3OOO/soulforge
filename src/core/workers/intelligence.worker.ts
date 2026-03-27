@@ -249,6 +249,9 @@ const handlers: Record<string, (...args: unknown[]) => unknown> = {
 ctx = createWorkerHandler(
   handlers,
   async (config) => {
+    const { initForbidden } = await import("../security/forbidden.js");
+    initForbidden(config.cwd as string);
+
     const { RepoMap } = await import("../intelligence/repo-map.js");
     repoMap = new RepoMap(config.cwd as string);
 
