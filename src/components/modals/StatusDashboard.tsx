@@ -10,7 +10,7 @@ import { getProxyPid } from "../../core/proxy/lifecycle.js";
 import type { ChatInstance } from "../../hooks/useChat.js";
 import type { UseTabsReturn } from "../../hooks/useTabs.js";
 import { useRepoMapStore } from "../../stores/repomap.js";
-import { computeCost, useStatusBarStore } from "../../stores/statusbar.js";
+import { computeModelCost, computeTotalCostFromBreakdown, useStatusBarStore } from "../../stores/statusbar.js";
 import { useWorkerStore } from "../../stores/workers.js";
 import { Overlay, POPUP_BG, PopupRow } from "../layout/shared.js";
 
@@ -216,9 +216,7 @@ export function StatusDashboard({
     const isApi = sb.contextTokens > 0;
     const charEstimate = (systemChars + sb.chatChars + sb.subagentChars) / 4;
     const chatCharsDelta = Math.max(0, sb.chatChars - (sb.chatCharsAtSnapshot ?? 0));
-    const usedTokens = Math.round(
-      isApi ? sb.contextTokens + (chatCharsDelta + sb.subagentChars) / 4 : charEstimate,
-    );
+      const usedTokens = Math.round(isApi ? sb.contextTokens + (chatCharsDelta + sb.subagentChars) / 4 : charEstimate);
     const fillPct =
       usedTokens > 0 ? Math.min(100, Math.max(1, Math.round((usedTokens / ctxWindow) * 100))) : 0;
     const activeSections = breakdown.filter((s) => s.active && s.chars > 0);
@@ -375,19 +373,45 @@ export function StatusDashboard({
         <EntryRow key="t-total" label="  Total" value={fmtTokens(tu.total)} innerW={innerW} />,
       );
 
-      const cost = computeCost(tu, modelId);
-      if (cost > 0) {
-        const costStr = cost < 0.01 ? `$${cost.toFixed(3)}` : `$${cost.toFixed(2)}`;
-        lines.push(
-          <EntryRow
-            key="t-cost"
-            label="  Cost"
-            value={costStr}
-            valueColor="#ccc"
-            innerW={innerW}
-          />,
+      const breakdown = tu.modelBreakdown ?? {};
+      const breakdownEntries = Object.entries(breakdown).sort(
+        ([midA, a], [midB, b]) => computeModelCost(midB, b) - computeModelCost(midA, a),
         );
-      }
+        const totalCost =
+          breakdownEntries.length > 0
+            ? computeTotalCostFromBreakdown(breakdown)
+            : 0;
+        if (totalCost > 0) {
+          const fmtCost = (c: number) => (c < 0.01 ? `${c.toFixed(3)}` : `${c.toFixed(2)}`);
+          lines.push(<Spacer key="s-cost" innerW={innerW} />);
+        lines.push(<SectionHeader key="h-cost" label="Cost Breakdown" innerW={innerW} />);
+          for (const [mid, usage] of breakdownEntries) {
+            const c = computeModelCost(mid, usage);
+            if (c <= 0) continue;
+            const pct = Math.round((c / totalCost) * 100);
+            const shortId = mid.length > 22 ? `${mid.slice(0, 21)}…` : mid;
+            lines.push(
+              <EntryRow
+                key={`cost-${mid}`}
+                label={`  ${shortId}`}
+                value={`${fmtCost(c)}  (${String(pct)}%)`}
+                valueColor="#ccc"
+                labelW={24}
+                innerW={innerW}
+              />,
+            );
+          }
+          lines.push(
+            <EntryRow
+              key="cost-total"
+              label="  Total"
+              value={fmtCost(totalCost)}
+              valueColor="#e0a020"
+              labelW={24}
+              innerW={innerW}
+            />,
+          );
+        }
     }
 
     const allTabs = tabMgr.tabs;
@@ -449,7 +473,6 @@ export function StatusDashboard({
     sb.chatChars,
     sb.contextTokens,
     sb.subagentChars,
-    sb.chatCharsAtSnapshot,
   ]);
 
   const systemLines = useMemo(() => {

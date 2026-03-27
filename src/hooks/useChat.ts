@@ -39,7 +39,7 @@ import { completeInProgressTasks, resetInProgressTasks } from "../core/tools/tas
 import { getIOClient } from "../core/workers/io-client.js";
 import { logCompaction } from "../stores/compaction-logs.js";
 import { logBackgroundError } from "../stores/errors.js";
-import { useStatusBarStore } from "../stores/statusbar.js";
+import { accumulateModelUsage, useStatusBarStore } from "../stores/statusbar.js";
 import { useToolsStore } from "../stores/tools.js";
 import type {
   AppConfig,
@@ -84,7 +84,7 @@ export interface TokenUsage {
   lastStepInput: number;
   lastStepOutput: number;
   lastStepCacheRead: number;
-  modelBreakdown: Record<string, import("../stores/statusbar.js").PerModelUsage>;
+  modelBreakdown: Record<string, { input: number; output: number; cacheRead: number; cacheWrite: number }>;
 }
 
 const ZERO_USAGE: TokenUsage = {
@@ -1365,20 +1365,26 @@ export function useChat({
         });
         if (deltaIn > 0 || deltaOut > 0 || deltaCache > 0) {
           const base = baseTokenUsageRef.current;
-          const newUsage: TokenUsage = {
+          const subModelId = event.modelId ?? "unknown";
+            const newUsage: TokenUsage = {
             ...base,
             total: base.total + deltaIn + deltaOut,
             subagentInput: base.subagentInput + deltaIn,
             subagentOutput: base.subagentOutput + deltaOut,
-            cacheRead: base.cacheRead + (deltaCache > 0 ? deltaCache : 0),
-          };
-          pendingTokenUsage.current = newUsage;
-          baseTokenUsageRef.current = newUsage;
-          updateSubagentChars();
-          toolCallsDirty.current = true;
-          queueMicrotaskFlush();
-        }
-      });
+              cacheRead: base.cacheRead + (deltaCache > 0 ? deltaCache : 0),
+              modelBreakdown: accumulateModelUsage(base.modelBreakdown, subModelId, {
+                input: deltaIn,
+                output: deltaOut,
+                cacheRead: deltaCache > 0 ? deltaCache : 0,
+              }),
+            };
+            pendingTokenUsage.current = newUsage;
+            baseTokenUsageRef.current = newUsage;
+            updateSubagentChars();
+            toolCallsDirty.current = true;
+            queueMicrotaskFlush();
+          }
+        });
 
       const unsubMultiAgent = onMultiAgentEvent((event) => {
         if (event.type === "agent-done" && event.agentId) {
@@ -1982,6 +1988,12 @@ export function useChat({
                 lastStepInput: stepIn,
                 lastStepOutput: stepOut,
                 lastStepCacheRead: stepCache,
+                modelBreakdown: accumulateModelUsage(base.modelBreakdown, modelId, {
+                  input: stepIn,
+                  output: stepOut,
+                  cacheRead: stepCache,
+                  cacheWrite: stepCacheWrite,
+                }),
               };
               pendingTokenUsage.current = newUsage;
               baseTokenUsageRef.current = newUsage;

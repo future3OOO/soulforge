@@ -56,6 +56,7 @@ export interface MultiAgentEvent {
 export interface AgentStatsEvent {
   parentToolCallId: string;
   agentId: string;
+  modelId?: string;
   toolUses: number;
   stepCount: number;
   tokenUsage: { input: number; output: number; total: number };

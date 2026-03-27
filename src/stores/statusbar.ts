@@ -34,33 +34,76 @@ interface ModelPricing {
   output: number;
 }
 
+// Prices in USD per million tokens. Sources:
+// Anthropic: https://platform.claude.com/docs/en/about-claude/pricing
+// OpenAI:    https://openai.com/api/pricing/
+// Google:    https://ai.google.dev/gemini-api/docs/pricing
+// DeepSeek:  https://api-docs.deepseek.com/quick_start/pricing
 const MODEL_PRICING: Record<string, ModelPricing> = {
-  "claude-opus-4-6": { input: 5, cacheWrite: 6.25, cacheRead: 0.5, output: 25 },
-  "claude-opus-4-5": { input: 5, cacheWrite: 6.25, cacheRead: 0.5, output: 25 },
-  "claude-opus-4-1": { input: 15, cacheWrite: 18.75, cacheRead: 1.5, output: 75 },
-  "claude-opus-4": { input: 15, cacheWrite: 18.75, cacheRead: 1.5, output: 75 },
-  "claude-sonnet-4-6": { input: 3, cacheWrite: 3.75, cacheRead: 0.3, output: 15 },
-  "claude-sonnet-4-5": { input: 3, cacheWrite: 3.75, cacheRead: 0.3, output: 15 },
-  "claude-sonnet-4": { input: 3, cacheWrite: 3.75, cacheRead: 0.3, output: 15 },
-  "claude-3.7-sonnet": { input: 3, cacheWrite: 3.75, cacheRead: 0.3, output: 15 },
-  "claude-3.5-sonnet": { input: 3, cacheWrite: 3.75, cacheRead: 0.3, output: 15 },
-  "claude-haiku-4-5": { input: 1, cacheWrite: 1.25, cacheRead: 0.1, output: 5 },
-  "claude-3.5-haiku": { input: 0.8, cacheWrite: 1.0, cacheRead: 0.08, output: 4 },
-  "claude-3-haiku": { input: 0.25, cacheWrite: 0.3, cacheRead: 0.03, output: 1.25 },
+  // ── Anthropic Claude ──────────────────────────────────────────────
+  // cacheWrite = 1.25× base input (5-min TTL), cacheRead = 0.1× base input
+  "claude-opus-4-6":   { input: 5,    cacheWrite: 6.25,  cacheRead: 0.5,   output: 25 },
+  "claude-opus-4-5":   { input: 5,    cacheWrite: 6.25,  cacheRead: 0.5,   output: 25 },
+  "claude-opus-4-1":   { input: 15,   cacheWrite: 18.75, cacheRead: 1.5,   output: 75 },
+  "claude-opus-4-0":   { input: 15,   cacheWrite: 18.75, cacheRead: 1.5,   output: 75 },
+  "claude-opus-4":     { input: 15,   cacheWrite: 18.75, cacheRead: 1.5,   output: 75 },
+  "claude-sonnet-4-6": { input: 3,    cacheWrite: 3.75,  cacheRead: 0.3,   output: 15 },
+  "claude-sonnet-4-5": { input: 3,    cacheWrite: 3.75,  cacheRead: 0.3,   output: 15 },
+  "claude-sonnet-4":   { input: 3,    cacheWrite: 3.75,  cacheRead: 0.3,   output: 15 },
+  "claude-3.7-sonnet": { input: 3,    cacheWrite: 3.75,  cacheRead: 0.3,   output: 15 },
+  "claude-3.5-sonnet": { input: 3,    cacheWrite: 3.75,  cacheRead: 0.3,   output: 15 },
+  "claude-haiku-4-5":  { input: 1,    cacheWrite: 1.25,  cacheRead: 0.1,   output: 5 },
+  "claude-3.5-haiku":  { input: 0.8,  cacheWrite: 1.0,   cacheRead: 0.08,  output: 4 },
+  "claude-3-opus":     { input: 15,   cacheWrite: 18.75, cacheRead: 1.5,   output: 75 },
+  "claude-3-haiku":    { input: 0.25, cacheWrite: 0.3,   cacheRead: 0.03,  output: 1.25 },
+
+  // ── OpenAI ────────────────────────────────────────────────────────
+  // cached = 50% of input for most; GPT-4.1 cached = 75% off
+  "gpt-5.4":       { input: 2.5,  cacheWrite: 2.5,  cacheRead: 0.25,  output: 15 },
+  "gpt-5.4-mini":  { input: 0.75, cacheWrite: 0.75, cacheRead: 0.075, output: 4.5 },
+  "gpt-5.4-nano":  { input: 0.2,  cacheWrite: 0.2,  cacheRead: 0.02,  output: 1.25 },
+  "gpt-4.1":       { input: 2,    cacheWrite: 2,    cacheRead: 0.5,   output: 8 },
+  "gpt-4.1-mini":  { input: 0.4,  cacheWrite: 0.4,  cacheRead: 0.1,   output: 1.6 },
+  "gpt-4.1-nano":  { input: 0.1,  cacheWrite: 0.1,  cacheRead: 0.025, output: 0.4 },
+  "gpt-4o":        { input: 2.5,  cacheWrite: 2.5,  cacheRead: 1.25,  output: 10 },
+  "gpt-4o-mini":   { input: 0.15, cacheWrite: 0.15, cacheRead: 0.075, output: 0.6 },
+  "o3":            { input: 2,    cacheWrite: 2,    cacheRead: 0.5,   output: 8 },
+  "o3-mini":       { input: 1.1,  cacheWrite: 1.1,  cacheRead: 0.275, output: 4.4 },
+  "o4-mini":       { input: 1.1,  cacheWrite: 1.1,  cacheRead: 0.275, output: 4.4 },
+
+  // ── Google Gemini ─────────────────────────────────────────────────
+  // cacheRead = 0.1× input for Gemini models
+  "gemini-2.5-pro":        { input: 1.25, cacheWrite: 1.25, cacheRead: 0.125, output: 10 },
+  "gemini-2.5-flash":      { input: 0.3,  cacheWrite: 0.3,  cacheRead: 0.03,  output: 2.5 },
+  "gemini-2.5-flash-lite": { input: 0.125,cacheWrite: 0.125,cacheRead: 0.0125,output: 0.5 },
+  "gemini-2.0-flash":      { input: 0.1,  cacheWrite: 0.1,  cacheRead: 0.025, output: 0.4 },
+  "gemini-2.0-flash-lite": { input: 0.075,cacheWrite: 0.075,cacheRead: 0.019, output: 0.3 },
+  "gemini-3-flash":        { input: 0.25, cacheWrite: 0.25, cacheRead: 0.025, output: 1.5 },
+  "gemini-3.1-pro":        { input: 2,    cacheWrite: 2,    cacheRead: 0.2,   output: 12 },
+
+  // ── DeepSeek ──────────────────────────────────────────────────────
+  "deepseek-chat":     { input: 0.28, cacheWrite: 0.28, cacheRead: 0.028, output: 0.42 },
+  "deepseek-v3":       { input: 0.28, cacheWrite: 0.28, cacheRead: 0.028, output: 0.42 },
+  "deepseek-reasoner": { input: 0.55, cacheWrite: 0.55, cacheRead: 0.055, output: 2.19 },
+  "deepseek-r1":       { input: 0.55, cacheWrite: 0.55, cacheRead: 0.055, output: 2.19 },
 };
 
 const DEFAULT_PRICING: ModelPricing = { input: 3, cacheWrite: 3.75, cacheRead: 0.3, output: 15 };
 
 function matchPricing(modelId: string): ModelPricing {
   const id = modelId.toLowerCase();
-  // Match most specific first (longer keys first via sorted entries)
+  // Sort by key length descending so "claude-opus-4-6" matches before "claude-opus-4"
   const entries = Object.entries(MODEL_PRICING).sort((a, b) => b[0].length - a[0].length);
   for (const [key, pricing] of entries) {
     if (id.includes(key)) return pricing;
   }
-  if (id.includes("opus")) return MODEL_PRICING["claude-opus-4-6"] ?? DEFAULT_PRICING;
-  if (id.includes("sonnet")) return DEFAULT_PRICING;
-  if (id.includes("haiku")) return MODEL_PRICING["claude-haiku-4-5"] ?? DEFAULT_PRICING;
+  // Fallback heuristics for unknown variants / OpenRouter prefixed IDs
+  if (id.includes("opus"))    return MODEL_PRICING["claude-opus-4-6"] ?? DEFAULT_PRICING;
+  if (id.includes("sonnet"))  return DEFAULT_PRICING;
+  if (id.includes("haiku"))   return MODEL_PRICING["claude-haiku-4-5"] ?? DEFAULT_PRICING;
+  if (id.includes("gemini"))  return MODEL_PRICING["gemini-2.5-flash"] ?? DEFAULT_PRICING;
+  if (id.includes("gpt"))     return MODEL_PRICING["gpt-4.1"] ?? DEFAULT_PRICING;
+  if (id.includes("deepseek"))return MODEL_PRICING["deepseek-chat"] ?? DEFAULT_PRICING;
   return DEFAULT_PRICING;
 }
 

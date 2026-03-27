@@ -1,6 +1,6 @@
 import { fg as fgStyle, StyledText, type TextRenderable } from "@opentui/core";
 import { useEffect, useRef } from "react";
-import { computeCost, useStatusBarStore } from "../../stores/statusbar.js";
+import { computeTotalCostFromBreakdown, useStatusBarStore } from "../../stores/statusbar.js";
 
 const STEP_MS = 50;
 const EASE = 0.35;
@@ -34,7 +34,11 @@ export function TokenDisplay() {
     () =>
       useStatusBarStore.subscribe((state) => {
         const usage = state.tokenUsage;
-        const rawCost = computeCost(usage, state.activeModel);
+        const breakdown = usage.modelBreakdown;
+          const rawCost =
+            breakdown && Object.keys(breakdown).length > 0
+              ? computeTotalCostFromBreakdown(breakdown)
+              : 0;
         costRef.current = Math.round(rawCost * 100);
         const totalInput = usage.prompt + usage.subagentInput + usage.cacheRead + usage.cacheWrite;
         cacheHitRef.current = totalInput > 0 ? Math.round((usage.cacheRead / totalInput) * 100) : 0;
