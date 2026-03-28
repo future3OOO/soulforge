@@ -12,6 +12,7 @@ export const SHARED_RULES = `
 # Tool usage policy
 - When searching for keywords or files and not confident of finding the right match quickly, use the Task tool
 - If you intend to call multiple tools with no dependencies between them, make all independent calls in the same block
+- Use multi_edit for multiple changes to the same file. Edits are applied immediately.
 - The user does not see full tool output — summarize results when relevant to your response
 
 # Conventions

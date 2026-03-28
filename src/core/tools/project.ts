@@ -1,4 +1,4 @@
-import { existsSync, readdirSync, readFileSync } from "node:fs";
+import { access, readdir, readFile } from "node:fs/promises";
 import { join } from "node:path";
 import type { ToolResult } from "../../types/index.js";
 import { compressShellOutputFull } from "./shell-compress.js";
@@ -8,9 +8,9 @@ function shellQuote(s: string): string {
   return `'${s.replace(/'/g, "'\\''")}'`;
 }
 
-function readSafe(path: string): string {
+async function readSafe(path: string): Promise<string> {
   try {
-    return readFileSync(path, "utf-8");
+    return await readFile(path, "utf-8");
   } catch {
     return "";
   }
@@ -39,7 +39,7 @@ interface ProjectProfile {
   format: string | null;
 }
 
-export function detectProfile(cwd: string): ProjectProfile {
+export async function detectProfile(cwd: string): Promise<ProjectProfile> {
   const profile: ProjectProfile = {
     test: null,
     build: null,
@@ -49,33 +49,41 @@ export function detectProfile(cwd: string): ProjectProfile {
     format: null,
   };
 
-  const has = (f: string) => existsSync(join(cwd, f));
-  const hasExt = (ext: string) => {
+  const has = async (f: string) => {
     try {
-      return readdirSync(cwd).some((f) => f.endsWith(ext));
+      await access(join(cwd, f));
+      return true;
     } catch {
       return false;
     }
   };
-  const scripts = readPackageScripts(cwd);
+  const hasExt = async (ext: string) => {
+    try {
+      const entries = await readdir(cwd);
+      return entries.some((f) => f.endsWith(ext));
+    } catch {
+      return false;
+    }
+  };
+  const scripts = await readPackageScripts(cwd);
 
   // JS/TS — Bun
-  if (has("bun.lock") || has("bun.lockb")) {
+  if ((await has("bun.lock")) || (await has("bun.lockb"))) {
     profile.test = scripts.test ?? "bun test";
     profile.build = scripts.build ? `bun run build` : null;
-    profile.lint = scripts.lint ? "bun run lint" : detectJsLinter(cwd, "bunx");
-    profile.typecheck = has("tsconfig.json")
+    profile.lint = scripts.lint ? "bun run lint" : await detectJsLinter(cwd, "bunx");
+    profile.typecheck = (await has("tsconfig.json"))
       ? scripts.typecheck
         ? "bun run typecheck"
         : "bunx tsc --noEmit"
       : null;
     profile.run = scripts.dev ? "bun run dev" : scripts.start ? "bun run start" : null;
-    profile.format = scripts.format ? "bun run format" : detectJsFormatter(cwd, "bunx");
+    profile.format = scripts.format ? "bun run format" : await detectJsFormatter(cwd, "bunx");
     return profile;
   }
 
   // JS/TS — Deno
-  if (has("deno.json") || has("deno.lock")) {
+  if ((await has("deno.json")) || (await has("deno.lock"))) {
     profile.test = "deno test";
     profile.build = null;
     profile.lint = "deno lint";
@@ -86,24 +94,24 @@ export function detectProfile(cwd: string): ProjectProfile {
   }
 
   // JS/TS — pnpm/yarn/npm
-  if (has("package.json")) {
-    const pm = has("pnpm-lock.yaml") ? "pnpm" : has("yarn.lock") ? "yarn" : "npm";
+  if (await has("package.json")) {
+    const pm = (await has("pnpm-lock.yaml")) ? "pnpm" : (await has("yarn.lock")) ? "yarn" : "npm";
     const run = pm === "npm" ? "npm run" : pm;
     profile.test = scripts.test ? `${run} test` : null;
     profile.build = scripts.build ? `${run} build` : null;
-    profile.lint = scripts.lint ? `${run} lint` : detectJsLinter(cwd, "npx");
-    profile.typecheck = has("tsconfig.json")
+    profile.lint = scripts.lint ? `${run} lint` : await detectJsLinter(cwd, "npx");
+    profile.typecheck = (await has("tsconfig.json"))
       ? scripts.typecheck
         ? `${run} typecheck`
         : "npx tsc --noEmit"
       : null;
     profile.run = scripts.dev ? `${run} dev` : scripts.start ? `${run} start` : null;
-    profile.format = scripts.format ? `${run} format` : detectJsFormatter(cwd, "npx");
+    profile.format = scripts.format ? `${run} format` : await detectJsFormatter(cwd, "npx");
     return profile;
   }
 
   // Rust
-  if (has("Cargo.toml")) {
+  if (await has("Cargo.toml")) {
     profile.test = "cargo test";
     profile.build = "cargo build";
     profile.lint = "cargo clippy";
@@ -114,11 +122,13 @@ export function detectProfile(cwd: string): ProjectProfile {
   }
 
   // Go
-  if (has("go.mod")) {
+  if (await has("go.mod")) {
     profile.test = "go test ./...";
     profile.build = "go build ./...";
     profile.lint =
-      has(".golangci.yml") || has(".golangci.yaml") ? "golangci-lint run" : "go vet ./...";
+      (await has(".golangci.yml")) || (await has(".golangci.yaml"))
+        ? "golangci-lint run"
+        : "go vet ./...";
     profile.typecheck = "go build ./...";
     profile.run = "go run .";
     profile.format = "gofmt -w";
@@ -126,30 +136,35 @@ export function detectProfile(cwd: string): ProjectProfile {
   }
 
   // Python
-  if (has("pyproject.toml") || has("setup.py") || has("requirements.txt")) {
-    const pm = has("uv.lock")
+  if ((await has("pyproject.toml")) || (await has("setup.py")) || (await has("requirements.txt"))) {
+    const pm = (await has("uv.lock"))
       ? "uv run"
-      : has("poetry.lock")
+      : (await has("poetry.lock"))
         ? "poetry run"
-        : has("Pipfile.lock")
+        : (await has("Pipfile.lock"))
           ? "pipenv run"
           : "";
     const prefix = pm ? `${pm} ` : "";
     profile.test = `${prefix}pytest`;
     profile.build = null;
     profile.lint =
-      has("ruff.toml") || has(".ruff.toml") ? `${prefix}ruff check` : `${prefix}flake8`;
-    profile.typecheck = has("pyrightconfig.json") ? `${prefix}pyright` : `${prefix}mypy .`;
+      (await has("ruff.toml")) || (await has(".ruff.toml"))
+        ? `${prefix}ruff check`
+        : `${prefix}flake8`;
+    profile.typecheck = (await has("pyrightconfig.json")) ? `${prefix}pyright` : `${prefix}mypy .`;
     profile.format =
-      has("ruff.toml") || has(".ruff.toml") ? `${prefix}ruff format` : `${prefix}black`;
+      (await has("ruff.toml")) || (await has(".ruff.toml"))
+        ? `${prefix}ruff format`
+        : `${prefix}black`;
     // Framework-specific run commands
-    if (has("manage.py")) profile.run = `${prefix}python manage.py runserver`;
-    else if (has("app.py") || has("main.py")) profile.run = `${prefix}uvicorn main:app --reload`;
+    if (await has("manage.py")) profile.run = `${prefix}python manage.py runserver`;
+    else if ((await has("app.py")) || (await has("main.py")))
+      profile.run = `${prefix}uvicorn main:app --reload`;
     return profile;
   }
 
   // .NET / C#
-  if (has("global.json") || hasExt(".csproj") || hasExt(".sln")) {
+  if ((await has("global.json")) || (await hasExt(".csproj")) || (await hasExt(".sln"))) {
     profile.test = "dotnet test";
     profile.build = "dotnet build";
     profile.lint = "dotnet format --verify-no-changes";
@@ -160,53 +175,53 @@ export function detectProfile(cwd: string): ProjectProfile {
   }
 
   // PHP
-  if (has("composer.json")) {
+  if (await has("composer.json")) {
     profile.test = "vendor/bin/phpunit";
     profile.build = null;
-    profile.lint = has("pint.json")
+    profile.lint = (await has("pint.json"))
       ? "vendor/bin/pint --test"
-      : has(".php-cs-fixer.php") || has(".php-cs-fixer.dist.php")
+      : (await has(".php-cs-fixer.php")) || (await has(".php-cs-fixer.dist.php"))
         ? "vendor/bin/php-cs-fixer fix --dry-run"
         : null;
     profile.typecheck =
-      has("phpstan.neon") || has("phpstan.neon.dist")
+      (await has("phpstan.neon")) || (await has("phpstan.neon.dist"))
         ? "vendor/bin/phpstan analyse"
-        : has("psalm.xml") || has("psalm.xml.dist")
+        : (await has("psalm.xml")) || (await has("psalm.xml.dist"))
           ? "vendor/bin/psalm"
           : null;
-    profile.run = has("artisan") ? "php artisan serve" : null;
-    profile.format = has("pint.json")
+    profile.run = (await has("artisan")) ? "php artisan serve" : null;
+    profile.format = (await has("pint.json"))
       ? "vendor/bin/pint"
-      : has(".php-cs-fixer.php") || has(".php-cs-fixer.dist.php")
+      : (await has(".php-cs-fixer.php")) || (await has(".php-cs-fixer.dist.php"))
         ? "vendor/bin/php-cs-fixer fix"
         : null;
     return profile;
   }
 
   // Swift
-  if (has("Package.swift")) {
+  if (await has("Package.swift")) {
     profile.test = "swift test";
     profile.build = "swift build";
-    profile.lint = has(".swiftlint.yml") ? "swiftlint" : null;
+    profile.lint = (await has(".swiftlint.yml")) ? "swiftlint" : null;
     profile.typecheck = "swift build";
     profile.run = "swift run";
-    profile.format = has(".swiftformat") ? "swiftformat" : null;
+    profile.format = (await has(".swiftformat")) ? "swiftformat" : null;
     return profile;
   }
 
   // iOS / Xcode
-  if (hasExt(".xcodeproj") || hasExt(".xcworkspace")) {
+  if ((await hasExt(".xcodeproj")) || (await hasExt(".xcworkspace"))) {
     profile.test =
       "xcodebuild test -scheme \"$(xcodebuild -list -json 2>/dev/null | python3 -c \"import json,sys;print(json.load(sys.stdin)['project']['schemes'][0])\")\" -destination 'platform=iOS Simulator,name=iPhone 16'";
     profile.build = "xcodebuild build";
-    profile.lint = has(".swiftlint.yml") ? "swiftlint" : null;
+    profile.lint = (await has(".swiftlint.yml")) ? "swiftlint" : null;
     profile.typecheck = "xcodebuild build";
     profile.run = null;
     return profile;
   }
 
   // Flutter / Dart
-  if (has("pubspec.yaml")) {
+  if (await has("pubspec.yaml")) {
     profile.test = "flutter test";
     profile.build = "flutter build";
     profile.lint = "dart analyze";
@@ -217,7 +232,7 @@ export function detectProfile(cwd: string): ProjectProfile {
   }
 
   // Elixir
-  if (has("mix.exs")) {
+  if (await has("mix.exs")) {
     profile.test = "mix test";
     profile.build = "mix compile";
     profile.lint = "mix credo";
@@ -228,37 +243,39 @@ export function detectProfile(cwd: string): ProjectProfile {
   }
 
   // Ruby
-  if (has("Gemfile")) {
-    profile.test = has("spec") ? "bundle exec rspec" : "bundle exec rails test";
+  if (await has("Gemfile")) {
+    profile.test = (await has("spec")) ? "bundle exec rspec" : "bundle exec rails test";
     profile.build = null;
     profile.lint = "bundle exec rubocop";
     profile.typecheck = null;
-    profile.run = has("config.ru") ? "bundle exec rails server" : null;
+    profile.run = (await has("config.ru")) ? "bundle exec rails server" : null;
     profile.format = "bundle exec rubocop -a --fail-level error";
     return profile;
   }
 
   // Java/Kotlin — Gradle
-  if (has("gradlew") || has("build.gradle") || has("build.gradle.kts")) {
-    const gw = has("gradlew") ? "./gradlew" : "gradle";
+  if ((await has("gradlew")) || (await has("build.gradle")) || (await has("build.gradle.kts"))) {
+    const gw = (await has("gradlew")) ? "./gradlew" : "gradle";
     profile.test = `${gw} test`;
     profile.build = `${gw} build`;
     // Prefer spotless/ktlint if available, fallback to generic check
-    const buildFile = has("build.gradle.kts")
-      ? readSafe(join(cwd, "build.gradle.kts"))
-      : readSafe(join(cwd, "build.gradle"));
+    const buildFile = (await has("build.gradle.kts"))
+      ? await readSafe(join(cwd, "build.gradle.kts"))
+      : await readSafe(join(cwd, "build.gradle"));
     if (buildFile.includes("spotless")) profile.lint = `${gw} spotlessCheck`;
     else if (buildFile.includes("ktlint")) profile.lint = `${gw} ktlintCheck`;
     else profile.lint = `${gw} check`;
-    profile.typecheck = has("build.gradle.kts") ? `${gw} compileKotlin` : `${gw} compileJava`;
+    profile.typecheck = (await has("build.gradle.kts"))
+      ? `${gw} compileKotlin`
+      : `${gw} compileJava`;
     profile.run = `${gw} run`;
     profile.format = null; // spotless doesn't support single-file formatting
     return profile;
   }
 
   // Java — Maven
-  if (has("pom.xml") || has("mvnw")) {
-    const mvn = has("mvnw") ? "./mvnw" : "mvn";
+  if ((await has("pom.xml")) || (await has("mvnw"))) {
+    const mvn = (await has("mvnw")) ? "./mvnw" : "mvn";
     profile.test = `${mvn} test`;
     profile.build = `${mvn} package`;
     profile.lint = `${mvn} checkstyle:check`;
@@ -268,17 +285,17 @@ export function detectProfile(cwd: string): ProjectProfile {
   }
 
   // C/C++ — CMake
-  if (has("CMakeLists.txt")) {
+  if (await has("CMakeLists.txt")) {
     profile.test = "ctest --test-dir build";
     profile.build = "cmake --build build";
-    profile.lint = has(".clang-tidy") ? "clang-tidy" : null;
+    profile.lint = (await has(".clang-tidy")) ? "clang-tidy" : null;
     profile.typecheck = "cmake --build build";
     profile.run = null;
     return profile;
   }
 
   // C/C++ — Make
-  if (has("Makefile")) {
+  if (await has("Makefile")) {
     profile.test = "make test";
     profile.build = "make";
     profile.lint = null;
@@ -288,7 +305,7 @@ export function detectProfile(cwd: string): ProjectProfile {
   }
 
   // Zig
-  if (has("build.zig") || has("build.zig.zon")) {
+  if ((await has("build.zig")) || (await has("build.zig.zon"))) {
     profile.test = "zig build test";
     profile.build = "zig build";
     profile.lint = "zig fmt --check src/";
@@ -299,34 +316,34 @@ export function detectProfile(cwd: string): ProjectProfile {
   }
 
   // Haskell
-  if (has("stack.yaml")) {
+  if (await has("stack.yaml")) {
     profile.test = "stack test";
     profile.build = "stack build";
     profile.lint = "hlint .";
     profile.typecheck = "stack build";
     profile.run = "stack run";
-    profile.format = has(".ormolu")
+    profile.format = (await has(".ormolu"))
       ? "ormolu --mode inplace"
-      : has(".fourmolu.yaml")
+      : (await has(".fourmolu.yaml"))
         ? "fourmolu --mode inplace"
         : null;
     return profile;
   }
 
   // Scala
-  if (has("build.sbt")) {
+  if (await has("build.sbt")) {
     profile.test = "sbt test";
     profile.build = "sbt compile";
-    profile.lint = has(".scalafmt.conf") ? "scalafmt --check" : null;
+    profile.lint = (await has(".scalafmt.conf")) ? "scalafmt --check" : null;
     profile.typecheck = "sbt compile";
     profile.run = "sbt run";
-    profile.format = has(".scalafmt.conf") ? "scalafmt" : null;
+    profile.format = (await has(".scalafmt.conf")) ? "scalafmt" : null;
     return profile;
   }
 
   // Clojure
-  if (has("deps.edn") || has("project.clj")) {
-    const tool = has("project.clj") ? "lein" : "clj";
+  if ((await has("deps.edn")) || (await has("project.clj"))) {
+    const tool = (await has("project.clj")) ? "lein" : "clj";
     profile.test = tool === "lein" ? "lein test" : "clj -M:test";
     profile.build = tool === "lein" ? "lein uberjar" : null;
     profile.lint = "clj-kondo --lint src";
@@ -338,60 +355,81 @@ export function detectProfile(cwd: string): ProjectProfile {
   return profile;
 }
 
-function readPackageScripts(cwd: string): Record<string, string> {
+async function readPackageScripts(cwd: string): Promise<Record<string, string>> {
   try {
-    const pkg = JSON.parse(readFileSync(join(cwd, "package.json"), "utf-8"));
+    const pkg = JSON.parse(await readFile(join(cwd, "package.json"), "utf-8"));
     return pkg.scripts ?? {};
   } catch {
     return {};
   }
 }
 
-function detectJsLinter(cwd: string, runner = ""): string | null {
-  const has = (f: string) => existsSync(join(cwd, f));
+async function detectJsLinter(cwd: string, runner = ""): Promise<string | null> {
+  const has = async (f: string) => {
+    try {
+      await access(join(cwd, f));
+      return true;
+    } catch {
+      return false;
+    }
+  };
   const run = runner ? `${runner} ` : "";
-  if (has("biome.json") || has("biome.jsonc")) return `${run}biome check .`;
-  if (has("oxlintrc.json") || has(".oxlintrc.json")) return `${run}oxlint .`;
+  if ((await has("biome.json")) || (await has("biome.jsonc"))) return `${run}biome check .`;
+  if ((await has("oxlintrc.json")) || (await has(".oxlintrc.json"))) return `${run}oxlint .`;
   if (
-    has("eslint.config.js") ||
-    has("eslint.config.mjs") ||
-    has("eslint.config.ts") ||
-    has(".eslintrc") ||
-    has(".eslintrc.js") ||
-    has(".eslintrc.json") ||
-    has(".eslintrc.yml")
+    (await has("eslint.config.js")) ||
+    (await has("eslint.config.mjs")) ||
+    (await has("eslint.config.ts")) ||
+    (await has(".eslintrc")) ||
+    (await has(".eslintrc.js")) ||
+    (await has(".eslintrc.json")) ||
+    (await has(".eslintrc.yml"))
   )
     return `${run}eslint .`;
   return null;
 }
 
-function detectJsFormatter(cwd: string, runner = ""): string | null {
-  const has = (f: string) => existsSync(join(cwd, f));
+async function detectJsFormatter(cwd: string, runner = ""): Promise<string | null> {
+  const has = async (f: string) => {
+    try {
+      await access(join(cwd, f));
+      return true;
+    } catch {
+      return false;
+    }
+  };
   const run = runner ? `${runner} ` : "";
-  if (has("biome.json") || has("biome.jsonc")) return `${run}biome format --write`;
-  if (has("dprint.json") || has("dprint.jsonc")) return `${run}dprint fmt`;
+  if ((await has("biome.json")) || (await has("biome.jsonc"))) return `${run}biome format --write`;
+  if ((await has("dprint.json")) || (await has("dprint.jsonc"))) return `${run}dprint fmt`;
   if (
-    has(".prettierrc") ||
-    has(".prettierrc.js") ||
-    has(".prettierrc.json") ||
-    has(".prettierrc.yml") ||
-    has(".prettierrc.yaml") ||
-    has(".prettierrc.cjs") ||
-    has(".prettierrc.mjs") ||
-    has("prettier.config.js") ||
-    has("prettier.config.cjs") ||
-    has("prettier.config.mjs")
+    (await has(".prettierrc")) ||
+    (await has(".prettierrc.js")) ||
+    (await has(".prettierrc.json")) ||
+    (await has(".prettierrc.yml")) ||
+    (await has(".prettierrc.yaml")) ||
+    (await has(".prettierrc.cjs")) ||
+    (await has(".prettierrc.mjs")) ||
+    (await has("prettier.config.js")) ||
+    (await has("prettier.config.cjs")) ||
+    (await has("prettier.config.mjs"))
   )
     return `${run}prettier --write`;
   return null;
 }
 
-function detectJsTypecheck(cwd: string): string | null {
-  const has = (f: string) => existsSync(join(cwd, f));
-  if (!has("tsconfig.json")) return null;
-  if (has("bun.lock") || has("bun.lockb")) return "bunx tsc --noEmit";
-  if (has("deno.json") || has("deno.lock")) return "deno check .";
-  if (has("pnpm-lock.yaml")) return "pnpm tsc --noEmit";
+async function detectJsTypecheck(cwd: string): Promise<string | null> {
+  const has = async (f: string) => {
+    try {
+      await access(join(cwd, f));
+      return true;
+    } catch {
+      return false;
+    }
+  };
+  if (!(await has("tsconfig.json"))) return null;
+  if ((await has("bun.lock")) || (await has("bun.lockb"))) return "bunx tsc --noEmit";
+  if ((await has("deno.json")) || (await has("deno.lock"))) return "deno check .";
+  if (await has("pnpm-lock.yaml")) return "pnpm tsc --noEmit";
   return "npx tsc --noEmit";
 }
 
@@ -400,57 +438,73 @@ function detectJsTypecheck(cwd: string): string | null {
  * Used by pre-commit checks to run the actual tool, not arbitrary user scripts.
  * Returns commands joined with &&.
  */
-export function detectNativeChecks(cwd: string): string | null {
-  const has = (f: string) => existsSync(join(cwd, f));
+export async function detectNativeChecks(cwd: string): Promise<string | null> {
+  const has = async (f: string) => {
+    try {
+      await access(join(cwd, f));
+      return true;
+    } catch {
+      return false;
+    }
+  };
   const cmds: string[] = [];
 
   // JS/TS — detect runner for local tool resolution
-  const runner = has("bun.lock") || has("bun.lockb") ? "bunx" : has("package.json") ? "npx" : "";
-  const jsLint = detectJsLinter(cwd, runner);
+  const runner =
+    (await has("bun.lock")) || (await has("bun.lockb"))
+      ? "bunx"
+      : (await has("package.json"))
+        ? "npx"
+        : "";
+  const jsLint = await detectJsLinter(cwd, runner);
   if (jsLint) cmds.push(jsLint);
-  const jsTc = detectJsTypecheck(cwd);
+  const jsTc = await detectJsTypecheck(cwd);
   if (jsTc) cmds.push(jsTc);
   if (cmds.length > 0) return cmds.join(" && ");
 
   // Deno
-  if (has("deno.json") || has("deno.lock")) return "deno lint && deno check .";
+  if ((await has("deno.json")) || (await has("deno.lock"))) return "deno lint && deno check .";
 
   // Rust
-  if (has("Cargo.toml")) return "cargo clippy && cargo check";
+  if (await has("Cargo.toml")) return "cargo clippy && cargo check";
 
   // Go
-  if (has("go.mod")) {
+  if (await has("go.mod")) {
     const lint =
-      has(".golangci.yml") || has(".golangci.yaml") ? "golangci-lint run" : "go vet ./...";
+      (await has(".golangci.yml")) || (await has(".golangci.yaml"))
+        ? "golangci-lint run"
+        : "go vet ./...";
     return `${lint} && go build ./...`;
   }
 
   // Python
-  if (has("pyproject.toml") || has("setup.py") || has("requirements.txt")) {
-    const pm = has("uv.lock")
+  if ((await has("pyproject.toml")) || (await has("setup.py")) || (await has("requirements.txt"))) {
+    const pm = (await has("uv.lock"))
       ? "uv run "
-      : has("poetry.lock")
+      : (await has("poetry.lock"))
         ? "poetry run "
-        : has("Pipfile.lock")
+        : (await has("Pipfile.lock"))
           ? "pipenv run "
           : "";
-    const lint = has("ruff.toml") || has(".ruff.toml") ? `${pm}ruff check` : `${pm}flake8`;
-    const tc = has("pyrightconfig.json") ? `${pm}pyright` : `${pm}mypy .`;
+    const lint =
+      (await has("ruff.toml")) || (await has(".ruff.toml")) ? `${pm}ruff check` : `${pm}flake8`;
+    const tc = (await has("pyrightconfig.json")) ? `${pm}pyright` : `${pm}mypy .`;
     return `${lint} && ${tc}`;
   }
 
   // PHP
-  if (has("composer.json")) {
-    if (has("phpstan.neon") || has("phpstan.neon.dist")) return "vendor/bin/phpstan analyse";
-    if (has("psalm.xml") || has("psalm.xml.dist")) return "vendor/bin/psalm";
+  if (await has("composer.json")) {
+    if ((await has("phpstan.neon")) || (await has("phpstan.neon.dist")))
+      return "vendor/bin/phpstan analyse";
+    if ((await has("psalm.xml")) || (await has("psalm.xml.dist"))) return "vendor/bin/psalm";
     return null;
   }
 
   // Swift
-  if (has("Package.swift") && has(".swiftlint.yml")) return "swiftlint";
+  if ((await has("Package.swift")) && (await has(".swiftlint.yml"))) return "swiftlint";
 
   // Ruby
-  if (has("Gemfile") && has(".rubocop.yml")) return "bundle exec rubocop";
+  if ((await has("Gemfile")) && (await has(".rubocop.yml"))) return "bundle exec rubocop";
 
   return null;
 }
@@ -464,33 +518,40 @@ interface PackageInfo {
   hasTypecheck: boolean;
 }
 
-function discoverPackages(cwd: string): PackageInfo[] {
-  const has = (f: string) => existsSync(join(cwd, f));
+async function discoverPackages(cwd: string): Promise<PackageInfo[]> {
+  const has = async (f: string) => {
+    try {
+      await access(join(cwd, f));
+      return true;
+    } catch {
+      return false;
+    }
+  };
   const packages: PackageInfo[] = [];
 
   // JS/TS workspaces (pnpm, yarn, npm)
-  const workspaceGlobs = getJsWorkspaceGlobs(cwd, has);
+  const workspaceGlobs = await getJsWorkspaceGlobs(cwd);
   if (workspaceGlobs.length > 0) {
     for (const glob of workspaceGlobs) {
       const base = glob.replace(/\/?\*.*$/, "");
       if (!base) continue;
-      scanDir(join(cwd, base), cwd, packages, "package.json");
+      await scanDir(join(cwd, base), cwd, packages, "package.json");
     }
   }
 
   // Cargo workspaces
-  if (has("Cargo.toml")) {
+  if (await has("Cargo.toml")) {
     try {
-      const cargo = readFileSync(join(cwd, "Cargo.toml"), "utf-8");
+      const cargo = await readFile(join(cwd, "Cargo.toml"), "utf-8");
       const membersMatch = cargo.match(/members\s*=\s*\[([\s\S]*?)\]/);
       if (membersMatch?.[1]) {
         const members =
           membersMatch[1].match(/["']([^"']+)["']/g)?.map((m) => m.replace(/["']/g, "")) ?? [];
         for (const member of members) {
           if (member.includes("*")) {
-            scanDir(join(cwd, member.replace(/\/?\*$/, "")), cwd, packages, "Cargo.toml");
-          } else if (existsSync(join(cwd, member, "Cargo.toml"))) {
-            addPackage(packages, join(cwd, member), cwd);
+            await scanDir(join(cwd, member.replace(/\/?\*$/, "")), cwd, packages, "Cargo.toml");
+          } else if (await has(join(member, "Cargo.toml"))) {
+            await addPackage(packages, join(cwd, member), cwd);
           }
         }
       }
@@ -498,16 +559,16 @@ function discoverPackages(cwd: string): PackageInfo[] {
   }
 
   // Go workspaces
-  if (has("go.work")) {
+  if (await has("go.work")) {
     try {
-      const goWork = readFileSync(join(cwd, "go.work"), "utf-8");
+      const goWork = await readFile(join(cwd, "go.work"), "utf-8");
       const useMatch = goWork.match(/use\s*\(([\s\S]*?)\)/);
       const dirs = useMatch?.[1]
         ? (useMatch[1].match(/^\s*(\S+)/gm)?.map((d) => d.trim()) ?? [])
         : (goWork.match(/^use\s+(\S+)/gm)?.map((d) => d.replace(/^use\s+/, "").trim()) ?? []);
       for (const dir of dirs) {
-        if (existsSync(join(cwd, dir, "go.mod"))) {
-          addPackage(packages, join(cwd, dir), cwd);
+        if (await has(join(dir, "go.mod"))) {
+          await addPackage(packages, join(cwd, dir), cwd);
         }
       }
     } catch {}
@@ -516,19 +577,27 @@ function discoverPackages(cwd: string): PackageInfo[] {
   return packages;
 }
 
-function getJsWorkspaceGlobs(cwd: string, has: (f: string) => boolean): string[] {
-  if (has("pnpm-workspace.yaml")) {
+async function getJsWorkspaceGlobs(cwd: string): Promise<string[]> {
+  const has = async (f: string) => {
     try {
-      const raw = readFileSync(join(cwd, "pnpm-workspace.yaml"), "utf-8");
+      await access(join(cwd, f));
+      return true;
+    } catch {
+      return false;
+    }
+  };
+  if (await has("pnpm-workspace.yaml")) {
+    try {
+      const raw = await readFile(join(cwd, "pnpm-workspace.yaml"), "utf-8");
       const quoted = raw.match(/['"]([^'"]+)['"]/g)?.map((g) => g.replace(/['"]/g, "")) ?? [];
       if (quoted.length > 0) return quoted;
       const simple = raw.match(/^\s*-\s+(.+)$/gm);
       return simple?.map((line) => line.replace(/^\s*-\s+/, "").trim()).filter(Boolean) ?? [];
     } catch {}
   }
-  if (has("package.json")) {
+  if (await has("package.json")) {
     try {
-      const pkg = JSON.parse(readFileSync(join(cwd, "package.json"), "utf-8"));
+      const pkg = JSON.parse(await readFile(join(cwd, "package.json"), "utf-8"));
       const w = pkg.workspaces;
       return Array.isArray(w) ? w : Array.isArray(w?.packages) ? w.packages : [];
     } catch {}
@@ -536,28 +605,41 @@ function getJsWorkspaceGlobs(cwd: string, has: (f: string) => boolean): string[]
   return [];
 }
 
-function scanDir(dir: string, rootCwd: string, packages: PackageInfo[], marker: string): void {
+async function scanDir(
+  dir: string,
+  rootCwd: string,
+  packages: PackageInfo[],
+  marker: string,
+): Promise<void> {
   try {
-    for (const entry of readdirSync(dir, { withFileTypes: true })) {
+    const entries = await readdir(dir, { withFileTypes: true });
+    for (const entry of entries) {
       if (!entry.isDirectory()) continue;
       const pkgDir = join(dir, entry.name);
-      if (existsSync(join(pkgDir, marker))) addPackage(packages, pkgDir, rootCwd);
+      try {
+        await access(join(pkgDir, marker));
+        await addPackage(packages, pkgDir, rootCwd);
+      } catch {}
     }
   } catch {}
 }
 
-function addPackage(packages: PackageInfo[], pkgDir: string, rootCwd: string): void {
+async function addPackage(packages: PackageInfo[], pkgDir: string, rootCwd: string): Promise<void> {
   const rel = pkgDir.replace(rootCwd, "").replace(/^\//, "");
-  const profile = detectProfile(pkgDir);
+  const profile = await detectProfile(pkgDir);
   let name = rel;
   try {
-    if (existsSync(join(pkgDir, "package.json"))) {
-      const pkg = JSON.parse(readFileSync(join(pkgDir, "package.json"), "utf-8"));
+    try {
+      await access(join(pkgDir, "package.json"));
+      const pkg = JSON.parse(await readFile(join(pkgDir, "package.json"), "utf-8"));
       if (pkg.name) name = pkg.name;
-    } else if (existsSync(join(pkgDir, "Cargo.toml"))) {
-      const cargo = readFileSync(join(pkgDir, "Cargo.toml"), "utf-8");
-      const nameMatch = cargo.match(/name\s*=\s*["']([^"']+)["']/);
-      if (nameMatch?.[1]) name = nameMatch[1];
+    } catch {
+      try {
+        await access(join(pkgDir, "Cargo.toml"));
+        const cargo = await readFile(join(pkgDir, "Cargo.toml"), "utf-8");
+        const nameMatch = cargo.match(/name\s*=\s*["']([^"']+)["']/);
+        if (nameMatch?.[1]) name = nameMatch[1];
+      } catch {}
     }
   } catch {}
 
@@ -675,11 +757,11 @@ export const projectTool = {
     const cwd = args.cwd ? join(process.cwd(), args.cwd) : process.cwd();
 
     if (args.action === "list") {
-      const packages = discoverPackages(cwd);
+      const packages = await discoverPackages(cwd);
       return { success: true, output: formatPackageList(packages) };
     }
 
-    const profile = detectProfile(cwd);
+    const profile = await detectProfile(cwd);
 
     let command: string | null = null;
 
@@ -719,7 +801,7 @@ export const projectTool = {
         command = profile.typecheck;
         break;
       case "run":
-        command = args.script ? resolveRunScript(profile, args.script, cwd) : profile.run;
+        command = args.script ? await resolveRunScript(profile, args.script, cwd) : profile.run;
         break;
     }
 
@@ -802,11 +884,17 @@ export const projectTool = {
       );
       let output = compressed.text;
       if (compressed.original) {
-        const teeFile = saveTee(`project-${args.action}`, compressed.original);
+        const teeFile = await saveTee(`project-${args.action}`, compressed.original);
         output += `\n[full output: ${teeFile}]`;
       }
       const MAX_OUTPUT = 10_000;
-      const { text: truncated } = truncateWithTee(output, MAX_OUTPUT, 3000, 5000, args.action);
+      const { text: truncated } = await truncateWithTee(
+        output,
+        MAX_OUTPUT,
+        3000,
+        5000,
+        args.action,
+      );
 
       const cmdLabel = `[${args.action}] ${command}`;
       if (exitCode === 0) {
@@ -854,7 +942,7 @@ export const projectTool = {
  */
 export async function formatFile(filePath: string, cwd?: string): Promise<boolean> {
   const effectiveCwd = cwd ?? process.cwd();
-  const profile = detectProfile(effectiveCwd);
+  const profile = await detectProfile(effectiveCwd);
   if (!profile.format) return false;
 
   const command = `${profile.format} ${shellQuote(filePath)}`;
@@ -875,13 +963,24 @@ export async function formatFile(filePath: string, cwd?: string): Promise<boolea
   }
 }
 
-function resolveRunScript(profile: ProjectProfile, script: string, cwd: string): string | null {
-  const scripts = readPackageScripts(cwd);
+async function resolveRunScript(
+  profile: ProjectProfile,
+  script: string,
+  cwd: string,
+): Promise<string | null> {
+  const scripts = await readPackageScripts(cwd);
   if (scripts[script]) {
-    const has = (f: string) => existsSync(join(cwd, f));
-    if (has("bun.lock") || has("bun.lockb")) return `bun run ${script}`;
-    if (has("pnpm-lock.yaml")) return `pnpm ${script}`;
-    if (has("yarn.lock")) return `yarn ${script}`;
+    const has = async (f: string) => {
+      try {
+        await access(join(cwd, f));
+        return true;
+      } catch {
+        return false;
+      }
+    };
+    if ((await has("bun.lock")) || (await has("bun.lockb"))) return `bun run ${script}`;
+    if (await has("pnpm-lock.yaml")) return `pnpm ${script}`;
+    if (await has("yarn.lock")) return `yarn ${script}`;
     return `npm run ${script}`;
   }
   return profile.run;

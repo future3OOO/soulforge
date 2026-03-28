@@ -8,7 +8,6 @@ interface RouterRule {
 }
 
 export interface TaskRouter {
-  planning: string | null;
   coding: string | null;
   exploration: string | null;
   webSearch: string | null;
@@ -288,6 +287,8 @@ export interface AppConfig {
   instructionFiles?: string[];
   /** API key resolution priority: "env" = env vars first (default), "app" = keychain/file first. */
   keyPriority?: "env" | "app";
+  /** Whether the first-run onboarding wizard has been completed. */
+  onboardingComplete?: boolean;
 }
 
 export type FocusMode = "chat" | "editor";

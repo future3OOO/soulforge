@@ -1,4 +1,4 @@
-import { existsSync, mkdirSync, writeFileSync } from "node:fs";
+import { mkdir, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import { tool } from "ai";
 import { z } from "zod";
@@ -228,9 +228,9 @@ export function buildInteractiveTools(
         }
 
         const dir = join(cwd, ".soulforge", "plans");
-        if (!existsSync(dir)) mkdirSync(dir, { recursive: true });
+        await mkdir(dir, { recursive: true });
         const planContent = lines.join("\n") + validationWarnings;
-        writeFileSync(join(dir, fname), planContent);
+        await writeFile(join(dir, fname), planContent);
 
         const plan: Plan = {
           title: args.title,

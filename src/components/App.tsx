@@ -54,6 +54,7 @@ import { SimpleModalLayer } from "./ModalLayer.js";
 import { CommandPalette } from "./modals/CommandPalette.js";
 import { CommandPicker } from "./modals/CommandPicker.js";
 import { DiagnosePopup } from "./modals/DiagnosePopup.js";
+import { FirstRunWizard } from "./modals/FirstRunWizard.js";
 import { GitCommitModal } from "./modals/GitCommitModal.js";
 import { GitMenu } from "./modals/GitMenu.js";
 import { InfoPopup } from "./modals/InfoPopup.js";
@@ -77,7 +78,6 @@ function truncate(str: string, max: number): string {
 const ABORT_ON_LOADING = new Set(["/clear", "/compact", "/plan"]);
 
 const DEFAULT_TASK_ROUTER: TaskRouter = {
-  planning: null,
   coding: null,
   exploration: null,
   webSearch: null,
@@ -167,6 +167,7 @@ interface Props {
   config: AppConfig;
   projectConfig?: Partial<AppConfig> | null;
   resumeSessionId?: string;
+  forceWizard?: boolean;
   bootProviders: ProviderStatus[];
   bootPrereqs: PrerequisiteStatus[];
   preloadedContextManager?: ContextManager;
@@ -187,6 +188,7 @@ export function App({
   config,
   projectConfig,
   resumeSessionId,
+  forceWizard,
   bootProviders,
   bootPrereqs,
   preloadedContextManager,
@@ -262,7 +264,13 @@ export function App({
   const { focusMode, editorOpen, toggleEditor, openEditor, closeEditor, focusChat, focusEditor } =
     useEditorFocus();
   const [editorVisible, setEditorVisible] = useState(false);
+
+  const tabMgr = useTabs();
+  const tabMgrRef = useRef(tabMgr);
+  tabMgrRef.current = tabMgr;
+
   const hasTabBarRef = useRef(false);
+  hasTabBarRef.current = tabMgr.tabCount > 1;
   const editorSplitRef = useRef(60);
   const {
     ready: nvimReady,
@@ -381,18 +389,24 @@ export function App({
   const modalDiagnose = useUIStore((s) => s.modals.diagnosePopup);
   const modalStatusDashboard = useUIStore((s) => s.modals.statusDashboard);
   const modalToolsPopup = useUIStore((s) => s.modals.toolsPopup);
+  const modalFirstRunWizard = useUIStore((s) => s.modals.firstRunWizard);
   const toolsState = useToolsStore();
   const statusDashboardTab = useUIStore((s) => s.statusDashboardTab);
   const modalRepoMapStatus = useUIStore((s) => s.modals.repoMapStatus);
   const isModalOpen = useUIStore(selectIsAnyModalOpen);
 
+  const wizardOpenedLlm = useRef(false);
   const closerCache = useRef<Partial<Record<ModalName, () => void>>>({});
   const getCloser = (name: ModalName) =>
     (closerCache.current[name] ??= () => useUIStore.getState().closeModal(name));
 
   useEffect(() => {
-    if (getMissingRequired().length > 0) useUIStore.getState().openModal("setup");
-  }, []);
+    if (getMissingRequired().length > 0) {
+      useUIStore.getState().openModal("setup");
+    } else if (forceWizard || (!config.onboardingComplete && !resumeSessionId)) {
+      useUIStore.getState().openModal("firstRunWizard");
+    }
+  }, [config.onboardingComplete, forceWizard, resumeSessionId]);
 
   const cwd = process.cwd();
 
@@ -477,15 +491,10 @@ export function App({
         ]);
       }
       git.refresh();
-      contextManager.refreshGitContext();
     },
-    [cwd, git, contextManager],
+    [cwd, git],
   );
 
-  const tabMgr = useTabs();
-  const tabMgrRef = useRef(tabMgr);
-  tabMgrRef.current = tabMgr;
-  hasTabBarRef.current = tabMgr.tabCount > 1;
   editorSplitRef.current = editorSplit;
 
   const sharedResources = useMemo(
@@ -521,8 +530,7 @@ export function App({
 
   const refreshGit = useCallback(() => {
     git.refresh();
-    contextManager.refreshGitContext();
-  }, [git, contextManager]);
+  }, [git]);
 
   const shutdownPhaseRef = useRef(shutdownPhase);
   shutdownPhaseRef.current = shutdownPhase;
@@ -750,7 +758,6 @@ export function App({
         cwd,
         refreshGit: () => {
           git.refresh();
-          contextManager.refreshGitContext();
         },
         setForgeMode: (mode: import("../types/index.js").ForgeMode) => {
           chat.setForgeMode(mode);
@@ -815,10 +822,14 @@ export function App({
 
   const closeLlmSelector = useCallback(() => {
     const wasPickingSlot = useUIStore.getState().routerSlotPicking != null;
+    const wasFromWizard = wizardOpenedLlm.current;
     useUIStore.getState().closeModal("llmSelector");
     useUIStore.getState().setRouterSlotPicking(null);
+    wizardOpenedLlm.current = false;
     if (wasPickingSlot) {
       useUIStore.getState().openModal("routerSettings");
+    } else if (wasFromWizard) {
+      useUIStore.getState().openModal("firstRunWizard");
     }
   }, []);
 
@@ -1005,6 +1016,7 @@ export function App({
             openEditor={openEditor}
             onSuspend={handleSuspend}
             onCommand={handleTabCommand}
+            onModeChange={setForgeModeHeader}
             onExit={handleExit}
             registerChat={tabMgr.registerChat}
             unregisterChat={tabMgr.unregisterChat}
@@ -1050,7 +1062,12 @@ export function App({
             notifyProviderSwitch(modelId);
             setActiveModelForHeader(modelId);
             saveToScope({ defaultModel: modelId }, modelScope);
+            const wasFromWizard = wizardOpenedLlm.current;
+            wizardOpenedLlm.current = false;
             useUIStore.getState().closeModal("llmSelector");
+            if (wasFromWizard) {
+              useUIStore.getState().openModal("firstRunWizard");
+            }
           }
         }}
         onClose={closeLlmSelector}
@@ -1254,6 +1271,21 @@ export function App({
           contextManager.setSemanticAutoRegen(autoRegen);
           contextManager.setRepoMapTokenBudget(tokenBudget);
           contextManager.setSemanticSummaries(typedMode);
+        }}
+      />
+
+      <FirstRunWizard
+        visible={modalFirstRunWizard}
+        hasModel={activeModelForHeader !== "none"}
+        activeModel={activeModelForHeader}
+        onSelectModel={() => {
+          wizardOpenedLlm.current = true;
+          useUIStore.getState().closeModal("firstRunWizard");
+          useUIStore.getState().openModal("llmSelector");
+        }}
+        onClose={() => {
+          useUIStore.getState().closeModal("firstRunWizard");
+          saveToScope({ onboardingComplete: true }, "global");
         }}
       />
 

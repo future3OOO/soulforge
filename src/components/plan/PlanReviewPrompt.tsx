@@ -179,22 +179,22 @@ export function PlanReviewPrompt({
           <text fg="#555">⏎ submit · esc back</text>
         </box>
       ) : (
-        <box flexDirection="row" gap={1} height={1}>
+        <box flexDirection="column">
           {options.map((opt, i) => {
             const selected = i === selectedIdx;
             return (
               <text key={opt.id}>
+                <span fg={selected ? opt.color : "#555"}>{selected ? " › " : "   "}</span>
                 <span
-                  fg={selected ? "#111" : "#888"}
-                  bg={selected ? opt.color : "#222"}
+                  fg={selected ? "#FFF" : "#888"}
                   attributes={selected ? TextAttributes.BOLD : undefined}
                 >
-                  {` ${opt.icon} ${opt.label} `}
+                  {opt.icon} {opt.label}
                 </span>
               </text>
             );
           })}
-          <text fg="#333">{"  "}←→ · ⏎ confirm · esc cancel</text>
+          <text fg="#444">{"  "}↑↓ select · ⏎ confirm · esc cancel</text>
         </box>
       )}
     </box>

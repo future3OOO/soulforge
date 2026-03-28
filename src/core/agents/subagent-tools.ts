@@ -1,3 +1,5 @@
+import { readFile as fsReadFile } from "node:fs/promises";
+import { isAbsolute as pathIsAbsolute, resolve as pathResolve } from "node:path";
 import type { ProviderOptions } from "@ai-sdk/provider-utils";
 import type { LanguageModel } from "ai";
 import { tool } from "ai";
@@ -6,6 +8,7 @@ import { logBackgroundError } from "../../stores/errors.js";
 import type { AgentFeatures } from "../../types/index.js";
 import { getWorkspaceCoordinator } from "../coordination/WorkspaceCoordinator.js";
 import { getModelContextWindow } from "../llm/models.js";
+import { isForbidden } from "../security/forbidden.js";
 // detectModelFamily removed — subagent pruning is now always disabled
 import { getActiveTaskTab } from "../tools/task-list.js";
 import type { IntelligenceClient } from "../workers/intelligence-client.js";
@@ -207,7 +210,10 @@ export function createAgent(
     role: task.role === "investigate" ? ("investigate" as const) : ("explore" as const),
     tabId: models.tabId,
   };
-  const agent = useExplore ? createExploreAgent(model, opts) : createCodeAgent(model, opts);
+  const hasPreloadedFiles = !useExplore && task.task.includes("--- Preloaded file contents");
+  const agent = useExplore
+    ? createExploreAgent(model, opts)
+    : createCodeAgent(model, { ...opts, hasPreloadedFiles });
   return { agent, modelId, tier };
 }
 
@@ -252,6 +258,87 @@ function matchSkillsToTask(
   return scored.map(({ name, content }) => ({ name, content }));
 }
 
+/** @internal — exported for testing */
+export function parseTargetFileRange(f: string): {
+  path: string;
+  startLine?: number;
+  endLine?: number;
+} {
+  const match = f.match(/^(.+\.\w+):(\d+)(?:-(\d+))?$/);
+  if (match?.[1]) {
+    return {
+      path: match[1],
+      startLine: Number(match[2]),
+      endLine: match[3] ? Number(match[3]) : undefined,
+    };
+  }
+
+  return { path: f };
+}
+
+/** @internal — exported for testing */
+export function normalizeTargetPath(f: string): string {
+  return normalizePath(parseTargetFileRange(f).path);
+}
+
+const PRELOAD_FULL_FILE_MAX_LINES = 500;
+const PRELOAD_TOTAL_MAX_CHARS = 80_000;
+
+/** @internal — exported for testing */
+export async function buildPreloadedContent(targetFiles: string[], cwd: string): Promise<string> {
+  const sections: string[] = [];
+  let totalChars = 0;
+
+  for (const tf of targetFiles) {
+    if (totalChars >= PRELOAD_TOTAL_MAX_CHARS) break;
+
+    const parsed = parseTargetFileRange(tf);
+    const norm = normalizePath(parsed.path);
+    if (!norm.includes(".")) continue;
+
+    const abs = pathIsAbsolute(norm) ? norm : pathResolve(cwd, norm);
+    if (isForbidden(abs)) continue;
+
+    let raw: string;
+    try {
+      raw = await fsReadFile(abs, "utf-8");
+    } catch {
+      continue;
+    }
+
+    const allLines = raw.split("\n");
+    let start: number;
+    let end: number;
+    let rangeLabel: string;
+
+    if (parsed.startLine != null) {
+      start = Math.max(1, parsed.startLine);
+      end = Math.min(parsed.endLine ?? start + 50, allLines.length);
+      rangeLabel = `${norm}:${String(start)}-${String(end)}`;
+    } else {
+      if (allLines.length > PRELOAD_FULL_FILE_MAX_LINES) continue;
+      start = 1;
+      end = allLines.length;
+      rangeLabel = norm;
+    }
+
+    const slice = allLines.slice(start - 1, end);
+    const numbered = slice.map((line, i) => `${String(start + i).padStart(4)}  ${line}`).join("\n");
+
+    const section = `── ${rangeLabel} ──\n${numbered}`;
+    if (totalChars + section.length > PRELOAD_TOTAL_MAX_CHARS) continue;
+
+    sections.push(section);
+    totalChars += section.length;
+  }
+
+  if (sections.length === 0) return "";
+  return (
+    "\n\n--- Preloaded file contents (fresh and up-to-date — proceed directly with edits) ---\n" +
+    sections.join("\n\n")
+  );
+}
+
 export function buildSubagentTools(models: SubagentModels) {
   const cacheRef: SharedCacheRef = models.sharedCacheRef ?? {
     current: undefined,
@@ -281,7 +368,9 @@ export function buildSubagentTools(models: SubagentModels) {
               targetFiles: z
                 .array(z.string())
                 .describe(
-                  "Exact file paths from the Soul Map that this task targets. Web search tasks use ['web'].",
+                  "Exact file paths from the Soul Map that this task targets. " +
+                    "Supports optional line ranges: 'path/file.ts:100-200'. " +
+                    "Web search tasks use ['web'].",
                 ),
               role: z
                 .enum(["explore", "code", "investigate"])
@@ -349,7 +438,7 @@ export function buildSubagentTools(models: SubagentModels) {
         const bus = new AgentBus(cacheRef.current);
         const activeTabId = getActiveTaskTab();
         const dispatchTabId = activeTabId ?? "default";
-        cleanupDispatchDir(process.cwd(), dispatchTabId, toolCallId);
+        await cleanupDispatchDir(process.cwd(), dispatchTabId, toolCallId);
         if (activeTabId) getWorkspaceCoordinator().agentStarted(activeTabId);
         let editingDone = false;
         let dependentWarning = "";
@@ -419,7 +508,7 @@ export function buildSubagentTools(models: SubagentModels) {
             const missingFromContract: string[] = [];
             for (const t of rawArgs.tasks) {
               for (const f of t.targetFiles) {
-                const norm = normalizePath(f);
+                const norm = normalizeTargetPath(f);
                 if (norm === "web" || !norm.includes(".")) continue;
                 if (!contractSet.has(norm)) missingFromContract.push(norm);
               }
@@ -547,7 +636,7 @@ export function buildSubagentTools(models: SubagentModels) {
               const isWebTask =
                 t.targetFiles.length === 1 && t.targetFiles[0]?.toLowerCase() === WEB_MARKER;
               if (!isWebTask) {
-                for (const f of t.targetFiles) allTargetFiles.push(normalizePath(f));
+                for (const f of t.targetFiles) allTargetFiles.push(normalizeTargetPath(f));
               }
             }
             if (allTargetFiles.length > 0) {
@@ -598,7 +687,7 @@ export function buildSubagentTools(models: SubagentModels) {
               if (isWebTask) continue;
               const label = t.id ?? t.task.slice(0, 60);
               for (const f of t.targetFiles) {
-                const norm = normalizePath(f);
+                const norm = normalizeTargetPath(f);
                 if (!norm.includes(".")) continue;
                 const owners = fileOwners.get(norm);
                 if (owners) owners.push(label);
@@ -626,7 +715,7 @@ export function buildSubagentTools(models: SubagentModels) {
               for (const t of args.tasks) {
                 if (t.role !== "code") continue;
                 for (const f of t.targetFiles) {
-                  const norm = normalizePath(f);
+                  const norm = normalizeTargetPath(f);
                   if (!norm.includes(".")) continue;
                   const conflicts = wc.getConflicts(currentTabId, [norm]);
                   for (const c of conflicts) {
@@ -679,7 +768,7 @@ export function buildSubagentTools(models: SubagentModels) {
                 readOnlyTasks.length >= 2
               ) {
                 const totalFiles = new Set(
-                  readOnlyTasks.flatMap((t) => t.targetFiles.map((f) => normalizePath(f))),
+                  readOnlyTasks.flatMap((t) => t.targetFiles.map((f) => normalizeTargetPath(f))),
                 ).size;
                 const tasksSharePrompt =
                   readOnlyTasks.length >= 2 &&
@@ -713,7 +802,7 @@ export function buildSubagentTools(models: SubagentModels) {
             if (nonWebTasks.length > 0) {
               const uniqueFiles = new Set<string>();
               for (const t of nonWebTasks) {
-                for (const f of t.targetFiles) uniqueFiles.add(normalizePath(f));
+                for (const f of t.targetFiles) uniqueFiles.add(normalizeTargetPath(f));
               }
               const hasInvestigate = nonWebTasks.some((t) => t.role === "investigate");
               const allExplore = nonWebTasks.every((t) => t.role === "explore");
@@ -814,8 +903,9 @@ export function buildSubagentTools(models: SubagentModels) {
               if (!isWebTask) {
                 const enriched = await Promise.all(
                   t.targetFiles.map(async (f: string) => {
-                    if (!models.repoMap) return f;
-                    const ranges = await models.repoMap.getFileSymbolRanges(f);
+                    const fPath = parseTargetFileRange(f).path;
+                    if (!models.repoMap) return fPath;
+                    const ranges = await models.repoMap.getFileSymbolRanges(fPath);
                     if (ranges.length === 0) return f;
                     const rangeStr = ranges
                       .map(
@@ -875,16 +965,27 @@ export function buildSubagentTools(models: SubagentModels) {
                 }
               }
 
+              // Preload file contents for code agents — eliminates re-reads
+              let preloadHint = "";
+              if ((t.role ?? "explore") === "code" && !isWebTask) {
+                preloadHint = await buildPreloadedContent(t.targetFiles, process.cwd());
+              }
+
+              // Normalize target files — strip line range suffixes for bus tracking
+              const normalizedTargetFiles = isWebTask
+                ? []
+                : t.targetFiles.map((f) => normalizeTargetPath(f));
+
               return {
                 agentId: t.id ?? `agent-${String(i + 1)}`,
                 role: t.role ?? "explore",
-                task: `${t.task}${fileHint}${skillHint}${crossTabHint}`,
+                task: `${t.task}${fileHint}${skillHint}${crossTabHint}${preloadHint}`,
                 returnFormat: t.returnFormat,
                 dependsOn: t.dependsOn,
                 taskId: t.taskId,
                 tabId: getActiveTaskTab() ?? undefined,
                 targetFileCount: isWebTask ? 0 : t.targetFiles.length,
-                targetFiles: isWebTask ? [] : t.targetFiles,
+                targetFiles: normalizedTargetFiles,
               };
             }),
           );
@@ -900,14 +1001,15 @@ export function buildSubagentTools(models: SubagentModels) {
               const task = tasks[i];
               if (!t || !task || task.role !== "code") continue;
               for (const f of t.targetFiles) {
-                const prev = lastEditor.get(f);
+                const fp = normalizeTargetPath(f);
+                const prev = lastEditor.get(fp);
                 if (prev && prev !== task.agentId) {
                   if (!task.dependsOn) task.dependsOn = [];
                   if (!task.dependsOn.includes(prev)) {
                     task.dependsOn.push(prev);
                   }
                 }
-                lastEditor.set(f, task.agentId);
+                lastEditor.set(fp, task.agentId);
               }
             }
           }

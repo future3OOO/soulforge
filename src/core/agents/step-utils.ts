@@ -56,8 +56,9 @@ const CODE_MAX_STEPS = 18;
 // Step at which we inject a "wrap up" nudge (before hard stop)
 const STEP_NUDGE_EXPLORE = 18;
 const STEP_NUDGE_CODE = 10;
-// Consecutive read operations before injecting a "stop reading, start editing" hint
-const CONSECUTIVE_READ_LIMIT = 3;
+// Consecutive read-only steps before hinting to act.
+// Set high enough that legitimate investigation (reading 4-5 files) doesn't trigger.
+const CONSECUTIVE_READ_LIMIT = 5;
 // Identical tool call repetitions before injecting a loop-break hint
 const REPEAT_CALL_THRESHOLD = 3;
 const REPEAT_CALL_WINDOW = 8;
@@ -606,10 +607,9 @@ export function buildPrepareStep({
       if (consecutiveReads >= CONSECUTIVE_READ_LIMIT) {
         const existing = result.system ?? "";
         const hint = isExplore
-          ? "Act on what you have: write a concise text summary of your findings (files, line numbers, values), or use a search tool (soul_grep, grep) if you need something specific."
-          : "You have the file contents. Apply your edits with multi_edit NOW.";
-        result.system =
-          `${existing}\n\n${String(consecutiveReads)} consecutive reads without action. ${hint}`.trim();
+          ? `[status: ${String(consecutiveReads)} read-only steps — summarize findings or use a search tool for remaining questions]`
+          : `[status: ${String(consecutiveReads)} read-only steps — apply edits with multi_edit]`;
+        result.system = `${existing}\n\n${hint}`.trim();
       }
     }
 

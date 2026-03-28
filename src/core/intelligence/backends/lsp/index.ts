@@ -831,34 +831,67 @@ export class LspBackend implements IntelligenceBackend {
     return null;
   }
 
+  /** Shared logic for call/type hierarchy requests. */
+  private async hierarchyRequest<TItem, TResult>(
+    file: string,
+    symbol: string,
+    line: number | undefined,
+    column: number | undefined,
+    nvimFn: (file: string, line: number, col: number) => Promise<unknown | null>,
+    convertNvim: (raw: never) => TResult,
+    prepare: (
+      client: StandaloneLspClient,
+      file: string,
+      line: number,
+      col: number,
+    ) => Promise<TItem[]>,
+    fetchPair: (client: StandaloneLspClient, item: TItem) => Promise<[unknown[], unknown[]]>,
+    convertStandalone: (raw: { item: TItem; a: unknown[]; b: unknown[] }) => TResult,
+  ): Promise<TResult | null> {
+    const pos = this.resolvePosition(file, symbol, line, column);
+    if (!pos) return null;
+
+    if (nvimBridge.isNvimAvailable()) {
+      const result = await nvimFn(file, pos.line, pos.col);
+      if (!result) return null;
+      return convertNvim(result as never);
+    }
+
+    const client = await this.getStandaloneClient(file);
+    if (!client) return null;
+    try {
+      const items = await prepare(client, file, pos.line, pos.col);
+      const item = items[0];
+      if (!item) return null;
+      const [a, b] = await fetchPair(client, item);
+      return convertStandalone({ item, a, b });
+    } catch {}
+    return null;
+  }
+
   async getCallHierarchy(
     file: string,
     symbol: string,
     line?: number,
     column?: number,
   ): Promise<CallHierarchyResult | null> {
-    const pos = this.resolvePosition(file, symbol, line, column);
-    if (!pos) return null;
-
-    if (nvimBridge.isNvimAvailable()) {
-      const result = await nvimBridge.callHierarchy(file, pos.line, pos.col);
-      if (!result) return null;
-      return lspCallHierarchyToResult(result);
-    }
-
-    const client = await this.getStandaloneClient(file);
-    if (!client) return null;
-    try {
-      const items = await client.prepareCallHierarchy(file, pos.line, pos.col);
-      const item = items[0];
-      if (!item) return null;
-      const [incoming, outgoing] = await Promise.all([
-        client.callHierarchyIncomingCalls(item),
-        client.callHierarchyOutgoingCalls(item),
-      ]);
-      return lspCallHierarchyToResult({ item, incoming, outgoing });
-    } catch {}
-    return null;
+    return this.hierarchyRequest(
+      file,
+      symbol,
+      line,
+      column,
+      nvimBridge.callHierarchy,
+      lspCallHierarchyToResult,
+      (c, f, l, col) => c.prepareCallHierarchy(f, l, col),
+      (c, item) =>
+        Promise.all([c.callHierarchyIncomingCalls(item), c.callHierarchyOutgoingCalls(item)]),
+      ({ item, a, b }) =>
+        lspCallHierarchyToResult({
+          item,
+          incoming: a as LspCallHierarchyItem[],
+          outgoing: b as LspCallHierarchyItem[],
+        }),
+    );
   }
 
   async findImplementation(
@@ -876,28 +909,22 @@ export class LspBackend implements IntelligenceBackend {
     line?: number,
     column?: number,
   ): Promise<TypeHierarchyResult | null> {
-    const pos = this.resolvePosition(file, symbol, line, column);
-    if (!pos) return null;
-
-    if (nvimBridge.isNvimAvailable()) {
-      const result = await nvimBridge.typeHierarchy(file, pos.line, pos.col);
-      if (!result) return null;
-      return lspTypeHierarchyToResult(result);
-    }
-
-    const client = await this.getStandaloneClient(file);
-    if (!client) return null;
-    try {
-      const items = await client.prepareTypeHierarchy(file, pos.line, pos.col);
-      const item = items[0];
-      if (!item) return null;
-      const [supertypes, subtypes] = await Promise.all([
-        client.typeHierarchySupertypes(item),
-        client.typeHierarchySubtypes(item),
-      ]);
-      return lspTypeHierarchyToResult({ item, supertypes, subtypes });
-    } catch {}
-    return null;
+    return this.hierarchyRequest(
+      file,
+      symbol,
+      line,
+      column,
+      nvimBridge.typeHierarchy,
+      lspTypeHierarchyToResult,
+      (c, f, l, col) => c.prepareTypeHierarchy(f, l, col),
+      (c, item) => Promise.all([c.typeHierarchySupertypes(item), c.typeHierarchySubtypes(item)]),
+      ({ item, a, b }) =>
+        lspTypeHierarchyToResult({
+          item,
+          supertypes: a as LspTypeHierarchyItem[],
+          subtypes: b as LspTypeHierarchyItem[],
+        }),
+    );
   }
 
   async rename(

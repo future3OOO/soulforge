@@ -107,31 +107,35 @@ export function QuestionPrompt({ question, isActive, onAnswer }: Props) {
           />
         </box>
       ) : (
-        <box flexDirection="row" gap={1} height={1}>
+        <box flexDirection="column">
           {question.options.map((opt, i) => {
             const isSelected = i === selectedIdx;
             return (
               <text key={opt.value}>
+                <span fg={isSelected ? "#FF8C00" : "#555"}>{isSelected ? " › " : "   "}</span>
                 <span
-                  fg={isSelected ? "#111" : "#888"}
-                  bg={isSelected ? "#FF8C00" : "#222"}
+                  fg={isSelected ? "#FFF" : "#888"}
                   attributes={isSelected ? TextAttributes.BOLD : undefined}
                 >
-                  {` ${opt.label} `}
+                  {opt.label}
                 </span>
               </text>
             );
           })}
           <text>
+            <span fg={selectedIdx === OTHER_IDX ? "#FF8C00" : "#555"}>
+              {selectedIdx === OTHER_IDX ? " › " : "   "}
+            </span>
             <span
-              fg={selectedIdx === OTHER_IDX ? "#111" : "#888"}
-              bg={selectedIdx === OTHER_IDX ? "#FF8C00" : "#222"}
+              fg={selectedIdx === OTHER_IDX ? "#FFF" : "#888"}
+              attributes={selectedIdx === OTHER_IDX ? TextAttributes.BOLD : undefined}
             >
-              {" Other "}
+              Other
             </span>
           </text>
-          <text fg="#333">
-            {"  "}←→ select · ⏎ confirm{question.allowSkip ? " · esc skip" : ""}
+          <text fg="#444">
+            {"  "}↑↓ select · ⏎ confirm
+            {question.allowSkip ? " · esc skip" : ""}
           </text>
         </box>
       )}

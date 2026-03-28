@@ -1,5 +1,5 @@
 import { spawn } from "node:child_process";
-import { readFileSync } from "node:fs";
+import { readFile } from "node:fs/promises";
 import { resolve } from "node:path";
 import type { ToolResult } from "../../types/index.js";
 import { getIntelligenceRouter } from "../intelligence/index.js";
@@ -291,7 +291,7 @@ export const analyzeTool = {
 
           let newContent: string;
           try {
-            newContent = readFileSync(resolve(file), "utf-8");
+            newContent = await readFile(resolve(file), "utf-8");
           } catch {
             return {
               success: false,

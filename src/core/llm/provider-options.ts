@@ -1,7 +1,6 @@
 import type { ProviderOptions } from "@ai-sdk/provider-utils";
 import type { AppConfig, ContextManagementConfig } from "../../types/index.js";
 import { getModelContextWindow } from "./models.js";
-import type { TaskType } from "./task-router.js";
 
 interface ModelCapabilities {
   provider: "anthropic" | "openai" | "google" | "other";
@@ -281,19 +280,6 @@ function supportsAnthropicOptions(modelId: string): boolean {
   return getEffectiveCaps(modelId).anthropicOptions;
 }
 
-const TASK_EFFORT: Record<TaskType, string> = {
-  planning: "high",
-  coding: "high",
-  exploration: "medium",
-  webSearch: "medium",
-  compact: "medium",
-  default: "high",
-};
-
-function resolveEffort(taskType: TaskType, configured?: string): string {
-  return configured ?? TASK_EFFORT[taskType];
-}
-
 function buildContextEdits(
   config: ContextManagementConfig,
   contextWindow: number,
@@ -353,7 +339,6 @@ function buildAnthropicOptions(
   modelId: string,
   caps: EffectiveCaps,
   config: AppConfig,
-  taskType?: TaskType,
 ): { opts: Record<string, unknown>; headers: Record<string, string>; thinkingEnabled: boolean } {
   // biome-ignore lint/suspicious/noExplicitAny: ProviderOptions inner shape is parsed by Zod at runtime
   const opts: Record<string, any> = {};
@@ -377,7 +362,7 @@ function buildAnthropicOptions(
   }
 
   if (caps.effort && config.performance?.effort && config.performance.effort !== "off") {
-    opts.effort = resolveEffort(taskType ?? "default", config.performance.effort);
+    opts.effort = config.performance.effort;
   }
 
   // `speed` requires @ai-sdk/anthropic >= 4.x (current 3.x rejects it as unknown field)
@@ -436,17 +421,13 @@ function buildOpenAIOptions(
   return { opts };
 }
 
-export function buildProviderOptions(
-  modelId: string,
-  config: AppConfig,
-  taskType?: TaskType,
-): ProviderOptionsResult {
+export function buildProviderOptions(modelId: string, config: AppConfig): ProviderOptionsResult {
   const caps = getEffectiveCaps(modelId);
   const providerOptions: Record<string, unknown> = {};
   let headers: Record<string, string> = {};
 
   if (caps.anthropicOptions) {
-    const result = buildAnthropicOptions(modelId, caps, config, taskType);
+    const result = buildAnthropicOptions(modelId, caps, config);
     if (Object.keys(result.opts).length > 0) {
       providerOptions.anthropic = result.opts;
     }

@@ -553,7 +553,7 @@ export async function runAgentTask(
       }
       try {
         const agentText = typeof result.text === "string" ? result.text : "";
-        writeAgentContext(
+        await writeAgentContext(
           parentToolCallId,
           task.agentId,
           task,

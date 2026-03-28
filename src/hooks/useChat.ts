@@ -1,4 +1,4 @@
-import { readFileSync } from "node:fs";
+import { readFile } from "node:fs/promises";
 import { join } from "node:path";
 import type { ModelMessage, StreamTextResult, TextPart, ToolCallPart, ToolSet } from "ai";
 import { generateText } from "ai";
@@ -29,7 +29,7 @@ import {
   degradeProviderOptions,
   isProviderOptionsError,
 } from "../core/llm/provider-options.js";
-import { detectTaskType, resolveTaskModel } from "../core/llm/task-router.js";
+import { resolveTaskModel } from "../core/llm/task-router.js";
 import { SessionManager } from "../core/sessions/manager.js";
 import { createThinkingParser } from "../core/thinking-parser.js";
 import { emitCacheReset, onFileEdited } from "../core/tools/file-events.js";
@@ -172,6 +172,7 @@ export interface UseChatOptions {
   sessionManager: SessionManager;
   cwd: string;
   tabId: string;
+  tabLabel?: string;
   openEditorWithFile: (file: string) => void;
   openEditor: () => void;
   onSuspend: (opts: { command: string; args?: string[]; noAltScreen?: boolean }) => void;
@@ -234,6 +235,7 @@ export function useChat({
   sessionManager,
   cwd,
   tabId,
+  tabLabel,
   openEditorWithFile,
   openEditor,
   initialState,
@@ -495,24 +497,7 @@ export function useChat({
     return onFileEdited((absPath, content) => sharedCacheRef.current.updateFile(absPath, content));
   }, []);
 
-  // First-run welcome hint — show proactively when model is "none" and no messages exist
-  const firstRunShown = useRef(false);
-  // biome-ignore lint/correctness/useExhaustiveDependencies: one-shot effect guarded by ref, messages.length would re-trigger on every message
-  useEffect(() => {
-    if (firstRunShown.current) return;
-    if (activeModel === "none" && messages.length === 0 && visible) {
-      firstRunShown.current = true;
-      setMessages([
-        {
-          id: crypto.randomUUID(),
-          role: "assistant",
-          content:
-            "Welcome to SoulForge! Press **Ctrl+L** or type **/model** to select a provider and model, then **/keys** to configure API keys.",
-          timestamp: Date.now(),
-        },
-      ]);
-    }
-  }, [activeModel, visible]);
+  // First-run onboarding is now handled by the FirstRunWizard modal in App.tsx.
 
   // Streaming token estimation
   const streamingCharsRef = useRef(0);
@@ -734,9 +719,10 @@ export function useChat({
 
         const contextWindow = getModelContextWindow(activeModelRef.current);
         const charsPerToken = 3;
-        const systemChars = contextManager
-          .getContextBreakdown()
-          .reduce((sum, s) => sum + s.chars, 0);
+        const systemChars = (await contextManager.getContextBreakdown()).reduce(
+          (sum, s) => sum + s.chars,
+          0,
+        );
         const beforeChars =
           systemChars +
           currentCore.reduce((s, m) => {
@@ -1244,13 +1230,13 @@ export function useChat({
             plan,
             planFile,
             planContent,
-            resolve: (action: PlanReviewAction) => {
+            resolve: async (action: PlanReviewAction) => {
               setPendingPlanReview(null);
 
               if (action === "execute" || action === "clear_execute") {
                 let content: string | null = null;
                 try {
-                  content = readFileSync(
+                  content = await readFile(
                     join(cwd, ".soulforge", "plans", planFileName(sessionIdRef.current)),
                     "utf-8",
                   );
@@ -1443,15 +1429,7 @@ export function useChat({
 
       try {
         setIsLoading(true);
-        const currentMode = forgeModeRef.current;
-        const isPlanning =
-          currentMode === "plan" || currentMode === "architect" || planModeRef.current;
-        const taskType = isPlanning ? "planning" : detectTaskType(input);
-        const modelId = resolveTaskModel(
-          taskType,
-          effectiveConfig.taskRouter,
-          activeModelRef.current,
-        );
+        const modelId = activeModelRef.current;
         const model = resolveModel(modelId);
 
         // Resolve subagent models from task router
@@ -1490,14 +1468,8 @@ export function useChat({
         const fetchPageApproval = interactiveCallbacks.onFetchPageApproval;
         const effectiveWebSearchModel = webSearchEnabled ? webSearchModel : undefined;
 
-        // Build Anthropic-specific providerOptions (thinking, effort, context management)
-        const { providerOptions, headers } = buildProviderOptions(
-          modelId,
-          effectiveConfig,
-          taskType,
-        );
-
-        await contextManager.ensureGitContext();
+        // Build providerOptions (thinking, effort, context management)
+        const { providerOptions, headers } = buildProviderOptions(modelId, effectiveConfig);
 
         steeringAbortedRef.current = false;
         /**
@@ -1639,6 +1611,8 @@ export function useChat({
             effectiveConfig.contextManagement?.pruningTarget ?? "subagents",
           ),
           disabledTools: useToolsStore.getState().disabledTools,
+          tabId,
+          tabLabel,
         });
         let result: StreamTextResult<ToolSet, never> | undefined;
         const MAX_TRANSIENT_RETRIES = 3;
@@ -1681,6 +1655,8 @@ export function useChat({
                             effectiveConfig.contextManagement?.pruningTarget ?? "subagents",
                           ),
                           disabledTools: useToolsStore.getState().disabledTools,
+                          tabId,
+                          tabLabel,
                         });
                       })();
                 result = (await currentAgent.stream({
@@ -2491,6 +2467,7 @@ export function useChat({
       promptOutsideCwd,
       promptDestructive,
       tabId,
+      tabLabel,
     ],
   );
   handleSubmitRef.current = handleSubmit;

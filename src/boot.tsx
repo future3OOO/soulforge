@@ -264,6 +264,7 @@ const { initNerdFont } = iconsMod;
 const { getVendoredPath, installNeovim, installRipgrep, installFd, installLazygit } = installMod;
 
 let resumeSessionId: string | undefined;
+let forceWizard = false;
 const args = process.argv.slice(2);
 for (let i = 0; i < args.length; i++) {
   const arg = args[i];
@@ -274,6 +275,8 @@ for (let i = 0; i < args.length; i++) {
     resumeSessionId = arg.slice("--session=".length);
   } else if (arg?.startsWith("--resume=")) {
     resumeSessionId = arg.slice("--resume=".length);
+  } else if (arg === "--wizard") {
+    forceWizard = true;
   }
 }
 
@@ -396,6 +399,7 @@ await start({
   config,
   projectConfig,
   resumeSessionId,
+  forceWizard,
   bootProviders,
   bootPrereqs,
   contextManager,

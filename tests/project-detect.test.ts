@@ -34,46 +34,46 @@ function makeProject(name: string, files: Record<string, string>): string {
 // ── JS/TS: Bun ──────────────────────────────────────────────
 
 describe("Bun project (bun.lock)", () => {
-  it("detects bun with biome formatter", () => {
+  it("detects bun with biome formatter", async () => {
     const cwd = makeProject("bun-biome", {
       "bun.lock": "",
       "package.json": JSON.stringify({ scripts: { test: "bun test", lint: "biome check ." } }),
       "biome.json": "{}",
       "tsconfig.json": "{}",
     });
-    const p = detectProfile(cwd);
+    const p = await detectProfile(cwd);
     expect(p.test).toBe("bun test");
     expect(p.lint).toBe("bun run lint");
     expect(p.typecheck).toBe("bunx tsc --noEmit");
     expect(p.format).toBe("bunx biome format --write");
   });
 
-  it("prefers scripts.format over auto-detect", () => {
+  it("prefers scripts.format over auto-detect", async () => {
     const cwd = makeProject("bun-format-script", {
       "bun.lock": "",
       "package.json": JSON.stringify({ scripts: { format: "biome format ." } }),
       "biome.json": "{}",
     });
-    const p = detectProfile(cwd);
+    const p = await detectProfile(cwd);
     expect(p.format).toBe("bun run format");
   });
 
-  it("detects prettier when no biome", () => {
+  it("detects prettier when no biome", async () => {
     const cwd = makeProject("bun-prettier", {
       "bun.lock": "",
       "package.json": JSON.stringify({}),
       ".prettierrc": "{}",
     });
-    const p = detectProfile(cwd);
+    const p = await detectProfile(cwd);
     expect(p.format).toContain("prettier");
   });
 
-  it("no formatter when nothing configured", () => {
+  it("no formatter when nothing configured", async () => {
     const cwd = makeProject("bun-no-format", {
       "bun.lock": "",
       "package.json": JSON.stringify({}),
     });
-    const p = detectProfile(cwd);
+    const p = await detectProfile(cwd);
     expect(p.format).toBeNull();
   });
 });
@@ -81,7 +81,7 @@ describe("Bun project (bun.lock)", () => {
 // ── JS/TS: npm/pnpm/yarn ────────────────────────────────────
 
 describe("npm project (package.json only)", () => {
-  it("detects npm with eslint and prettier", () => {
+  it("detects npm with eslint and prettier", async () => {
     const cwd = makeProject("npm-prettier", {
       "package.json": JSON.stringify({
         scripts: { test: "jest", lint: "eslint .", build: "tsc" },
@@ -89,7 +89,7 @@ describe("npm project (package.json only)", () => {
       ".prettierrc.json": "{}",
       "tsconfig.json": "{}",
     });
-    const p = detectProfile(cwd);
+    const p = await detectProfile(cwd);
     expect(p.test).toBe("npm run test");
     expect(p.build).toBe("npm run build");
     expect(p.lint).toBe("npm run lint");
@@ -99,26 +99,26 @@ describe("npm project (package.json only)", () => {
 });
 
 describe("pnpm project", () => {
-  it("detects pnpm with dprint", () => {
+  it("detects pnpm with dprint", async () => {
     const cwd = makeProject("pnpm-dprint", {
       "package.json": JSON.stringify({ scripts: { test: "vitest" } }),
       "pnpm-lock.yaml": "",
       "dprint.json": "{}",
     });
-    const p = detectProfile(cwd);
+    const p = await detectProfile(cwd);
     expect(p.test).toBe("pnpm test");
     expect(p.format).toContain("dprint");
   });
 });
 
 describe("yarn project", () => {
-  it("detects yarn with biome", () => {
+  it("detects yarn with biome", async () => {
     const cwd = makeProject("yarn-biome", {
       "package.json": JSON.stringify({ scripts: { test: "jest", build: "tsc" } }),
       "yarn.lock": "",
       "biome.jsonc": "{}",
     });
-    const p = detectProfile(cwd);
+    const p = await detectProfile(cwd);
     expect(p.test).toBe("yarn test");
     expect(p.build).toBe("yarn build");
     expect(p.format).toContain("biome");
@@ -128,11 +128,11 @@ describe("yarn project", () => {
 // ── JS/TS: Deno ─────────────────────────────────────────────
 
 describe("Deno project", () => {
-  it("detects deno with built-in formatter", () => {
+  it("detects deno with built-in formatter", async () => {
     const cwd = makeProject("deno", {
       "deno.json": JSON.stringify({ tasks: { dev: "deno run --watch main.ts" } }),
     });
-    const p = detectProfile(cwd);
+    const p = await detectProfile(cwd);
     expect(p.test).toBe("deno test");
     expect(p.lint).toBe("deno lint");
     expect(p.typecheck).toBe("deno check .");
@@ -143,12 +143,12 @@ describe("Deno project", () => {
 // ── Rust ────────────────────────────────────────────────────
 
 describe("Rust project (Cargo.toml)", () => {
-  it("detects cargo toolchain", () => {
+  it("detects cargo toolchain", async () => {
     const cwd = makeProject("rust", {
       "Cargo.toml": '[package]\nname = "myapp"\nversion = "0.1.0"',
       "src/main.rs": "fn main() {}",
     });
-    const p = detectProfile(cwd);
+    const p = await detectProfile(cwd);
     expect(p.test).toBe("cargo test");
     expect(p.build).toBe("cargo build");
     expect(p.lint).toBe("cargo clippy");
@@ -160,22 +160,22 @@ describe("Rust project (Cargo.toml)", () => {
 // ── Go ──────────────────────────────────────────────────────
 
 describe("Go project (go.mod)", () => {
-  it("detects go with golangci-lint", () => {
+  it("detects go with golangci-lint", async () => {
     const cwd = makeProject("go-lint", {
       "go.mod": "module example.com/myapp\n\ngo 1.21",
       ".golangci.yml": "linters:\n  enable:\n    - gofmt",
     });
-    const p = detectProfile(cwd);
+    const p = await detectProfile(cwd);
     expect(p.test).toBe("go test ./...");
     expect(p.lint).toBe("golangci-lint run");
     expect(p.format).toBe("gofmt -w");
   });
 
-  it("falls back to go vet without golangci config", () => {
+  it("falls back to go vet without golangci config", async () => {
     const cwd = makeProject("go-noconfig", {
       "go.mod": "module example.com/myapp\n\ngo 1.21",
     });
-    const p = detectProfile(cwd);
+    const p = await detectProfile(cwd);
     expect(p.lint).toBe("go vet ./...");
     expect(p.format).toBe("gofmt -w");
   });
@@ -184,34 +184,34 @@ describe("Go project (go.mod)", () => {
 // ── Python ──────────────────────────────────────────────────
 
 describe("Python project (pyproject.toml)", () => {
-  it("detects uv with ruff", () => {
+  it("detects uv with ruff", async () => {
     const cwd = makeProject("py-uv-ruff", {
       "pyproject.toml": "[project]\nname = 'myapp'",
       "uv.lock": "",
       "ruff.toml": "[lint]\nselect = ['E', 'F']",
     });
-    const p = detectProfile(cwd);
+    const p = await detectProfile(cwd);
     expect(p.test).toBe("uv run pytest");
     expect(p.lint).toBe("uv run ruff check");
     expect(p.format).toBe("uv run ruff format");
   });
 
-  it("detects poetry with black fallback", () => {
+  it("detects poetry with black fallback", async () => {
     const cwd = makeProject("py-poetry-black", {
       "pyproject.toml": "[tool.poetry]\nname = 'myapp'",
       "poetry.lock": "",
     });
-    const p = detectProfile(cwd);
+    const p = await detectProfile(cwd);
     expect(p.test).toBe("poetry run pytest");
     expect(p.format).toBe("poetry run black");
   });
 
-  it("detects plain python with Django", () => {
+  it("detects plain python with Django", async () => {
     const cwd = makeProject("py-django", {
       "requirements.txt": "django>=4.0\nblack",
       "manage.py": "#!/usr/bin/env python",
     });
-    const p = detectProfile(cwd);
+    const p = await detectProfile(cwd);
     expect(p.run).toContain("manage.py");
     expect(p.format).toBe("black");
   });
@@ -220,25 +220,25 @@ describe("Python project (pyproject.toml)", () => {
 // ── PHP ─────────────────────────────────────────────────────
 
 describe("PHP project (composer.json)", () => {
-  it("detects Laravel with Pint", () => {
+  it("detects Laravel with Pint", async () => {
     const cwd = makeProject("php-laravel", {
       "composer.json": JSON.stringify({ require: { "laravel/framework": "^10" } }),
       "artisan": "",
       "pint.json": "{}",
     });
-    const p = detectProfile(cwd);
+    const p = await detectProfile(cwd);
     expect(p.test).toBe("vendor/bin/phpunit");
     expect(p.lint).toContain("pint");
     expect(p.format).toBe("vendor/bin/pint");
     expect(p.run).toContain("artisan");
   });
 
-  it("detects PHP with php-cs-fixer", () => {
+  it("detects PHP with php-cs-fixer", async () => {
     const cwd = makeProject("php-fixer", {
       "composer.json": JSON.stringify({}),
       ".php-cs-fixer.php": "<?php return [];",
     });
-    const p = detectProfile(cwd);
+    const p = await detectProfile(cwd);
     expect(p.format).toBe("vendor/bin/php-cs-fixer fix");
   });
 });
@@ -246,11 +246,11 @@ describe("PHP project (composer.json)", () => {
 // ── Flutter/Dart ────────────────────────────────────────────
 
 describe("Flutter project (pubspec.yaml)", () => {
-  it("detects flutter/dart toolchain", () => {
+  it("detects flutter/dart toolchain", async () => {
     const cwd = makeProject("flutter", {
       "pubspec.yaml": "name: myapp\ndescription: A Flutter app",
     });
-    const p = detectProfile(cwd);
+    const p = await detectProfile(cwd);
     expect(p.test).toBe("flutter test");
     expect(p.lint).toBe("dart analyze");
     expect(p.format).toBe("dart format");
@@ -260,11 +260,11 @@ describe("Flutter project (pubspec.yaml)", () => {
 // ── Elixir ──────────────────────────────────────────────────
 
 describe("Elixir project (mix.exs)", () => {
-  it("detects mix toolchain", () => {
+  it("detects mix toolchain", async () => {
     const cwd = makeProject("elixir", {
       "mix.exs": 'defmodule MyApp.MixProject do\n  use Mix.Project\nend',
     });
-    const p = detectProfile(cwd);
+    const p = await detectProfile(cwd);
     expect(p.test).toBe("mix test");
     expect(p.lint).toBe("mix credo");
     expect(p.format).toBe("mix format");
@@ -274,13 +274,13 @@ describe("Elixir project (mix.exs)", () => {
 // ── Ruby ────────────────────────────────────────────────────
 
 describe("Ruby project (Gemfile)", () => {
-  it("detects Rails with rspec", () => {
+  it("detects Rails with rspec", async () => {
     const cwd = makeProject("ruby-rails", {
       "Gemfile": "source 'https://rubygems.org'\ngem 'rails'",
       "config.ru": "require_relative 'config/environment'",
       "spec/.keep": "",
     });
-    const p = detectProfile(cwd);
+    const p = await detectProfile(cwd);
     expect(p.test).toBe("bundle exec rspec");
     expect(p.lint).toBe("bundle exec rubocop");
     expect(p.format).toContain("rubocop");
@@ -291,24 +291,24 @@ describe("Ruby project (Gemfile)", () => {
 // ── Swift ───────────────────────────────────────────────────
 
 describe("Swift project (Package.swift)", () => {
-  it("detects swift with swiftformat", () => {
+  it("detects swift with swiftformat", async () => {
     const cwd = makeProject("swift", {
       "Package.swift": "// swift-tools-version:5.9\nimport PackageDescription",
       ".swiftformat": "",
       ".swiftlint.yml": "",
     });
-    const p = detectProfile(cwd);
+    const p = await detectProfile(cwd);
     expect(p.test).toBe("swift test");
     expect(p.build).toBe("swift build");
     expect(p.lint).toBe("swiftlint");
     expect(p.format).toBe("swiftformat");
   });
 
-  it("no formatter without .swiftformat config", () => {
+  it("no formatter without .swiftformat config", async () => {
     const cwd = makeProject("swift-noformat", {
       "Package.swift": "// swift-tools-version:5.9",
     });
-    const p = detectProfile(cwd);
+    const p = await detectProfile(cwd);
     expect(p.format).toBeNull();
   });
 });
@@ -316,31 +316,31 @@ describe("Swift project (Package.swift)", () => {
 // ── Java/Kotlin: Gradle ─────────────────────────────────────
 
 describe("Gradle project", () => {
-  it("detects gradle with spotless", () => {
+  it("detects gradle with spotless", async () => {
     const cwd = makeProject("gradle-spotless", {
       "gradlew": "#!/bin/sh",
       "build.gradle.kts": 'plugins {\n  id("com.diffplug.spotless")\n}',
     });
-    const p = detectProfile(cwd);
+    const p = await detectProfile(cwd);
     expect(p.test).toBe("./gradlew test");
     expect(p.lint).toBe("./gradlew spotlessCheck");
     expect(p.format).toBeNull(); // spotless doesn't support single-file
   });
 
-  it("detects gradle with ktlint", () => {
+  it("detects gradle with ktlint", async () => {
     const cwd = makeProject("gradle-ktlint", {
       "gradlew": "#!/bin/sh",
       "build.gradle.kts": 'plugins {\n  id("org.jlleitschuh.gradle.ktlint")\n}',
     });
-    const p = detectProfile(cwd);
+    const p = await detectProfile(cwd);
     expect(p.lint).toBe("./gradlew ktlintCheck");
   });
 
-  it("falls back to gradle check without linter plugin", () => {
+  it("falls back to gradle check without linter plugin", async () => {
     const cwd = makeProject("gradle-plain", {
       "build.gradle": "apply plugin: 'java'",
     });
-    const p = detectProfile(cwd);
+    const p = await detectProfile(cwd);
     expect(p.test).toBe("gradle test");
     expect(p.lint).toBe("gradle check");
   });
@@ -349,12 +349,12 @@ describe("Gradle project", () => {
 // ── Java: Maven ─────────────────────────────────────────────
 
 describe("Maven project (pom.xml)", () => {
-  it("detects maven with wrapper", () => {
+  it("detects maven with wrapper", async () => {
     const cwd = makeProject("maven", {
       "mvnw": "#!/bin/sh",
       "pom.xml": "<project></project>",
     });
-    const p = detectProfile(cwd);
+    const p = await detectProfile(cwd);
     expect(p.test).toBe("./mvnw test");
     expect(p.build).toBe("./mvnw package");
   });
@@ -363,23 +363,23 @@ describe("Maven project (pom.xml)", () => {
 // ── C/C++ ───────────────────────────────────────────────────
 
 describe("CMake project", () => {
-  it("detects cmake with clang-tidy", () => {
+  it("detects cmake with clang-tidy", async () => {
     const cwd = makeProject("cmake", {
       "CMakeLists.txt": "cmake_minimum_required(VERSION 3.20)",
       ".clang-tidy": "Checks: '-*,clang-analyzer-*'",
     });
-    const p = detectProfile(cwd);
+    const p = await detectProfile(cwd);
     expect(p.build).toBe("cmake --build build");
     expect(p.lint).toBe("clang-tidy");
   });
 });
 
 describe("Makefile project", () => {
-  it("detects make", () => {
+  it("detects make", async () => {
     const cwd = makeProject("make", {
       "Makefile": "all:\n\tgcc main.c",
     });
-    const p = detectProfile(cwd);
+    const p = await detectProfile(cwd);
     expect(p.build).toBe("make");
     expect(p.test).toBe("make test");
   });
@@ -388,11 +388,11 @@ describe("Makefile project", () => {
 // ── Zig ─────────────────────────────────────────────────────
 
 describe("Zig project", () => {
-  it("detects zig toolchain", () => {
+  it("detects zig toolchain", async () => {
     const cwd = makeProject("zig", {
       "build.zig": "const std = @import(\"std\");",
     });
-    const p = detectProfile(cwd);
+    const p = await detectProfile(cwd);
     expect(p.test).toBe("zig build test");
     expect(p.build).toBe("zig build");
     expect(p.format).toBe("zig fmt");
@@ -402,11 +402,11 @@ describe("Zig project", () => {
 // ── .NET ────────────────────────────────────────────────────
 
 describe(".NET project", () => {
-  it("detects dotnet with csproj", () => {
+  it("detects dotnet with csproj", async () => {
     const cwd = makeProject("dotnet", {
       "MyApp.csproj": "<Project Sdk=\"Microsoft.NET.Sdk\" />",
     });
-    const p = detectProfile(cwd);
+    const p = await detectProfile(cwd);
     expect(p.test).toBe("dotnet test");
     expect(p.build).toBe("dotnet build");
     expect(p.run).toBe("dotnet run");
@@ -416,9 +416,9 @@ describe(".NET project", () => {
 // ── Edge Cases ──────────────────────────────────────────────
 
 describe("edge cases", () => {
-  it("returns all nulls for empty directory", () => {
+  it("returns all nulls for empty directory", async () => {
     const cwd = makeProject("empty", {});
-    const p = detectProfile(cwd);
+    const p = await detectProfile(cwd);
     expect(p.test).toBeNull();
     expect(p.build).toBeNull();
     expect(p.lint).toBeNull();
@@ -427,26 +427,26 @@ describe("edge cases", () => {
     expect(p.format).toBeNull();
   });
 
-  it("bun takes priority over npm when both exist", () => {
+  it("bun takes priority over npm when both exist", async () => {
     const cwd = makeProject("bun-over-npm", {
       "bun.lock": "",
       "package.json": JSON.stringify({}),
     });
-    const p = detectProfile(cwd);
+    const p = await detectProfile(cwd);
     expect(p.test).toBe("bun test"); // bun default, not npm
   });
 
-  it("Cargo.toml takes priority over Makefile", () => {
+  it("Cargo.toml takes priority over Makefile", async () => {
     const cwd = makeProject("rust-with-makefile", {
       "Cargo.toml": '[package]\nname = "app"',
       "Makefile": "all:\n\tcargo build",
     });
-    const p = detectProfile(cwd);
+    const p = await detectProfile(cwd);
     expect(p.build).toBe("cargo build"); // Cargo, not make
   });
 
-  it("handles nonexistent directory gracefully", () => {
-    const p = detectProfile("/tmp/nonexistent-soulforge-test-dir-xyz");
+  it("handles nonexistent directory gracefully", async () => {
+    const p = await detectProfile("/tmp/nonexistent-soulforge-test-dir-xyz");
     expect(p.test).toBeNull();
   });
 });

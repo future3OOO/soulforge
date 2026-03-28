@@ -94,12 +94,9 @@ function baseOpts(overrides?: Partial<PromptBuilderOptions>): PromptBuilderOptio
     hasSymbols: false,
     forgeMode: "default",
     contextPercent: 50,
-    isMinimalContext: false,
     projectInfo: null,
     projectInstructions: null,
     forbiddenContext: null,
-    editorSection: [],
-    gitContext: null,
     memoryContext: null,
     ...overrides,
   };
@@ -126,11 +123,6 @@ describe("buildSystemPrompt assembly", () => {
       expect(prompt).not.toContain("Decision flow");
   });
 
-  test("skips tool guidance for minimal context windows", () => {
-    const prompt = buildSystemPrompt(baseOpts({ isMinimalContext: true }));
-    expect(prompt).not.toContain("Tool priority");
-  });
-
   test("includes project cwd", () => {
     const prompt = buildSystemPrompt(baseOpts());
     expect(prompt).toContain("/test/project");
@@ -144,11 +136,6 @@ describe("buildSystemPrompt assembly", () => {
   test("includes forbidden context when provided", () => {
     const prompt = buildSystemPrompt(baseOpts({ forbiddenContext: ".env is forbidden" }));
     expect(prompt).toContain(".env is forbidden");
-  });
-
-  test("includes git context when provided", () => {
-    const prompt = buildSystemPrompt(baseOpts({ gitContext: "Branch: main, Status: clean" }));
-    expect(prompt).toContain("Branch: main");
   });
 
   test("includes memory context when provided", () => {

@@ -124,6 +124,10 @@ function handleRestart(_input: string, ctx: CommandContext): void {
   import("../../index.js").then(({ restart }) => restart());
 }
 
+function handleWizard(_input: string, _ctx: CommandContext): void {
+  useUIStore.getState().openModal("firstRunWizard");
+}
+
 export function register(map: Map<string, CommandHandler>): void {
   map.set("/quit", handleQuit);
   map.set("/exit", handleQuit);
@@ -150,6 +154,7 @@ export function register(map: Map<string, CommandHandler>): void {
   map.set("/tabs", handleTabs);
   map.set("/new-tab", handleNewTab);
   map.set("/close-tab", handleCloseTab);
+  map.set("/wizard", handleWizard);
 }
 
 export function matchNavPrefix(cmd: string): CommandHandler | null {

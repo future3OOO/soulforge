@@ -1,4 +1,4 @@
-import { readFileSync } from "node:fs";
+import { readFile } from "node:fs/promises";
 import { join } from "node:path";
 import { TextAttributes } from "@opentui/core";
 import {
@@ -282,13 +282,12 @@ function WritePlanCall({ tc }: { tc: ToolCall }) {
   const plan = parsePlanFromArgs(tc);
   const expanded = useCodeExpanded();
   const { file: planFile, resultStr } = parsePlanResult(tc);
-  const markdown = useMemo(() => {
-    if (!planFile) return null;
-    try {
-      return readFileSync(join(process.cwd(), planFile), "utf-8");
-    } catch {
-      return null;
-    }
+  const [markdown, setMarkdown] = useState<string | null>(null);
+  useEffect(() => {
+    if (!planFile) return;
+    readFile(join(process.cwd(), planFile), "utf-8")
+      .then(setMarkdown)
+      .catch(() => setMarkdown(null));
   }, [planFile]);
   if (!plan) return <ToolCallRow tc={tc} />;
 

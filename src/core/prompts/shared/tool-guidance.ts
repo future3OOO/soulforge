@@ -14,7 +14,8 @@ A Soul Map is loaded in context — every file, exported symbol, signature, line
 5. To search code, use soul_grep — not grep. soul_grep has repo-map intercept and symbol context.
 6. After every edit, call project (typecheck/test) to verify.
 7. Batch ALL independent reads/searches in one parallel call. Never read the same file twice.
-8. Max 3 exploration rounds before you start editing. If you've read the relevant files, act.
+8. Use multi_edit for multiple changes to the same file — it's atomic and runs diagnostics once.
+9. Max 3 exploration rounds before you start editing. If you've read the relevant files, act.
 Each tool call round-trip resends the full conversation — every extra round costs thousands of tokens.`;
 
 export const TOOL_GUIDANCE_NO_MAP = `# Tool usage

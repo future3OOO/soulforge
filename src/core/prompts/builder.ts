@@ -47,14 +47,11 @@ export interface PromptBuilderOptions {
   hasSymbols: boolean;
   forgeMode: ForgeMode;
   contextPercent?: number;
-  isMinimalContext?: boolean;
 
   // Dynamic sections (null = omit)
   projectInfo: string | null;
   projectInstructions: string | null;
   forbiddenContext: string | null;
-  editorSection?: string[];
-  gitContext?: string | null;
   memoryContext: string | null;
 }
 
@@ -76,19 +73,17 @@ export function buildSystemPrompt(opts: PromptBuilderOptions): string {
   // 1. Family-specific base prompt
   parts.push(getFamilyPrompt(family));
 
-  // 2. Tool guidance (only for non-minimal context windows)
-  if (!opts.isMinimalContext) {
-    if (opts.hasRepoMap) {
-      parts.push(TOOL_GUIDANCE_WITH_MAP);
+  // 2. Tool guidance
+  if (opts.hasRepoMap) {
+    parts.push(TOOL_GUIDANCE_WITH_MAP);
 
-      if (!opts.hasSymbols) {
-        parts.push(
-          "Code intelligence limited: No symbols indexed. Intelligence tools fall back to regex.",
-        );
-      }
-    } else {
-      parts.push(TOOL_GUIDANCE_NO_MAP);
+    if (!opts.hasSymbols) {
+      parts.push(
+        "Code intelligence limited: No symbols indexed. Intelligence tools fall back to regex.",
+      );
     }
+  } else {
+    parts.push(TOOL_GUIDANCE_NO_MAP);
   }
 
   // ── DYNAMIC SECTION (changes per project/session) ──
@@ -101,16 +96,10 @@ export function buildSystemPrompt(opts: PromptBuilderOptions): string {
   // 4. Forbidden files
   if (opts.forbiddenContext) parts.push("", opts.forbiddenContext);
 
-  // 5. Editor context
-  if (opts.editorSection && opts.editorSection.length > 0) parts.push("", ...opts.editorSection);
-
-  // 6. Git context
-  if (opts.gitContext) parts.push(`Git: ${opts.gitContext}`);
-
-  // 7. Memory
+  // 5. Memory
   if (opts.memoryContext) parts.push(`Memory: ${opts.memoryContext}`);
 
-  // 8. Mode overlay
+  // 6. Mode overlay
   const modeInstructions = getModeInstructions(opts.forgeMode, {
     contextPercent: opts.contextPercent,
   });

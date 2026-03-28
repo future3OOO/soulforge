@@ -1,4 +1,4 @@
-import { existsSync, unlinkSync } from "node:fs";
+import { unlink } from "node:fs/promises";
 import { join } from "node:path";
 import type { ScrollBoxRenderable } from "@opentui/core";
 import { memo, useCallback, useEffect, useMemo, useRef } from "react";
@@ -49,6 +49,7 @@ interface TabInstanceProps {
   openEditor: () => void;
   onSuspend: (opts: { command: string; args?: string[]; noAltScreen?: boolean }) => void;
   onCommand: (input: string, chat: ChatInstance) => void;
+  onModeChange?: (mode: import("../../types/index.js").ForgeMode) => void;
   onExit: () => void;
   registerChat: (id: string, chat: ChatInstance) => void;
   unregisterChat: (id: string) => void;
@@ -94,6 +95,7 @@ export const TabInstance = memo(function TabInstance({
   openEditor,
   onSuspend,
   onCommand,
+  onModeChange,
   onExit,
   registerChat,
   unregisterChat,
@@ -190,6 +192,7 @@ export const TabInstance = memo(function TabInstance({
     sessionManager,
     cwd,
     tabId,
+    tabLabel,
     openEditorWithFile,
     openEditor,
     onSuspend,
@@ -214,6 +217,11 @@ export const TabInstance = memo(function TabInstance({
     registerChat(tabId, chat);
     return () => unregisterChat(tabId);
   }, [tabId, chat, registerChat, unregisterChat]);
+
+  // Sync forge mode to header when it changes in the active tab
+  useEffect(() => {
+    if (visible && onModeChange) onModeChange(chat.forgeMode);
+  }, [visible, chat.forgeMode, onModeChange]);
 
   // Sync status bar when this tab is active
   useEffect(() => {
@@ -278,10 +286,8 @@ export const TabInstance = memo(function TabInstance({
       // Close tab in coordinator — releases claims, clears agents, blocks ghost claims
       getWorkspaceCoordinator().closeTab(tabId);
       // Clean up any pending plan file on disk
-      try {
-        const p = join(cwd, ".soulforge", "plans", planFileName(chat.sessionId));
-        if (existsSync(p)) unlinkSync(p);
-      } catch {}
+      const p = join(cwd, ".soulforge", "plans", planFileName(chat.sessionId));
+      unlink(p).catch(() => {});
     };
   }, [contextManager, tabId, cwd, chat.sessionId]);
 
@@ -378,10 +384,8 @@ export const TabInstance = memo(function TabInstance({
   }, [chat.messages.length]);
 
   const cleanupPlanFile = useCallback(() => {
-    try {
-      const p = join(cwd, ".soulforge", "plans", planFileName(chat.sessionId));
-      if (existsSync(p)) unlinkSync(p);
-    } catch {}
+    const p = join(cwd, ".soulforge", "plans", planFileName(chat.sessionId));
+    unlink(p).catch(() => {});
   }, [cwd, chat.sessionId]);
 
   const onAcceptPlan = useCallback(() => {

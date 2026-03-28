@@ -75,9 +75,4 @@ export function useConfigSync({
     if (effectiveConfig.editorSplit !== undefined)
       useUIStore.setState({ editorSplit: effectiveConfig.editorSplit });
   }, [effectiveConfig.editorSplit]);
-
-  // biome-ignore lint/correctness/useExhaustiveDependencies: contextManager is stable (useMemo on cwd)
-  useEffect(() => {
-    contextManager.refreshGitContext();
-  }, []);
 }

@@ -1,4 +1,4 @@
-import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
+import { access, mkdir, readFile, unlink, writeFile } from "node:fs/promises";
 import { dirname, relative, resolve } from "node:path";
 import type { ToolResult } from "../../types/index.js";
 import { getIntelligenceRouter } from "../intelligence/index.js";
@@ -17,36 +17,40 @@ class WriteTransaction {
   private writes: PendingWrite[] = [];
   private committed = false;
 
-  stage(path: string, content: string): void {
-    const original = existsSync(path) ? readFileSync(path, "utf-8") : null;
+  async stage(path: string, content: string): Promise<void> {
+    let original: string | null = null;
+    try {
+      original = await readFile(path, "utf-8");
+    } catch {
+      // File does not exist
+    }
     this.writes.push({ path, content, original });
   }
 
-  commit(): void {
+  async commit(): Promise<void> {
     for (const w of this.writes) {
       const blocked = isForbidden(w.path);
       if (blocked) throw new Error(`Cannot write forbidden file: ${w.path} (${blocked})`);
     }
     for (const w of this.writes) {
       const dir = dirname(w.path);
-      if (!existsSync(dir)) mkdirSync(dir, { recursive: true });
+      await mkdir(dir, { recursive: true });
       if (w.original !== null) pushEdit(w.path, w.original);
-      writeFileSync(w.path, w.content, "utf-8");
+      await writeFile(w.path, w.content, "utf-8");
       emitFileEdited(w.path, w.content);
     }
     this.committed = true;
   }
 
-  rollback(): void {
+  async rollback(): Promise<void> {
     if (!this.committed) return;
     for (const w of [...this.writes].reverse()) {
       try {
         if (w.original === null) {
           // File was newly created — remove it
-          const { unlinkSync } = require("node:fs") as typeof import("node:fs");
-          unlinkSync(w.path);
+          await unlink(w.path);
         } else {
-          writeFileSync(w.path, w.original, "utf-8");
+          await writeFile(w.path, w.original, "utf-8");
         }
       } catch {
         // Best-effort rollback
@@ -78,7 +82,7 @@ interface ImportStatement {
 interface LangImports {
   canAutoUpdate: boolean;
   parse(content: string): ImportStatement[];
-  resolveSource(source: string, contextFile: string): string | null;
+  resolveSource(source: string, contextFile: string): string | null | Promise<string | null>;
   computePath(fromFile: string, toFile: string): string;
   generate(specs: string[], path: string, isType?: boolean): string;
 }
@@ -143,13 +147,18 @@ export const tsJsHandler: LangImports = {
     return result;
   },
 
-  resolveSource(source: string, contextFile: string): string | null {
+  async resolveSource(source: string, contextFile: string): Promise<string | null> {
     if (!source.startsWith(".")) return null;
     const dir = dirname(contextFile);
     const base = source.replace(/\.(js|ts|jsx|tsx|mjs|cjs)$/, "");
     for (const ext of [".ts", ".tsx", ".js", ".jsx"]) {
       const p = resolve(dir, base + ext);
-      if (existsSync(p)) return p;
+      try {
+        await access(p);
+        return p;
+      } catch {
+        // not found, try next
+      }
     }
     return null;
   },
@@ -192,7 +201,15 @@ export const pythonHandler: LangImports = {
     return result;
   },
 
-  resolveSource(source: string, contextFile: string): string | null {
+  async resolveSource(source: string, contextFile: string): Promise<string | null> {
+    const fileExists = async (p: string): Promise<boolean> => {
+      try {
+        await access(p);
+        return true;
+      } catch {
+        return false;
+      }
+    };
     if (source.startsWith(".")) {
       const dots = source.match(/^(\.+)/);
       const dotStr = dots?.[1] ?? ".";
@@ -201,15 +218,15 @@ export const pythonHandler: LangImports = {
       for (let i = 0; i < levels; i++) dir = dirname(dir);
       const parts = source.slice(dotStr.length).split(".");
       const modPath = resolve(dir, ...parts);
-      if (existsSync(`${modPath}.py`)) return `${modPath}.py`;
-      if (existsSync(resolve(modPath, "__init__.py"))) return resolve(modPath, "__init__.py");
+      if (await fileExists(`${modPath}.py`)) return `${modPath}.py`;
+      if (await fileExists(resolve(modPath, "__init__.py"))) return resolve(modPath, "__init__.py");
       return null;
     }
     // Bare module name — check same directory (e.g. "from models import X")
     const parts = source.split(".");
     const modPath = resolve(dirname(contextFile), ...parts);
-    if (existsSync(`${modPath}.py`)) return `${modPath}.py`;
-    if (existsSync(resolve(modPath, "__init__.py"))) return resolve(modPath, "__init__.py");
+    if (await fileExists(`${modPath}.py`)) return `${modPath}.py`;
+    if (await fileExists(resolve(modPath, "__init__.py"))) return resolve(modPath, "__init__.py");
     return null;
   },
 
@@ -363,9 +380,14 @@ const cppHandler: LangImports = {
     return result;
   },
 
-  resolveSource(source: string, contextFile: string): string | null {
+  async resolveSource(source: string, contextFile: string): Promise<string | null> {
     const p = resolve(dirname(contextFile), source);
-    return existsSync(p) ? p : null;
+    try {
+      await access(p);
+      return p;
+    } catch {
+      return null;
+    }
   },
 
   computePath(fromFile: string, toFile: string): string {
@@ -458,7 +480,7 @@ export function findCommentStart(lines: string[], defStart: number): number {
   return start;
 }
 
-function findProjectRoot(file: string): string {
+async function findProjectRoot(file: string): Promise<string> {
   let dir = dirname(resolve(file));
   for (let depth = 0; depth < 20; depth++) {
     for (const m of [
@@ -469,7 +491,12 @@ function findProjectRoot(file: string): string {
       "pyproject.toml",
       "Makefile",
     ]) {
-      if (existsSync(resolve(dir, m))) return dir;
+      try {
+        await access(resolve(dir, m));
+        return dir;
+      } catch {
+        // not found, try next
+      }
     }
     const parent = dirname(dir);
     if (parent === dir) break;
@@ -530,7 +557,9 @@ export const moveSymbolTool = {
       const from = resolve(args.from);
       const to = resolve(args.to);
 
-      if (!existsSync(from)) {
+      try {
+        await access(from);
+      } catch {
         return {
           success: false,
           output: `Source file not found: ${from}`,
@@ -545,7 +574,7 @@ export const moveSymbolTool = {
         };
       }
 
-      const sourceContent = readFileSync(from, "utf-8");
+      const sourceContent = await readFile(from, "utf-8");
       const sourceLines = sourceContent.split("\n");
       const router = getIntelligenceRouter(process.cwd());
       const language = router.detectLanguage(from);
@@ -611,7 +640,7 @@ export const moveSymbolTool = {
             return new RegExp(`\\b${esc(name)}\\b`).test(defText);
           });
           if (used.length > 0) {
-            const resolved = handler.resolveSource(imp.source, from);
+            const resolved = await handler.resolveSource(imp.source, from);
             const path = resolved ? handler.computePath(to, resolved) : imp.source;
             neededImportLines.push(handler.generate(used, path, imp.isType));
           }
@@ -665,8 +694,14 @@ export const moveSymbolTool = {
       }
 
       let targetContent: string;
-      if (existsSync(to)) {
-        const existing = readFileSync(to, "utf-8");
+      let existingContent: string | null = null;
+      try {
+        existingContent = await readFile(to, "utf-8");
+      } catch {
+        // File does not exist
+      }
+      if (existingContent !== null) {
+        const existing = existingContent;
         targetContent = appendSymbolToFile(existing, neededImportLines, symbolForTarget, handler);
       } else {
         const parts: string[] = [];
@@ -722,10 +757,10 @@ export const moveSymbolTool = {
       }
 
       const tx = new WriteTransaction();
-      tx.stage(to, targetContent);
-      tx.stage(from, newSource);
+      await tx.stage(to, targetContent);
+      await tx.stage(from, newSource);
 
-      const projectRoot = findProjectRoot(from);
+      const projectRoot = await findProjectRoot(from);
       const candidates = await grepSymbol(args.symbol, projectRoot);
       const updatedFiles: string[] = [];
       const affectedFiles: string[] = [];
@@ -735,7 +770,7 @@ export const moveSymbolTool = {
 
         if (handler?.canAutoUpdate) {
           try {
-            const content = readFileSync(file, "utf-8");
+            const content = await readFile(file, "utf-8");
             const imports = handler.parse(content);
             let modified = content;
             let changed = false;
@@ -747,7 +782,7 @@ export const moveSymbolTool = {
               });
               if (!hasSymbol) continue;
 
-              const resolved = handler.resolveSource(imp.source, file);
+              const resolved = await handler.resolveSource(imp.source, file);
               if (resolved !== from) continue;
 
               const newPath = handler.computePath(file, to);
@@ -776,7 +811,7 @@ export const moveSymbolTool = {
             }
 
             if (changed) {
-              tx.stage(file, modified);
+              await tx.stage(file, modified);
               updatedFiles.push(file);
             }
           } catch {
@@ -788,9 +823,9 @@ export const moveSymbolTool = {
       }
 
       try {
-        tx.commit();
+        await tx.commit();
       } catch (commitErr: unknown) {
-        tx.rollback();
+        await tx.rollback();
         const msg = commitErr instanceof Error ? commitErr.message : String(commitErr);
         return {
           success: false,

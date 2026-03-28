@@ -16,6 +16,7 @@ interface EditFileArgs {
   tabId?: string;
 }
 
+/** @internal — exported for testing only */
 export function formatMetricDelta(label: string, before: number, after: number): string {
   const delta = after - before;
   if (delta === 0) return "";

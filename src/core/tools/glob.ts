@@ -1,4 +1,4 @@
-import { execSync, spawn } from "node:child_process";
+import { spawn } from "node:child_process";
 import type { ToolResult } from "../../types";
 import { isForbidden } from "../security/forbidden.js";
 
@@ -8,17 +8,26 @@ interface GlobArgs {
 }
 
 let _fdBin: string | null | undefined;
-function getFdBin(): string | null {
-  if (_fdBin !== undefined) return _fdBin;
-  for (const bin of ["fd", "fdfind"]) {
-    try {
-      execSync(`command -v ${bin}`, { stdio: "ignore" });
-      _fdBin = bin;
-      return bin;
-    } catch {}
-  }
-  _fdBin = null;
-  return null;
+let _fdBinPromise: Promise<string | null> | undefined;
+function getFdBin(): Promise<string | null> {
+  if (_fdBin !== undefined) return Promise.resolve(_fdBin);
+  if (_fdBinPromise) return _fdBinPromise;
+  _fdBinPromise = (async () => {
+    for (const bin of ["fd", "fdfind"]) {
+      const found = await new Promise<boolean>((resolve) => {
+        const proc = spawn("sh", ["-c", `command -v ${bin}`], { stdio: "ignore" });
+        proc.on("error", () => resolve(false));
+        proc.on("close", (code) => resolve(code === 0));
+      });
+      if (found) {
+        _fdBin = bin;
+        return bin;
+      }
+    }
+    _fdBin = null;
+    return null;
+  })();
+  return _fdBinPromise;
 }
 
 function runFd(bin: string, pattern: string, basePath: string): Promise<ToolResult | null> {
@@ -78,7 +87,7 @@ export const globTool = {
     const pattern = args.pattern;
     const basePath = args.path ?? ".";
 
-    const fdBin = getFdBin();
+    const fdBin = await getFdBin();
     if (fdBin) {
       const result = await runFd(fdBin, pattern, basePath);
       if (result) return filterForbidden(result);

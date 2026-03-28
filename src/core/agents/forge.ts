@@ -39,69 +39,6 @@ function hasPlanToolCall(messages: ModelMessage[]): boolean {
   return false;
 }
 
-function hasToolCall(messages: ModelMessage[], toolName: string): boolean {
-  for (const msg of messages) {
-    if (msg.role !== "assistant" || !Array.isArray(msg.content)) continue;
-    for (const part of msg.content) {
-      if (
-        typeof part === "object" &&
-        part !== null &&
-        "type" in part &&
-        (part as { type: string }).type === "tool-call" &&
-        "toolName" in part &&
-        (part as { toolName: string }).toolName === toolName
-      ) {
-        return true;
-      }
-    }
-  }
-  return false;
-}
-
-const READ_TOOL_NAMES = new Set(["read_file"]);
-
-function countReadsAfterLastDispatch(messages: ModelMessage[]): number {
-  let lastDispatchIdx = -1;
-  for (let i = messages.length - 1; i >= 0; i--) {
-    const msg = messages[i];
-    if (msg?.role !== "assistant" || !Array.isArray(msg.content)) continue;
-    for (const part of msg.content) {
-      if (
-        typeof part === "object" &&
-        part !== null &&
-        "type" in part &&
-        (part as { type: string }).type === "tool-call" &&
-        "toolName" in part &&
-        (part as { toolName: string }).toolName === "dispatch"
-      ) {
-        lastDispatchIdx = i;
-        break;
-      }
-    }
-    if (lastDispatchIdx >= 0) break;
-  }
-  if (lastDispatchIdx < 0) return 0;
-
-  let count = 0;
-  for (let i = lastDispatchIdx + 1; i < messages.length; i++) {
-    const msg = messages[i];
-    if (msg?.role !== "assistant" || !Array.isArray(msg.content)) continue;
-    for (const part of msg.content) {
-      if (
-        typeof part === "object" &&
-        part !== null &&
-        "type" in part &&
-        (part as { type: string }).type === "tool-call" &&
-        "toolName" in part &&
-        READ_TOOL_NAMES.has((part as { toolName: string }).toolName)
-      ) {
-        count++;
-      }
-    }
-  }
-  return count;
-}
-
 function buildForgePrepareStep(
   isPlanMode: boolean,
   drainSteering?: () => string | null,
@@ -143,69 +80,10 @@ function buildForgePrepareStep(
       }
     }
 
-    // [4] Read nudges + [5] Loop detection
+    // [4] Read nudges disabled — conversational hints cause "You're right" responses.
+    // Read steering handled by system prompt ("max 3 exploration rounds").
+    // [5] Loop detection only
     if (!isPlanMode && stepNumber >= 3) {
-      const hasDispatch = hasToolCall(messages, "dispatch");
-      const readsAfterDispatch = countReadsAfterLastDispatch(messages);
-      if (hasDispatch && readsAfterDispatch >= 2) {
-        hints.push(
-          "You have dispatch results. Proceed to implementation or respond — additional reads are likely redundant.",
-        );
-      }
-
-      const READ_TOOLS = new Set([
-        "read_file",
-        "grep",
-        "soul_grep",
-        "soul_find",
-        "navigate",
-        "analyze",
-      ]);
-      const ACTION_TOOLS = new Set([
-        "edit_file",
-        "write_file",
-        "create_file",
-        "plan",
-        "dispatch",
-        "shell",
-      ]);
-      let totalReads = 0;
-      let lastActionStep = -1;
-      for (let i = 0; i < messages.length; i++) {
-        const m = messages[i];
-        if (m?.role !== "assistant" || !Array.isArray(m.content)) continue;
-        for (const part of m.content) {
-          if (typeof part !== "object" || part === null || !("type" in part)) continue;
-          if ((part as { type: string }).type !== "tool-call" || !("toolName" in part)) continue;
-          const tn = (part as { toolName: string }).toolName;
-          if (READ_TOOLS.has(tn)) totalReads++;
-          if (ACTION_TOOLS.has(tn)) lastActionStep = i;
-        }
-      }
-      const readsSinceAction =
-        lastActionStep === -1
-          ? totalReads
-          : (() => {
-              let count = 0;
-              for (let i = lastActionStep + 1; i < messages.length; i++) {
-                const m = messages[i];
-                if (m?.role !== "assistant" || !Array.isArray(m.content)) continue;
-                for (const part of m.content) {
-                  if (typeof part !== "object" || part === null || !("type" in part)) continue;
-                  if ((part as { type: string }).type !== "tool-call" || !("toolName" in part))
-                    continue;
-                  if (READ_TOOLS.has((part as { toolName: string }).toolName)) count++;
-                }
-              }
-              return count;
-            })();
-
-      if (!hasDispatch && readsSinceAction >= 8) {
-        hints.push(
-          `${String(readsSinceAction)} consecutive reads without an action (edit/dispatch). Act on what you have — edit files directly or use dispatch for parallel work.`,
-        );
-      }
-
       // [5] Loop detection — hint only, no activeTools blocking
       const LOOP_THRESHOLD = 3;
       const LOOP_WINDOW = 16;
@@ -568,7 +446,7 @@ export function createForgeAgent({
     id: "forge",
     model,
     temperature: 0,
-    maxOutputTokens: 16384,
+    // maxOutputTokens: 16384,
     tools: allTools,
     stopWhen: () => false,
     instructions: {

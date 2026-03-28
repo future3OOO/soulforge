@@ -1,3 +1,4 @@
+import { execFile } from "node:child_process";
 import { extname, relative } from "node:path";
 import type { ToolResult } from "../../types";
 import {
@@ -6,6 +7,19 @@ import {
 } from "../intelligence/repo-map-utils.js";
 import { isForbidden } from "../security/forbidden.js";
 import type { IntelligenceClient } from "../workers/intelligence-client.js";
+
+function execFileAsync(
+  cmd: string,
+  args: string[],
+  opts: { cwd: string; timeout: number; maxBuffer: number },
+): Promise<string> {
+  return new Promise((resolve, reject) => {
+    execFile(cmd, args, { ...opts, encoding: "utf-8" }, (err, stdout) => {
+      if (err) reject(err);
+      else resolve((stdout as string).trim());
+    });
+  });
+}
 
 type AnalyzeAction =
   | "identifier_frequency"
@@ -37,15 +51,15 @@ export const soulAnalyzeTool = {
         // Grep fallback for actions that can be approximated
         if (args.action === "identifier_frequency" && args.name) {
           try {
-            const { execSync } = await import("node:child_process");
-            const out = execSync(
-              `rg -c --word-regexp --glob='!node_modules' --glob='!.git' ${JSON.stringify(args.name)} .`,
-              { cwd, encoding: "utf-8", timeout: 10_000, maxBuffer: 256_000 },
-            ).trim();
+            const out = await execFileAsync(
+              "rg",
+              ["-c", "--word-regexp", "--glob=!node_modules", "--glob=!.git", args.name, "."],
+              { cwd, timeout: 10_000, maxBuffer: 256_000 },
+            );
             const lines = out
               .split("\n")
               .filter(Boolean)
-              .sort((a, b) => {
+              .sort((a: string, b: string) => {
                 const ca = Number.parseInt(a.split(":").pop() ?? "0", 10);
                 const cb = Number.parseInt(b.split(":").pop() ?? "0", 10);
                 return cb - ca;

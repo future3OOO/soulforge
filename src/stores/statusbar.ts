@@ -109,7 +109,8 @@ function matchPricing(modelId: string): ModelPricing {
 
 /** Compute session cost in USD.
  *  prompt = uncached input only (noCache tokens).
- *  cacheWrite and cacheRead tracked separately with their own rates. */
+ *  cacheWrite and cacheRead tracked separately with their own rates.
+ *  @internal — exported for testing only; production code uses computeTotalCostFromBreakdown */
 export function computeCost(usage: TokenUsage, modelId: string): number {
   const p = matchPricing(modelId);
   const uncached = usage.prompt + usage.subagentInput;

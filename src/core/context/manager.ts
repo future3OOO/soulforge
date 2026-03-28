@@ -1,11 +1,10 @@
-import { readFileSync } from "node:fs";
+import { readFile } from "node:fs/promises";
 import { join } from "node:path";
 import { generateText } from "ai";
 import { useRepoMapStore } from "../../stores/repomap.js";
 import type { EditorIntegration, ForgeMode, TaskRouter } from "../../types/index.js";
 import { toErrorMessage } from "../../utils/errors.js";
 import { setNeovimFileWrittenHandler } from "../editor/neovim.js";
-import { buildGitContext } from "../git/status.js";
 import type { SymbolForSummary } from "../intelligence/repo-map.js";
 import { resolveModel } from "../llm/provider.js";
 import { MemoryManager } from "../memory/manager.js";
@@ -42,13 +41,10 @@ export interface SharedContextResources {
  * expensive resources while maintaining independent conversation tracking.
  */
 const DEFAULT_CONTEXT_WINDOW = 200_000;
-const MINIMAL_CONTEXT_THRESHOLD = 32_000;
 
 export class ContextManager {
   private cwd: string;
   private skills = new Map<string, string>();
-  private gitContext: string | null = null;
-  private gitContextStale = true;
   private memoryManager: MemoryManager;
   private forgeMode: ForgeMode = "default";
   private editorFile: string | null = null;
@@ -102,6 +98,8 @@ export class ContextManager {
         this.startRepoMapScan();
       }
     }
+    // Eagerly populate project info cache so sync callers get data immediately
+    this.refreshProjectInfo();
   }
 
   /**
@@ -334,7 +332,6 @@ export class ContextManager {
     const rel = absPath.startsWith(`${this.cwd}/`) ? absPath.slice(this.cwd.length + 1) : absPath;
     this.soulMapDiffChangedFiles.add(rel);
     if (this.repoMapCache) this.repoMapCache.at = 0;
-    this.gitContextStale = true;
   }
 
   /** Track a file mentioned in conversation (tool reads, grep hits, etc.) */
@@ -855,18 +852,6 @@ export class ContextManager {
     }
   }
 
-  /** Pre-fetch git context (call before buildSystemPrompt) */
-  async refreshGitContext(): Promise<void> {
-    this.gitContext = await buildGitContext(this.cwd);
-    this.gitContextStale = false;
-  }
-
-  /** Refresh git context only if stale (files changed since last refresh) */
-  async ensureGitContext(): Promise<void> {
-    if (!this.gitContextStale) return;
-    await this.refreshGitContext();
-  }
-
   /** Add a loaded skill to the system prompt. Content capped at 16k chars. */
   addSkill(name: string, content: string): void {
     if (!content.trim()) return;
@@ -904,7 +889,7 @@ export class ContextManager {
       active: true,
     });
 
-    const projectInfo = this.getProjectInfo();
+    const projectInfo = this.projectInfoCache?.info ?? null;
     sections.push({
       section: "Project info",
       chars: projectInfo?.length ?? 0,
@@ -933,12 +918,6 @@ export class ContextManager {
       section: "Editor",
       chars: this.editorOpen && this.editorFile ? 200 : 0,
       active: this.editorOpen && this.editorFile !== null,
-    });
-
-    sections.push({
-      section: "Git context",
-      chars: this.gitContext?.length ?? 0,
-      active: this.gitContext !== null,
     });
 
     const memoryContext = this.memoryManager.buildMemoryIndex();
@@ -971,14 +950,8 @@ export class ContextManager {
   }
 
   /** Clear optional context sections */
-  clearContext(what: "git" | "memory" | "skills" | "all"): string[] {
+  clearContext(what: "memory" | "skills" | "all"): string[] {
     const cleared: string[] = [];
-    if (what === "git" || what === "all") {
-      if (this.gitContext) {
-        this.gitContext = null;
-        cleared.push("git");
-      }
-    }
     if (what === "skills" || what === "all") {
       if (this.skills.size > 0) {
         const names = [...this.skills.keys()];
@@ -1002,13 +975,9 @@ export class ContextManager {
       hasRepoMap: this.isRepoMapReady(),
       hasSymbols: this.isRepoMapReady() && this.repoMap.getStatsCached().symbols > 0,
       forgeMode: this.forgeMode,
-      // contextPercent: this.getContextPercent(),
-      // isMinimalContext: this.contextWindowTokens <= MINIMAL_CONTEXT_THRESHOLD,
-      projectInfo: this.getProjectInfo(),
+      projectInfo: this.projectInfoCache?.info ?? null,
       projectInstructions: this.projectInstructions,
       forbiddenContext: buildForbiddenContext(),
-      // editorSection: this.buildEditorContextSection(),
-      // gitContext: this.gitContext,
       memoryContext: this.memoryManager.buildMemoryIndex(),
     };
     return buildPrompt(opts);
@@ -1050,7 +1019,7 @@ export class ContextManager {
     if (!this.isRepoMapReady()) return null;
     const rendered = this.renderRepoMap();
     if (!rendered) return null;
-    const isMinimal = this.contextWindowTokens <= MINIMAL_CONTEXT_THRESHOLD;
+    const isMinimal = this.contextWindowTokens <= 32_000;
     const treeLimit = this.repoMapTokenBudget ? Math.ceil(this.repoMapTokenBudget / 100) : 60;
     const dirTree = buildDirectoryTree(this.cwd, treeLimit);
     if (clearDiffTracker) this.soulMapDiffChangedFiles.clear();
@@ -1141,8 +1110,8 @@ export class ContextManager {
     ].join("\n");
   }
 
-  /** Try to detect project type and read key config files (cached with 5min TTL) */
-  private getProjectInfo(): string | null {
+  /** Async refresh of project info cache. Called eagerly on init and can be re-called to refresh. */
+  async refreshProjectInfo(): Promise<string | null> {
     const now = Date.now();
     if (this.projectInfoCache && now - this.projectInfoCache.at < ContextManager.PROJECT_INFO_TTL) {
       return this.projectInfoCache.info;
@@ -1158,7 +1127,7 @@ export class ContextManager {
 
     for (const check of checks) {
       try {
-        const content = readFileSync(join(this.cwd, check.file), "utf-8");
+        const content = await readFile(join(this.cwd, check.file), "utf-8");
         const truncated = content.length > 500 ? `${content.slice(0, 500)}\n...` : content;
         const toolchain = this.detectToolchain();
         const profileStr = this.buildProfileString();

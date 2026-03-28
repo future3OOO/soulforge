@@ -82,7 +82,7 @@ async function runPreCommitChecks(cwd: string): Promise<string | null> {
   let lintCmd: string | null = null;
   try {
     const { detectNativeChecks } = await import("./project.js");
-    lintCmd = detectNativeChecks(cwd);
+    lintCmd = await detectNativeChecks(cwd);
   } catch {
     return null;
   }
@@ -413,12 +413,12 @@ export const shellTool = {
         const stderr = sanitizeOutput(errChunks.join(""));
 
         if (compressed.original) {
-          const teeFile = saveTee("shell-full", compressed.original);
+          const teeFile = await saveTee("shell-full", compressed.original);
           stdout += `\n[full output: ${teeFile}]`;
         }
 
         if (stdout.length > MAX_OUTPUT_BYTES) {
-          const { text } = truncateWithTee(stdout, MAX_OUTPUT_BYTES, 4000, 10000, "shell");
+          const { text } = await truncateWithTee(stdout, MAX_OUTPUT_BYTES, 4000, 10000, "shell");
           stdout = text;
         }
 

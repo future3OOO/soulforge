@@ -1,4 +1,4 @@
-import { mkdirSync, readdirSync, rmSync, writeFileSync } from "node:fs";
+import { mkdir, readdir, rm, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import type { FileReadRecord } from "./agent-bus.js";
 
@@ -294,7 +294,7 @@ export function formatDoneResult(done: DoneToolResult): string {
  * Deterministic extraction — zero LLM cost.
  * Returns the file path written.
  */
-export function writeAgentContext(
+export async function writeAgentContext(
   dispatchId: string,
   agentId: string,
   task: { task: string; role: string },
@@ -303,11 +303,11 @@ export function writeAgentContext(
   agentText: string,
   cwd: string,
   tabId?: string,
-): string {
+): Promise<string> {
   const dir = tabId
     ? dispatchDir(cwd, tabId, dispatchId)
     : join(cwd, ".soulforge", "dispatch", dispatchId);
-  mkdirSync(dir, { recursive: true });
+  await mkdir(dir, { recursive: true });
   const filePath = join(dir, `${agentId}.md`);
 
   const lines: string[] = [];
@@ -369,7 +369,7 @@ export function writeAgentContext(
     lines.push("");
   }
 
-  writeFileSync(filePath, lines.join("\n"), "utf-8");
+  await writeFile(filePath, lines.join("\n"), "utf-8");
   return filePath;
 }
 
@@ -377,13 +377,17 @@ export function writeAgentContext(
  * Clean up dispatch context files from previous dispatches for a specific tab.
  * Tab-prefixed dirs (tab-<tabId>/) isolate dispatches across concurrent tabs.
  */
-export function cleanupDispatchDir(cwd: string, tabId: string, keepDispatchId?: string): void {
+export async function cleanupDispatchDir(
+  cwd: string,
+  tabId: string,
+  keepDispatchId?: string,
+): Promise<void> {
   const tabDir = join(cwd, ".soulforge", "dispatch", `tab-${tabId}`);
   try {
-    for (const entry of readdirSync(tabDir)) {
+    for (const entry of await readdir(tabDir)) {
       if (entry !== keepDispatchId) {
         try {
-          rmSync(join(tabDir, entry), { recursive: true });
+          await rm(join(tabDir, entry), { recursive: true });
         } catch {}
       }
     }

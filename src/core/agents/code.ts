@@ -8,7 +8,18 @@ import { buildBusTools } from "./bus-tools.js";
 import { buildPrepareStep, buildSymbolLookup } from "./step-utils.js";
 import { repairToolCall } from "./stream-options.js";
 
-function codeBase(): string {
+function codeBase(hasPreloadedFiles: boolean): string {
+  if (hasPreloadedFiles) {
+    return `Code agent. Make specific edits. Target files and changes are in the task.
+
+Target file contents are preloaded below and up-to-date. Proceed directly with multi_edit — one call per file.
+- Use the preloaded line numbers for lineStart in your edits
+- Use read_file only for files not listed in the preloaded section
+- On edit failure: re-read once, retry with exact text from that read
+- Compound tools: rename_symbol, move_symbol, refactor — do the complete job
+
+OUTPUT: Concise summary of what changed. Name files and modifications.`;
+  }
   return `Code agent. Make specific edits. Target files and changes are in the task.
 
 Workflow: read_file → multi_edit → done. 3 steps typical, 5 max.
@@ -37,6 +48,7 @@ interface CodeAgentOptions {
   contextWindow?: number;
   disablePruning?: boolean;
   tabId?: string;
+  hasPreloadedFiles?: boolean;
 }
 
 export function createCodeAgent(model: LanguageModel, options?: CodeAgentOptions) {
@@ -80,7 +92,7 @@ export function createCodeAgent(model: LanguageModel, options?: CodeAgentOptions
     instructions: {
       role: "system" as const,
       content: (() => {
-        const base = codeBase();
+        const base = codeBase(options?.hasPreloadedFiles ?? false);
         return hasBus
           ? `${base}\nOwnership: you own files you edit first. check_edit_conflicts before touching another agent's file.\nIf another agent owns the file: report_finding with the exact edit instead.\nCoordination: report_finding after significant changes (paths, what changed, new exports). Peer findings appear in tool results.`
           : base;

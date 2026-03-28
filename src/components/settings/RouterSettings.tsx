@@ -38,15 +38,8 @@ const ROWS: ListRow[] = [
     kind: "slot",
     key: "default",
     label: "Default",
-    hint: "Fallback model for everything",
+    hint: "Fallback for background tasks when no specific model is set",
   },
-  {
-    kind: "slot",
-    key: "planning",
-    label: "Plan Mode",
-    hint: "Used when in /plan or /architect mode",
-  },
-
   // ── Dispatch Agents ──
   {
     kind: "section",

@@ -188,6 +188,7 @@ interface StartOptions {
   config: AppConfig;
   projectConfig: Partial<AppConfig> | null;
   resumeSessionId?: string;
+  forceWizard?: boolean;
   bootProviders: ProviderStatus[];
   bootPrereqs: PrerequisiteStatus[];
   contextManager?: ContextManager;
@@ -258,6 +259,7 @@ function AppRoot({ opts }: { opts: StartOptions }) {
       config={freshConfig}
       projectConfig={freshProjectConfig}
       resumeSessionId={appKey === 0 ? opts.resumeSessionId : undefined}
+      forceWizard={appKey === 0 && opts.forceWizard}
       bootProviders={freshProviders}
       bootPrereqs={freshPrereqs}
       preloadedContextManager={contextManager}

@@ -1,12 +1,12 @@
-import { readFileSync } from "node:fs";
+import { readFile } from "node:fs/promises";
 import { resolve } from "node:path";
 import type { ToolResult } from "../../types/index.js";
 import { getIntelligenceRouter } from "../intelligence/index.js";
 import { isForbidden } from "../security/forbidden.js";
 
-function lineCount(file: string): number | null {
+async function lineCount(file: string): Promise<number | null> {
   try {
-    return readFileSync(resolve(file), "utf-8").split("\n").length;
+    return (await readFile(resolve(file), "utf-8")).split("\n").length;
   } catch {
     return null;
   }
@@ -113,7 +113,7 @@ export const discoverPatternTool = {
           const exports = await router.executeWithFallback(language, "findExports", (b) =>
             b.findExports ? b.findExports(f) : Promise.resolve(null),
           );
-          const lines = lineCount(f);
+          const lines = await lineCount(f);
           return { file: f, exports, lines };
         }),
       );

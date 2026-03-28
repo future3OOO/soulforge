@@ -1,4 +1,4 @@
-import { existsSync, mkdirSync, writeFileSync } from "node:fs";
+import { access, mkdir, stat, writeFile } from "node:fs/promises";
 import { basename, dirname, extname, join, relative, resolve } from "node:path";
 import type { ToolResult } from "../../types/index.js";
 import { getIntelligenceRouter } from "../intelligence/index.js";
@@ -7,17 +7,36 @@ import { emitFileEdited } from "./file-events.js";
 
 type TestFramework = "vitest" | "jest" | "bun" | "pytest" | "go" | "cargo";
 
-function detectTestFramework(cwd: string): TestFramework {
-  if (existsSync(join(cwd, "bun.lock")) || existsSync(join(cwd, "bun.lockb"))) return "bun";
-  if (existsSync(join(cwd, "vitest.config.ts")) || existsSync(join(cwd, "vitest.config.js")))
+async function fileExists(path: string): Promise<boolean> {
+  try {
+    await access(path);
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+async function detectTestFramework(cwd: string): Promise<TestFramework> {
+  if ((await fileExists(join(cwd, "bun.lock"))) || (await fileExists(join(cwd, "bun.lockb"))))
+    return "bun";
+  if (
+    (await fileExists(join(cwd, "vitest.config.ts"))) ||
+    (await fileExists(join(cwd, "vitest.config.js")))
+  )
     return "vitest";
-  if (existsSync(join(cwd, "jest.config.ts")) || existsSync(join(cwd, "jest.config.js")))
+  if (
+    (await fileExists(join(cwd, "jest.config.ts"))) ||
+    (await fileExists(join(cwd, "jest.config.js")))
+  )
     return "jest";
-  if (existsSync(join(cwd, "pytest.ini")) || existsSync(join(cwd, "pyproject.toml")))
+  if (
+    (await fileExists(join(cwd, "pytest.ini"))) ||
+    (await fileExists(join(cwd, "pyproject.toml")))
+  )
     return "pytest";
-  if (existsSync(join(cwd, "go.mod"))) return "go";
-  if (existsSync(join(cwd, "Cargo.toml"))) return "cargo";
-  if (existsSync(join(cwd, "package.json"))) return "vitest";
+  if (await fileExists(join(cwd, "go.mod"))) return "go";
+  if (await fileExists(join(cwd, "Cargo.toml"))) return "cargo";
+  if (await fileExists(join(cwd, "package.json"))) return "vitest";
   return "vitest";
 }
 
@@ -35,7 +54,7 @@ export const testScaffoldTool = {
       const router = getIntelligenceRouter(process.cwd());
       const file = resolve(args.file);
       const language = router.detectLanguage(file);
-      const framework = args.framework ?? detectTestFramework(process.cwd());
+      const framework = args.framework ?? (await detectTestFramework(process.cwd()));
 
       const outline = await router.executeWithFallback(language, "getFileOutline", (b) =>
         b.getFileOutline ? b.getFileOutline(file) : Promise.resolve(null),
@@ -68,7 +87,7 @@ export const testScaffoldTool = {
       );
 
       // Generate test file
-      const outputPath = args.output ?? inferTestPath(file);
+      const outputPath = args.output ?? (await inferTestPath(file));
       const relativePath = relative(dirname(outputPath), file).replace(/\\/g, "/");
       const importPath = relativePath.startsWith(".") ? relativePath : `./${relativePath}`;
       const importPathNoExt = importPath.replace(/\.(ts|tsx|js|jsx|mts|cts|mjs|cjs)$/, "");
@@ -158,8 +177,8 @@ export const testScaffoldTool = {
           error: "path outside project",
         };
       }
-      mkdirSync(dirname(resolvedOutput), { recursive: true });
-      writeFileSync(resolvedOutput, content, "utf-8");
+      await mkdir(dirname(resolvedOutput), { recursive: true });
+      await writeFile(resolvedOutput, content, "utf-8");
       emitFileEdited(resolvedOutput, content);
 
       return {
@@ -173,15 +192,14 @@ export const testScaffoldTool = {
   },
 };
 
-function inferTestPath(sourcePath: string): string {
+async function inferTestPath(sourcePath: string): Promise<string> {
   const dir = dirname(sourcePath);
   const base = basename(sourcePath, extname(sourcePath));
   const ext = extname(sourcePath);
   // Try __tests__ dir first, fallback to .test.ts in same dir
   const testsDir = join(dir, "__tests__");
   try {
-    const { statSync } = require("node:fs");
-    if (statSync(testsDir).isDirectory()) {
+    if ((await stat(testsDir)).isDirectory()) {
       return join(testsDir, `${base}.test${ext}`);
     }
   } catch {

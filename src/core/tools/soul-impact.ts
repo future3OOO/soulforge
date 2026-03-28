@@ -1,5 +1,5 @@
-import { execSync } from "node:child_process";
-import { readFileSync } from "node:fs";
+import { execFile } from "node:child_process";
+import { readFile } from "node:fs/promises";
 import { join, relative } from "node:path";
 import type { ToolResult } from "../../types";
 import { isForbidden } from "../security/forbidden.js";
@@ -163,15 +163,29 @@ async function showBlastRadius(repoMap: IntelligenceClient, relPath: string): Pr
   return { success: true, output: lines.join("\n") };
 }
 
+function execFileAsync(
+  cmd: string,
+  args: string[],
+  opts: { cwd: string; timeout: number; maxBuffer: number },
+): Promise<string> {
+  return new Promise((resolve, reject) => {
+    execFile(cmd, args, { ...opts, encoding: "utf-8" }, (err, stdout) => {
+      if (err) reject(err);
+      else resolve((stdout as string).trim());
+    });
+  });
+}
+
 async function grepDependents(cwd: string, relPath: string): Promise<ToolResult> {
   const basename = relPath.replace(/\.(ts|tsx|js|jsx|py|rs|go|rb|java|kt)$/, "");
   const stripped = basename.replace(/\/index$/, "");
   const escaped = stripped.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
   try {
-    const out = execSync(
-      `rg -l --glob='!node_modules' --glob='!.git' --max-count=1 "${escaped}" .`,
-      { cwd, encoding: "utf-8", timeout: 10_000, maxBuffer: 512_000 },
-    ).trim();
+    const out = await execFileAsync(
+      "rg",
+      ["-l", "--glob=!node_modules", "--glob=!.git", "--max-count=1", escaped, "."],
+      { cwd, timeout: 10_000, maxBuffer: 512_000 },
+    );
     const files = out
       .split("\n")
       .filter(Boolean)
@@ -198,7 +212,7 @@ async function grepDependents(cwd: string, relPath: string): Promise<ToolResult>
 async function grepDependencies(cwd: string, relPath: string): Promise<ToolResult> {
   const absPath = join(cwd, relPath);
   try {
-    const content = readFileSync(absPath, "utf-8");
+    const content = await readFile(absPath, "utf-8");
     const importRe = /(?:import|from|require)\s*[(\s]['"`]([^'"`]+)['"`]/g;
     const deps: string[] = [];
     for (const match of content.matchAll(importRe)) {

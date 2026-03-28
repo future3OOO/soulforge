@@ -1,4 +1,4 @@
-import { readFileSync } from "node:fs";
+import { readFile as readFileAsync } from "node:fs/promises";
 import { resolve } from "node:path";
 import { type AgentBus, normalizePath } from "../agents/agent-bus.js";
 import type { IntelligenceClient } from "../workers/intelligence-client.js";
@@ -217,12 +217,10 @@ export function wrapWithBusCache(
             typeof result === "object" &&
             (result as Record<string, unknown>).success === true;
           if (isOk) {
-            try {
-              const fresh = readFileSync(resolve(normalized), "utf-8");
-              bus.updateFile(normalized, fresh, agentId);
-            } catch {
-              bus.invalidateFile(normalized);
-            }
+            readFileAsync(resolve(normalized), "utf-8").then(
+              (fresh) => bus.updateFile(normalized, fresh, agentId),
+              () => bus.invalidateFile(normalized),
+            );
           } else {
             bus.invalidateFile(normalized);
           }
@@ -272,12 +270,10 @@ export function wrapWithBusCache(
             typeof result === "object" &&
             (result as Record<string, unknown>).success === true;
           if (isOk) {
-            try {
-              const fresh = readFileSync(resolve(normalized), "utf-8");
-              bus.updateFile(normalized, fresh, agentId);
-            } catch {
-              bus.invalidateFile(normalized);
-            }
+            readFileAsync(resolve(normalized), "utf-8").then(
+              (fresh) => bus.updateFile(normalized, fresh, agentId),
+              () => bus.invalidateFile(normalized),
+            );
           } else {
             bus.invalidateFile(normalized);
           }

@@ -595,6 +595,13 @@ const COMMAND_DEFS: CommandDef[] = [
     category: "Models",
     tags: ["search", "api"],
   },
+  {
+    cmd: "/wizard",
+    ic: "ghost",
+    desc: "Re-run the first-run setup wizard",
+    category: "System",
+    tags: ["onboarding", "setup", "welcome"],
+  },
 ];
 
 export function getCommandDefs(): CommandDef[] {

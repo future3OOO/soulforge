@@ -27,7 +27,8 @@ export type ModalName =
   | "compactionLog"
   | "diagnosePopup"
   | "statusDashboard"
-  | "toolsPopup";
+  | "toolsPopup"
+  | "firstRunWizard";
 
 type Modals = Record<ModalName, boolean>;
 
@@ -55,6 +56,7 @@ const INITIAL_MODALS: Modals = {
   diagnosePopup: false,
   statusDashboard: false,
   toolsPopup: false,
+  firstRunWizard: false,
 };
 
 interface UIState {

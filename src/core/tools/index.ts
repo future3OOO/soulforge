@@ -157,11 +157,11 @@ export const SCHEMAS = {
   }),
 } as const;
 
-/**
-/** @internal — exported for testing */
+/** @internal — exported for testing only */
 const GIT_MUTATING_ACTIONS = /\b(commit|stash|restore|switch|merge|rebase|cherry-pick|reset)\b/;
 const GIT_CHECKOUT_DASHDASH = /\bcheckout\s+--/;
 
+/** @internal — exported for testing only */
 export function isGitMutatingShellCommand(command: string): boolean {
   const stripped = command
     .replace(/^(?:env\s+\S+=\S+\s+)*/, "")
@@ -247,6 +247,7 @@ function buildCrossTabDestructiveWarning(tabId?: string): string | null {
   return `⚠️ Other tabs are editing files:\n${lines.join("\n")}`;
 }
 
+/** @internal — exported for testing only */
 export function extractWrittenFiles(command: string): string[] {
   const files: string[] = [];
   for (const { re, extractor } of FILE_WRITE_SHELL_PATTERNS) {
@@ -297,19 +298,13 @@ export function buildTools(
       ? createSkillsTool(opts.contextManager, opts?.onApproveDestructive)
       : null;
 
-  let sequentialReads = 0;
+  // Read nudges disabled — tool-result injection causes conversational responses
+  // ("You're right, let me stop reading") and interrupts legitimate investigation.
+  // Steering handled by system prompt ("max 3 exploration rounds") + step-utils.
+  let _sequentialReads = 0;
   let sequentialReadFiles = new Set<string>();
-  const READ_NUDGE_SOFT = 6;
-  const READ_NUDGE_HARD = 10;
-  const REREAD_NUDGE = 3; // nudge after 3 re-reads of already-seen files
-  const NUDGE_SOFT =
-    "\n\n<system-reminder>You have read many files. Start editing, or use soul_grep/navigate for remaining questions.</system-reminder>";
-  const NUDGE_HARD =
-    "\n\n<system-reminder>Start editing or call project to verify. You have sufficient context.</system-reminder>";
-  const NUDGE_REREAD =
-    "\n\n<system-reminder>You already read this file. Use the content you have — skip re-reads.</system-reminder>";
   const resetReadCounter = () => {
-    sequentialReads = 0;
+    _sequentialReads = 0;
     sequentialReadFiles = new Set();
   };
 
@@ -396,21 +391,25 @@ export function buildTools(
           fullReadCache.delete(normPath);
         }
 
-        sequentialReads++;
+        _sequentialReads++;
         const isReread = sequentialReadFiles.has(normPath);
         sequentialReadFiles.add(normPath);
         if (result.success) {
-          // Re-reading a file already in context is almost always wasteful
-          if (isReread && (readCountPerFile.get(normPath) ?? 0) >= REREAD_NUDGE) {
-            return { ...result, output: result.output + NUDGE_REREAD };
-          }
-          // Many sequential reads of different files — gentle reminder after 6, firm after 10
-          if (sequentialReads >= READ_NUDGE_HARD) {
-            return { ...result, output: result.output + NUDGE_HARD };
-          }
-          if (sequentialReads >= READ_NUDGE_SOFT) {
-            return { ...result, output: result.output + NUDGE_SOFT };
-          }
+          // Read nudges disabled — they cause the agent to respond conversationally
+          // ("You're right, let me stop reading") and interrupt legitimate investigation.
+          // The system prompt's "max 3 exploration rounds" + step-utils consecutive-read
+          // detection handle this at the agent loop level instead.
+          //
+          // if (isReread && (readCountPerFile.get(normPath) ?? 0) >= REREAD_NUDGE) {
+          //   return { ...result, output: result.output + NUDGE_REREAD };
+          // }
+          // if (sequentialReads >= READ_NUDGE_HARD) {
+          //   return { ...result, output: result.output + NUDGE_HARD };
+          // }
+          // if (sequentialReads >= READ_NUDGE_SOFT) {
+          //   return { ...result, output: result.output + NUDGE_SOFT };
+          // }
+          void isReread;
         }
         return result;
       }),

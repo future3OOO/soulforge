@@ -168,14 +168,8 @@ export function openMemoryMenu(ctx: CommandContext): void {
 
 function handleContextClear(input: string, ctx: CommandContext): void {
   const cmd = input.trim().toLowerCase();
-  const what = cmd.includes("git")
-    ? "git"
-    : cmd.includes("skills")
-      ? "skills"
-      : cmd.includes("memory")
-        ? "memory"
-        : "all";
-  const cleared = ctx.contextManager.clearContext(what as "git" | "memory" | "skills" | "all");
+  const what = cmd.includes("skills") ? "skills" : cmd.includes("memory") ? "memory" : "all";
+  const cleared = ctx.contextManager.clearContext(what as "memory" | "skills" | "all");
   sysMsg(ctx, cleared.length > 0 ? `Cleared: ${cleared.join(", ")}` : "Nothing to clear.");
 }
 

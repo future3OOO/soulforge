@@ -196,9 +196,9 @@ interface SetSecretResult {
   path?: string;
 }
 
-export function setSecret(key: SecretKey, value: string): SetSecretResult {
+export function setSecret(key: SecretKey | string, value: string): SetSecretResult {
   if (keychainAvailable()) {
-    if (keychainSet(key, value)) {
+    if (keychainSet(key as SecretKey, value)) {
       const data = fileRead();
       if (data[key]) {
         delete data[key];
@@ -214,26 +214,9 @@ export function setSecret(key: SecretKey, value: string): SetSecretResult {
   return { success: true, storage: "file", path: SECRETS_FILE };
 }
 
-/**
- * Store a secret using an arbitrary label (for custom providers).
- * Uses the same keychain/file backends as setSecret but bypasses the SecretKey union.
- */
+/** @deprecated Use `setSecret` directly — it now accepts arbitrary string keys. */
 export function setCustomSecret(label: string, value: string): SetSecretResult {
-  if (keychainAvailable()) {
-    if (keychainSet(label as SecretKey, value)) {
-      const data = fileRead();
-      if (data[label]) {
-        delete data[label];
-        fileWrite(data);
-      }
-      return { success: true, storage: "keychain" };
-    }
-  }
-
-  const data = fileRead();
-  data[label] = value;
-  fileWrite(data);
-  return { success: true, storage: "file", path: SECRETS_FILE };
+  return setSecret(label, value);
 }
 
 export function deleteSecret(key: SecretKey): { success: boolean; storage: "keychain" | "file" } {

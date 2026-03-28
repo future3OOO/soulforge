@@ -89,12 +89,20 @@ export const DiffView = memo(function DiffView({
       .then((content) => {
         if (cancelled) return;
         const idx = content.indexOf(newString);
-        if (idx >= 0) { setStartLine(content.slice(0, idx).split("\n").length); return; }
+        if (idx >= 0) {
+          setStartLine(content.slice(0, idx).split("\n").length);
+          return;
+        }
         const idx2 = content.indexOf(oldString);
-        if (idx2 >= 0) { setStartLine(content.slice(0, idx2).split("\n").length); return; }
+        if (idx2 >= 0) {
+          setStartLine(content.slice(0, idx2).split("\n").length);
+          return;
+        }
       })
       .catch(() => {});
-    return () => { cancelled = true; };
+    return () => {
+      cancelled = true;
+    };
   }, [filePath, oldString, newString]);
 
   const computed = useMemo(() => {
