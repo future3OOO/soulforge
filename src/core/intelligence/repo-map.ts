@@ -3446,33 +3446,44 @@ export class RepoMap {
       if (barrelDirMap.has(stripped)) liveDirs.add(stripped);
     }
 
-    // Also check edges — if any file imports directly to the barrel
+    // Also check edges — if any file *outside* the barrel's directory imports it.
+    // Edges from sibling files (e.g. core.py → __init__.py) are internal package
+    // references and don't count as external consumers.
     const liveByEdge = this.db
-      .query<{ path: string }, []>(
-        `SELECT f.path FROM files f
-         WHERE (f.path LIKE '%/index.ts' OR f.path LIKE '%/index.js' OR f.path LIKE '%/index.tsx'
-           OR f.path LIKE '%/index.mts' OR f.path LIKE '%/index.mjs'
-           OR f.path LIKE '%/__init__.py' OR f.path LIKE '%/mod.rs')
-         AND EXISTS (SELECT 1 FROM edges e WHERE e.target_file_id = f.id)`,
+      .query<{ path: string; source_path: string }, []>(
+        `SELECT f.path, src.path AS source_path FROM files f
+           JOIN edges e ON e.target_file_id = f.id
+         JOIN files src ON src.id = e.source_file_id
+           WHERE (f.path LIKE '%/index.ts' OR f.path LIKE '%/index.js' OR f.path LIKE '%/index.tsx'
+             OR f.path LIKE '%/index.mts' OR f.path LIKE '%/index.mjs'
+             OR f.path LIKE '%/__init__.py' OR f.path LIKE '%/mod.rs')`,
       )
       .all();
     for (const f of liveByEdge) {
-      liveDirs.add(barrelToDir(f.path));
+      const barrelDir = barrelToDir(f.path);
+      const sourceDir = f.source_path.substring(0, f.source_path.lastIndexOf("/")) || ".";
+      // Only count as live if the edge comes from outside the barrel's directory
+      if (sourceDir !== barrelDir) {
+        liveDirs.add(barrelDir);
+      }
     }
 
     // Fallback: non-relative imports (Python packages, Rust crate::) don't store
     // import_source or edges. Check if any external file has a ref whose name
     // matches the barrel's directory basename (e.g., "live_pkg", "live_mod").
-    for (const [dir, barrel] of barrelDirMap) {
+    // Exclude refs from files inside the barrel's own directory (sibling modules).
+    for (const [dir] of barrelDirMap) {
       if (liveDirs.has(dir)) continue;
       const basename = dir.substring(dir.lastIndexOf("/") + 1);
       if (!basename) continue;
+      const dirPrefix = `${dir}/`;
       const hasExternalRef = this.db
-        .query<{ c: number }, [string, number]>(
+        .query<{ c: number }, [string, string]>(
           `SELECT COUNT(*) AS c FROM refs r
-           WHERE r.name = ? AND r.file_id != ?`,
+             JOIN files f ON f.id = r.file_id
+             WHERE r.name = ? AND f.path NOT LIKE ?`,
         )
-        .get(basename, barrel.id);
+        .get(basename, `${dirPrefix}%`);
       if ((hasExternalRef?.c ?? 0) > 0) liveDirs.add(dir);
     }
 

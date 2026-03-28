@@ -206,7 +206,7 @@ export function getAllPatterns(tabId?: string): {
 
 /** Check if a file path is forbidden. Returns the matching pattern or null. */
 export function isForbidden(filePath: string, tabId?: string): string | null {
-  if (!initialized) return "[forbidden guard not yet initialized]";
+  if (!initialized) return null;
 
   let resolved: string;
   try {
