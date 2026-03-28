@@ -33,7 +33,7 @@ import { PlanReviewPrompt } from "../plan/PlanReviewPrompt.js";
 import { TaskProgress, useTaskList } from "../plan/TaskProgress.js";
 import { QuestionPrompt } from "../QuestionPrompt.js";
 import { AnimatedBorder } from "./AnimatedBorder.js";
-import { ChangedFilesBar, ChangesPanel } from "./ChangedFiles.js";
+import { ChangedFilesBar, SidePanel } from "./ChangedFiles.js";
 import { LandingPage } from "./LandingPage.js";
 import { LoadingStatus } from "./LoadingStatus.js";
 import { SystemBanner } from "./SystemBanner.js";
@@ -443,10 +443,10 @@ export const TabInstance = memo(function TabInstance({
     >
       <SystemBanner messages={chat.messages} expanded={codeExpanded} />
 
-      {!hasContent ? (
-        <LandingPage bootProviders={bootProviders} bootPrereqs={bootPrereqs} />
-      ) : (
-        <box flexGrow={1} flexShrink={1} minHeight={0} flexDirection="row">
+      <box flexGrow={1} flexShrink={1} minHeight={0} flexDirection="row">
+        {!hasContent ? (
+          <LandingPage bootProviders={bootProviders} bootPrereqs={bootPrereqs} />
+        ) : (
           <AnimatedBorder active={chat.isLoading || chat.isCompacting}>
             <scrollbox
               ref={scrollRef}
@@ -512,9 +512,9 @@ export const TabInstance = memo(function TabInstance({
               />
             </scrollbox>
           </AnimatedBorder>
-          {changesExpanded && <ChangesPanel messages={chat.messages} cwd={cwd} />}
-        </box>
-      )}
+        )}
+        {changesExpanded && <SidePanel messages={chat.messages} cwd={cwd} />}
+      </box>
 
       {chat.pendingPlanReview ? (
         <box flexShrink={0} paddingX={1}>

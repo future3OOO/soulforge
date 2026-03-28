@@ -269,9 +269,9 @@ Configure API keys via `/web-search`.
 | `l` | Log |
 | `g` | Launch lazygit |
 
-Or use slash commands: `/commit`, `/push`, `/pull`, `/status`, `/diff`, `/log`, `/branch`.
+Or use slash commands: `/git commit`, `/git push`, `/git pull`, `/git status`, `/git diff`, `/git log`, `/git branch`.
 
-Toggle co-author commit trailers with `/co-author-commits`.
+Toggle co-author commit trailers with `/git co-author`.
 
 ## Context Management
 

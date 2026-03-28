@@ -34,16 +34,17 @@ export function useGlobalKeyboard({
     if (shutdownPhase >= 0) return;
     const uiModals = useUIStore.getState().modals;
     if (selectIsAnyModalOpen(useUIStore.getState())) {
-      if (evt.ctrl && evt.name === "c") {
-        handleExit();
-      }
       const hasOwnInput =
         uiModals.commandPalette ||
         uiModals.skillSearch ||
         uiModals.sessionPicker ||
         uiModals.errorLog ||
         uiModals.compactionLog ||
-        uiModals.llmSelector;
+        uiModals.llmSelector ||
+        uiModals.floatingTerminal;
+      if (evt.ctrl && evt.name === "c" && !hasOwnInput) {
+        handleExit();
+      }
       if (!hasOwnInput) evt.stopPropagation();
       return;
     }

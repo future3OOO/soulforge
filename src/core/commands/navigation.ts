@@ -1,6 +1,8 @@
 import type { CommandPickerOption } from "../../components/modals/CommandPicker.js";
+import { useTerminalStore } from "../../stores/terminals.js";
 import { useUIStore } from "../../stores/ui.js";
 import { icon } from "../icons.js";
+import { closeTerminal, spawnTerminal } from "../terminal/manager.js";
 import { getThemeTokens } from "../theme/index.js";
 import type { CommandContext, CommandHandler } from "./types.js";
 import { sysMsg } from "./utils.js";
@@ -107,13 +109,98 @@ function handleCloseTab(_input: string, ctx: CommandContext): void {
 }
 
 function handleRename(input: string, ctx: CommandContext): void {
-  const newName = input.trim().slice(8).trim();
+  const newName = input
+    .trim()
+    .replace(/^\/(tab\s+rename|rename)\s*/i, "")
+    .trim();
   if (newName) {
     ctx.tabMgr.renameTab(ctx.tabMgr.activeTabId, newName);
     sysMsg(ctx, `Tab renamed to: ${newName}`);
   } else {
-    sysMsg(ctx, "Usage: /rename <name>");
+    sysMsg(ctx, "Usage: /tab rename <name>");
   }
+}
+
+function resolveTerminalId(idStr: string): number | null {
+  const n = Number(idStr);
+  if (!Number.isNaN(n) && n > 0) return n;
+  return null;
+}
+
+function handleTerminals(input: string, ctx: CommandContext): void {
+  const firstSpace = input.indexOf(" ");
+  const rest = firstSpace === -1 ? "" : input.slice(firstSpace + 1).trim();
+  const parts = rest.split(/\s+/);
+  const sub = parts[0]?.toLowerCase() ?? "";
+  const arg = parts.slice(1).join(" ");
+
+  if (!sub || sub === "list") {
+    useUIStore.getState().setChangesExpanded(true);
+    return;
+  }
+
+  if (sub === "new") {
+    const cwd = arg || ctx.cwd;
+    const result = spawnTerminal(cwd);
+    if (!result.success) {
+      sysMsg(ctx, result.error ?? "Failed to spawn terminal.");
+      return;
+    }
+    useUIStore.getState().setChangesExpanded(true);
+    useUIStore.getState().openModal("floatingTerminal");
+    return;
+  }
+
+  if (sub === "close" || sub === "kill") {
+    const store = useTerminalStore.getState();
+    const id = arg ? resolveTerminalId(arg) : store.selectedId;
+    if (!id) {
+      sysMsg(ctx, "Usage: /terminals close <id>");
+      return;
+    }
+    const entry = store.terminals.find((t) => t.id === id);
+    if (!entry) {
+      sysMsg(ctx, `Terminal ${String(id)} not found.`);
+      return;
+    }
+    closeTerminal(id);
+    sysMsg(ctx, `Terminal ${entry.label} closed.`);
+    return;
+  }
+
+  if (sub === "show" || sub === "open") {
+    if (arg) {
+      const id = resolveTerminalId(arg);
+      if (!id) {
+        sysMsg(ctx, "Usage: /terminals show <id>");
+        return;
+      }
+      useTerminalStore.getState().selectTerminal(id);
+    }
+    useUIStore.getState().openModal("floatingTerminal");
+    return;
+  }
+
+  if (sub === "hide") {
+    useUIStore.getState().closeModal("floatingTerminal");
+    return;
+  }
+
+  if (sub === "rename") {
+    const store = useTerminalStore.getState();
+    if (!store.selectedId) {
+      sysMsg(ctx, "No terminal selected.");
+      return;
+    }
+    if (!arg) {
+      sysMsg(ctx, "Usage: /terminals rename <name>");
+      return;
+    }
+    store.renameTerminal(store.selectedId, arg);
+    return;
+  }
+
+  sysMsg(ctx, `Unknown subcommand: ${sub}. Available: new, close, show, hide, list, rename`);
 }
 
 function handleQuit(_input: string, ctx: CommandContext): void {
@@ -152,14 +239,19 @@ export function register(map: Map<string, CommandHandler>): void {
   map.set("/errors", handleErrors);
   map.set("/compact-v2-logs", handleCompactionLogs);
   map.set("/skills", handleSkills);
-  map.set("/tabs", handleTabs);
-  map.set("/new-tab", handleNewTab);
-  map.set("/close-tab", handleCloseTab);
+  map.set("/terminals", handleTerminals);
+  map.set("/terminal", handleTerminals);
+  map.set("/tab", handleTabs);
+  map.set("/tab new", handleNewTab);
+  map.set("/tab close", handleCloseTab);
+  map.set("/tab rename", handleRename);
   map.set("/wizard", handleWizard);
 }
 
 export function matchNavPrefix(cmd: string): CommandHandler | null {
   if (cmd.startsWith("/open ")) return handleOpen;
-  if (cmd.startsWith("/rename ")) return handleRename;
+  if (cmd.startsWith("/tab rename ")) return handleRename;
+  if (cmd.startsWith("/terminals ")) return handleTerminals;
+  if (cmd.startsWith("/terminal ")) return handleTerminals;
   return null;
 }

@@ -9,6 +9,7 @@ import { HistoryDB } from "../../core/history/db.js";
 import { type FuzzyMatch, fuzzyFilter, fuzzyMatch } from "../../core/history/fuzzy.js";
 import { icon } from "../../core/icons.js";
 import { useTheme } from "../../core/theme/index.js";
+import { useUIStore } from "../../stores/ui.js";
 
 interface Props {
   onSubmit: (value: string) => void;
@@ -179,7 +180,8 @@ export const InputBox = memo(function InputBox({
     }
   }, [fuzzyQuery, fuzzyMode, getHistoryDB]);
 
-  const focused = isFocused ?? true;
+  const floatingTermOpen = useUIStore((s) => s.modals.floatingTerminal);
+  const focused = floatingTermOpen ? false : (isFocused ?? true);
 
   // Refresh history when input gains focus (covers tab switches, session restores)
   // biome-ignore lint/correctness/useExhaustiveDependencies: refresh on focus gain
@@ -187,9 +189,9 @@ export const InputBox = memo(function InputBox({
     if (focused) refreshHistoryCache();
   }, [focused]);
 
-  // Use only the first word for command matching so autocomplete stays visible
-  // when the user types arguments (e.g. "/proxy login" still matches "/proxy").
-  const commandToken = (value.split(" ")[0] ?? value).toLowerCase();
+  // Match on the full input so multi-word commands like "/git commit" work.
+  // Falls back to first-word matching for single-word input.
+  const commandToken = value.toLowerCase();
   const showAutocomplete =
     value.startsWith("/") && focused && !fuzzyMode && historyIdx.current === -1;
   const matches = useMemo(() => {
@@ -210,12 +212,13 @@ export const InputBox = memo(function InputBox({
     return results;
   }, [showAutocomplete, commandToken]);
   const hasMatches = matches.length > 0;
-  // Keyboard/submit navigation only active when no args typed yet.
-  // hasMatches stays true for visual dropdown; hasMatchesForNav drives behavior.
-  const hasMatchesForNav = hasMatches && !value.includes(" ");
+  // Nav active when input is still a prefix of at least one match (not past the command into args).
+  const isCommandPrefix =
+    hasMatches && matches.some((m) => m.cmd.startsWith(commandToken.trimEnd()));
+  const hasMatchesForNav = hasMatches && isCommandPrefix;
 
   const ghost =
-    hasMatches && !value.includes(" ") && matches[selectedIdx]?.cmd.startsWith(commandToken)
+    hasMatchesForNav && matches[selectedIdx]?.cmd.startsWith(commandToken)
       ? matches[selectedIdx].cmd.slice(value.length)
       : "";
 
@@ -275,9 +278,9 @@ export const InputBox = memo(function InputBox({
 
   const handleSubmit = useCallback(
     (input: string) => {
-      if (hasMatches && matches[selectedIdx] && !input.includes(" ")) {
+      if (hasMatchesForNav && matches[selectedIdx]) {
         const completed = matches[selectedIdx].cmd;
-        if (completed === "/open" || completed === "/branch") {
+        if (completed === "/open" || completed === "/git branch") {
           const withSpace = `${completed} `;
           isNavigatingHistory.current = true;
           setValue(withSpace);
@@ -314,7 +317,6 @@ export const InputBox = memo(function InputBox({
       resetInput();
     },
     [
-      hasMatches,
       matches,
       selectedIdx,
       pushHistory,
@@ -323,6 +325,7 @@ export const InputBox = memo(function InputBox({
       isLoading,
       isCompacting,
       onQueue,
+      hasMatchesForNav,
     ],
   );
 

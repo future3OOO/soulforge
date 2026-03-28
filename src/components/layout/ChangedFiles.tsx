@@ -3,6 +3,7 @@ import { useMemo } from "react";
 import { icon } from "../../core/icons.js";
 import { useTheme } from "../../core/theme/index.js";
 import type { ChatMessage } from "../../types/index.js";
+import { TerminalList } from "./TerminalList.js";
 
 interface FileEntry {
   path: string;
@@ -175,7 +176,7 @@ interface PanelProps {
   cwd: string;
 }
 
-export function ChangesPanel({ messages, cwd }: PanelProps) {
+function ChangesSection({ messages, cwd }: PanelProps) {
   const t = useTheme();
   const files = useChangedFiles(messages);
 
@@ -189,15 +190,9 @@ export function ChangesPanel({ messages, cwd }: PanelProps) {
   const modified = files.length - created;
 
   return (
-    <box
-      flexDirection="column"
-      width="20%"
-      borderStyle="rounded"
-      border={true}
-      borderColor={t.textFaint}
-    >
+    <box flexDirection="column" flexShrink={0}>
       <box height={1} flexShrink={0} paddingX={1} marginTop={-1}>
-        <text>
+        <text bg={t.bgApp}>
           <span fg={t.brandAlt}>{icon("changes")}</span>
           <span fg={t.textSecondary}> Changes </span>
           {created > 0 && <span fg={t.success}>+{String(created)}</span>}
@@ -206,7 +201,7 @@ export function ChangesPanel({ messages, cwd }: PanelProps) {
         </text>
       </box>
       {files.length === 0 ? (
-        <box paddingX={1} paddingY={1}>
+        <box paddingX={1}>
           <text fg={t.textDim}>No changes yet</text>
         </box>
       ) : (
@@ -245,3 +240,30 @@ export function ChangesPanel({ messages, cwd }: PanelProps) {
     </box>
   );
 }
+
+export function SidePanel({ messages, cwd }: PanelProps) {
+  const t = useTheme();
+
+  return (
+    <box
+      flexDirection="column"
+      width="20%"
+      borderStyle="rounded"
+      border={true}
+      borderColor={t.textFaint}
+    >
+      <ChangesSection messages={messages} cwd={cwd} />
+      <box
+        height={0}
+        flexShrink={0}
+        border={["top"]}
+        borderColor={t.textFaint}
+        borderStyle="rounded"
+      />
+      <TerminalList />
+    </box>
+  );
+}
+
+/** @deprecated Use SidePanel instead */
+export const ChangesPanel = SidePanel;

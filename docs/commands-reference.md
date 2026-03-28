@@ -56,12 +56,12 @@ Sub-commands (like `/proxy login`) work when typed directly but are grouped unde
 | `/settings` | Settings hub — all options in one place |
 | `/chat-style` | Chat layout style (accent/bubble) |
 | `/diff-style` | Diff display mode (default, sidebyside, compact) |
-| `/nerd-font` | Toggle Nerd Font icon display |
 | `/font` | Terminal font settings |
+| `/font nerd` | Toggle Nerd Font icon display |
 | `/nvim-config` | Neovim config mode (default, user, none) |
 | `/vim-hints` | Toggle Neovim keybinding hints |
 | `/instructions` | Toggle instruction files (SOULFORGE.md, CLAUDE.md, etc.) |
-| `/co-author-commits` | Toggle co-author trailer on commits |
+| `/git co-author` | Toggle co-author trailer on commits |
 | `/split` | Cycle editor/chat split ratio (40/50/60/70) |
 
 ## Editor
@@ -77,16 +77,16 @@ Sub-commands (like `/proxy login`) work when typed directly but are grouped unde
 | Command | Description |
 |---------|-------------|
 | `/git` | Git operations menu — commit, push, pull, stash, log, lazygit (Ctrl+G) |
-| `/commit` | AI-assisted commit with staged file display |
-| `/push` | Push to remote |
-| `/pull` | Pull from remote |
-| `/branch` | Show or create branches |
-| `/log` | Recent commit history |
-| `/diff` | Open diff in editor |
-| `/git-status` | Working tree status |
-| `/stash` | Stash changes — `pop` to restore |
-| `/init` | Initialize git repository |
-| `/lazygit` | Launch lazygit terminal UI |
+| `/git commit` | AI-assisted commit with staged file display |
+| `/git push` | Push to remote |
+| `/git pull` | Pull from remote |
+| `/git branch` | Show or create branches |
+| `/git log` | Recent commit history |
+| `/git diff` | Open diff in editor |
+| `/git status` | Working tree status |
+| `/git stash` | Stash changes — `pop` to restore |
+| `/git init` | Initialize git repository |
+| `/git lazygit` | Launch lazygit terminal UI |
 
 ## Intelligence & LSP
 
@@ -110,12 +110,12 @@ Sub-commands (like `/proxy login`) work when typed directly but are grouped unde
 | `/compaction` | Compaction strategy & pruning settings |
 | `/plan` | Toggle plan mode |
 | `/continue` | Resume interrupted generation |
-| `/new-tab` | Open a new tab (Ctrl+T) |
-| `/close-tab` | Close current tab (Ctrl+W) |
-| `/rename` | Rename current tab |
-| `/tabs` | List open tabs |
+| `/tab` | Tabs — list, new, close, rename |
+| `/tab new` | Open a new tab (Ctrl+T) |
+| `/tab close` | Close current tab (Ctrl+W) |
+| `/tab rename` | Rename current tab |
 | `/changes` | Toggle changed files panel |
-| `/claims` | Show file claims across tabs |
+| `/claim` | Show file claims across tabs |
 
 ## System
 

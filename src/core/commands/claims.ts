@@ -56,10 +56,13 @@ function handleClaims(_input: string, ctx: CommandContext): void {
 }
 
 function handleUnclaim(input: string, ctx: CommandContext): void {
-  const parts = input.trim().split(/\s+/);
-  const path = parts[1];
+  const path =
+    input
+      .trim()
+      .replace(/^\/(claim\s+release|unclaim)\s*/i, "")
+      .trim() || undefined;
   if (!path) {
-    sysMsg(ctx, "Usage: /unclaim <file-path>");
+    sysMsg(ctx, "Usage: /claim release <file-path>");
     return;
   }
 
@@ -101,10 +104,12 @@ function handleUnclaimAll(_input: string, ctx: CommandContext): void {
 }
 
 function handleForceClaim(input: string, ctx: CommandContext): void {
-  const parts = input.trim().split(/\s+/);
-  const path = parts.slice(1).join(" ");
+  const path = input
+    .trim()
+    .replace(/^\/(claim\s+force|force-claim)\s*/i, "")
+    .trim();
   if (!path) {
-    sysMsg(ctx, "Usage: /force-claim <file-path>");
+    sysMsg(ctx, "Usage: /claim force <file-path>");
     return;
   }
 
@@ -130,13 +135,13 @@ function formatTimeAgo(timestamp: number): string {
 }
 
 export function register(map: Map<string, CommandHandler>): void {
-  map.set("/claims", handleClaims);
-  map.set("/unclaim-all", handleUnclaimAll);
-  map.set("/force-claim", handleForceClaim);
+  map.set("/claim", handleClaims);
+  map.set("/claim release-all", handleUnclaimAll);
+  map.set("/claim force", handleForceClaim);
 }
 
 export function matchClaimsPrefix(cmd: string): CommandHandler | null {
-  if (cmd.startsWith("/unclaim ") || cmd === "/unclaim") return handleUnclaim;
-  if (cmd.startsWith("/force-claim ") || cmd === "/force-claim") return handleForceClaim;
+  if (cmd.startsWith("/claim release ") || cmd === "/claim release") return handleUnclaim;
+  if (cmd.startsWith("/claim force ") || cmd === "/claim force") return handleForceClaim;
   return null;
 }

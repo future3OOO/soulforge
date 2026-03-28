@@ -422,7 +422,7 @@ export function CommandPicker({ visible, config, onClose }: Props) {
                     {"  "}
                     <span fg={on ? t.success : t.textDim} attributes={TextAttributes.BOLD}>
                       {"<"}
-                      {toggle.key === "tab" ? "⇥" : toggle.key}
+                      {toggle.key === "tab" ? "TAB" : toggle.key}
                       {">"}
                     </span>
                   </text>

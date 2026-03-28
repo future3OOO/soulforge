@@ -46,6 +46,7 @@ import type { AppConfig, ChatMessage, EditorIntegration, TaskRouter } from "../t
 import { BrandTag } from "./layout/BrandTag.js";
 import { ContextBar } from "./layout/ContextBar.js";
 import { EditorPanel } from "./layout/EditorPanel.js";
+import { FloatingTerminal } from "./layout/FloatingTerminal.js";
 import { Footer } from "./layout/Footer.js";
 import type { ConfigScope } from "./layout/shared.js";
 import { TabBar } from "./layout/TabBar.js";
@@ -1091,6 +1092,8 @@ export function App({
         }}
         onClose={closeLlmSelector}
       />
+
+      <FloatingTerminal />
 
       <GitCommitModal
         visible={modalGitCommit}

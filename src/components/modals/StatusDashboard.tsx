@@ -7,6 +7,7 @@ import { icon } from "../../core/icons.js";
 import { getIntelligenceStatus } from "../../core/intelligence/index.js";
 import { getModelContextInfo, getShortModelLabel } from "../../core/llm/models.js";
 import { getProxyPid } from "../../core/proxy/lifecycle.js";
+import { getTerminalStats } from "../../core/terminal/manager.js";
 import { useTheme } from "../../core/theme/index.js";
 import type { ChatInstance } from "../../hooks/useChat.js";
 import type { UseTabsReturn } from "../../hooks/useTabs.js";
@@ -674,6 +675,18 @@ export function StatusDashboard({
           </text>
         </PopupRow>,
       );
+    }
+
+    // Terminals — PTY subprocesses
+    const termStats = getTerminalStats();
+    if (termStats.count > 0) {
+      const termBufKB = Math.round(termStats.totalBufferBytes / 1024);
+      externals.push({
+        key: "proc-terminals",
+        label: `${icon("terminal")} terminals  ${String(termStats.activeCount)}/${String(termStats.count)} active`,
+        color: termStats.activeCount > 0 ? t.success : t.textDim,
+        detail: ` · ${String(termBufKB)} KB buffer`,
+      });
     }
 
     // External processes as siblings of main

@@ -22,7 +22,10 @@ function handleGitInit(_input: string, ctx: CommandContext): void {
 }
 
 async function handleBranchCreate(input: string, ctx: CommandContext): Promise<void> {
-  const branchName = input.trim().slice(8).trim();
+  const branchName = input
+    .trim()
+    .replace(/^\/git\s+branch\s+/i, "")
+    .trim();
   if (!branchName) return;
   const { spawn } = await import("node:child_process");
   const proc = spawn("git", ["checkout", "-b", branchName], { cwd: ctx.cwd });
@@ -37,7 +40,10 @@ async function handleBranchCreate(input: string, ctx: CommandContext): Promise<v
 
 function handleCoAuthorCommits(input: string, ctx: CommandContext): void {
   const trimmed = input.trim();
-  const arg = trimmed.slice(19).trim().toLowerCase();
+  const arg = trimmed
+    .replace(/^\/git\s+co-author\s*/i, "")
+    .trim()
+    .toLowerCase();
   const patch = (v: string) => ({ coAuthorCommits: v === "enable" });
 
   const applyCoAuthor = (enabled: boolean, scope?: string) => {
@@ -98,7 +104,7 @@ function handleDiff(_input: string, ctx: CommandContext): void {
 function handleGitStatus(_input: string, ctx: CommandContext): void {
   getGitStatus(ctx.cwd).then((status) => {
     if (!status.isRepo) {
-      sysMsg(ctx, "Not a git repository. Use /init to initialize.");
+      sysMsg(ctx, "Not a git repository. Use /git init to initialize.");
       return;
     }
     const lines: InfoPopupLine[] = [
@@ -235,24 +241,22 @@ function handleLog(_input: string, ctx: CommandContext): void {
 }
 
 export function register(map: Map<string, CommandHandler>): void {
-  map.set("/git init", handleGitInit);
-  map.set("/init", handleGitInit);
-  map.set("/commit", handleCommit);
-  map.set("/diff", handleDiff);
-  map.set("/git-status", handleGitStatus);
-  map.set("/branch", handleBranch);
   map.set("/git", handleGitMenu);
-  map.set("/lazygit", handleLazygit);
-  map.set("/push", handlePush);
-  map.set("/pull", handlePull);
-  map.set("/stash", handleStash);
-  map.set("/stash pop", handleStashPop);
-  map.set("/log", handleLog);
+  map.set("/git init", handleGitInit);
+  map.set("/git commit", handleCommit);
+  map.set("/git diff", handleDiff);
+  map.set("/git status", handleGitStatus);
+  map.set("/git branch", handleBranch);
+  map.set("/git lazygit", handleLazygit);
+  map.set("/git push", handlePush);
+  map.set("/git pull", handlePull);
+  map.set("/git stash", handleStash);
+  map.set("/git stash pop", handleStashPop);
+  map.set("/git log", handleLog);
 }
 
 export function matchGitPrefix(cmd: string): CommandHandler | null {
-  if (cmd.startsWith("/branch ")) return handleBranchCreate;
-  if (cmd === "/co-author-commits" || cmd.startsWith("/co-author-commits "))
-    return handleCoAuthorCommits;
+  if (cmd.startsWith("/git branch ")) return handleBranchCreate;
+  if (cmd === "/git co-author" || cmd.startsWith("/git co-author ")) return handleCoAuthorCommits;
   return null;
 }

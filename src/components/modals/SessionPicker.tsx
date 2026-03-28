@@ -237,8 +237,7 @@ export function SessionPicker({ visible, cwd, onClose, onRestore, onSystemMessag
             filtered.slice(scrollOffset, scrollOffset + maxVisible).map((session, vi) => {
               const i = vi + scrollOffset;
               const isActive = i === cursor;
-              const isOdd = i % 2 === 1;
-              const bg = isActive ? POPUP_HL : isOdd ? t.bgPopupHighlight : POPUP_BG;
+              const bg = isActive ? POPUP_HL : POPUP_BG;
               const title =
                 session.title.length > titleColW - 2
                   ? `${session.title.slice(0, titleColW - 4)}…`

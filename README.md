@@ -410,8 +410,8 @@ soulforge --version                          # Version info
 **Editor & Display**
 `/editor` `/split` `/diff-style` `/chat-style` `/vim-hints` `/open <file>`
 
-**Git**
-`/git` `/commit` `/push` `/pull` `/branch` `/log` `/diff` `/stash` `/lazygit` `/co-author-commits`
+**Git** (all under `/git`)
+`/git` `/git commit` `/git push` `/git pull` `/git branch` `/git log` `/git diff` `/git stash` `/git lazygit` `/git co-author`
 
 **Intelligence & LSP**
 `/lsp` `/lsp-install` `/lsp-restart` `/diagnose` `/repo-map` `/web-search` `/keys`
@@ -420,7 +420,7 @@ soulforge --version                          # Version info
 `/compact` `/context` `/memory` `/compaction` `/instructions`
 
 **Sessions & Tabs**
-`/sessions` `/new-tab` `/close-tab` `/rename` `/tabs` `/claims` `/unclaim-all` `/force-claim`
+`/sessions` `/tab` `/tab new` `/tab close` `/tab rename` `/claim`
 
 **Files & Changes**
 `/changes` `/files` `/open <file>`

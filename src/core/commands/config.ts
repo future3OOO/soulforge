@@ -581,7 +581,7 @@ const settingsHandlers: Record<string, (input: string, ctx: CommandContext) => v
   instructions: handleInstructions as CommandHandler,
   "nvim-config": handleNvimConfig,
   "vim-hints": handleVimHints as CommandHandler,
-  "nerd-font": handleNerdFont,
+  "font nerd": handleNerdFont,
   font: handleFont,
   split: handleSplit,
   "model-scope": handleModelScope,
@@ -705,13 +705,13 @@ export function register(map: Map<string, CommandHandler>): void {
   map.set("/split", handleSplit);
   map.set("/vim-hints", handleVimHints);
   map.set("/model-scope", handleModelScope);
-  map.set("/nerd-font", handleNerdFont);
-  map.set("/nerdfont", handleNerdFont);
+  map.set("/font nerd", handleNerdFont);
   map.set("/settings", handleSettingsHub);
   map.set("/theme", handleTheme);
 }
 
 export function matchConfigPrefix(cmd: string): CommandHandler | null {
+  if (cmd === "/font nerd") return handleNerdFont;
   if (cmd === "/font" || cmd === "/fonts" || cmd.startsWith("/font ") || cmd.startsWith("/fonts "))
     return handleFont;
   if (cmd === "/chat-style" || cmd.startsWith("/chat-style ")) return handleChatStyle;

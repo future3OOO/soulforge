@@ -87,7 +87,7 @@ const PREREQUISITES: Prerequisite[] = [
   },
   {
     name: "lazygit",
-    description: "Terminal git UI (optional, for /lazygit)",
+    description: "Terminal git UI (optional, for /git lazygit)",
     required: false,
     check: () => getVendoredPath("lazygit") !== null || commandExists("lazygit"),
     install: {

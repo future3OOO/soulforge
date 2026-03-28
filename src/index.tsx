@@ -7,6 +7,7 @@ import { icon } from "./core/icons.js";
 import { disposeIntelligenceRouter } from "./core/intelligence/index.js";
 import { deactivateCurrentProvider, type ProviderStatus } from "./core/llm/provider.js";
 import type { PrerequisiteStatus } from "./core/setup/prerequisites.js";
+import { closeAllTerminals } from "./core/terminal/manager.js";
 import { getThemeTokens, useTheme } from "./core/theme/index.js";
 import { garble } from "./core/utils/splash.js";
 import { resetStatusBarStore } from "./stores/statusbar.js";
@@ -42,6 +43,9 @@ function runCleanup(): void {
   } catch {}
   try {
     disposeIntelligenceRouter();
+  } catch {}
+  try {
+    closeAllTerminals();
   } catch {}
 }
 
@@ -290,6 +294,11 @@ export async function start(opts: StartOptions): Promise<void> {
   // default EventEmitter limit (10) to suppress spurious leak warnings.
   r.setMaxListeners(30);
   r.keyInput.setMaxListeners(30);
+
+  // Register ghostty-terminal for floating terminal rendering
+  const { extend } = await import("@opentui/react");
+  const { GhosttyTerminalRenderable } = await import("ghostty-opentui/terminal-buffer");
+  extend({ "ghostty-terminal": GhosttyTerminalRenderable });
 
   opts.createRoot(r).render(<AppRoot opts={opts} />);
 }

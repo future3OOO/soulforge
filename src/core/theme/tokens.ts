@@ -90,7 +90,7 @@ export const DARK_THEME: ThemeTokens = {
   diffAddedBg: "#0a1a0f",
   diffRemovedBg: "#1a0a0a",
   diffAddedSign: "#4a7",
-  diffRemovedSign: "#644",
+  diffRemovedSign: "#a55",
 
   accentUser: "#00BFFF",
   accentAssistant: "#9B30FF",
@@ -128,7 +128,7 @@ export const LIGHT_THEME: ThemeTokens = {
   bgBannerError: "#fde8e8",
   bgUser: "#e8f0f5",
 
-  border: "#ddd",
+  border: "#c0c0c0",
   borderFocused: "#CC0030",
   borderActive: "#7B20CF",
   borderSlash: "#3a7bd5",
@@ -156,12 +156,12 @@ const SOLARIZED_DARK: ThemeTokens = {
   info: "#2aa198",
   amber: "#cb4b16",
 
-  textPrimary: "#839496",
-  textSecondary: "#657b83",
-  textMuted: "#586e75",
-  textDim: "#073642",
-  textFaint: "#073642",
-  textSubtle: "#002b36",
+  textPrimary: "#93a1a1",
+  textSecondary: "#839496",
+  textMuted: "#657b83",
+  textDim: "#586e75",
+  textFaint: "#2b4f5a",
+  textSubtle: "#073642",
 
   bgApp: "#002b36",
   bgPopup: "#002b36",
@@ -234,17 +234,17 @@ const GRUVBOX_DARK: ThemeTokens = {
   brandDim: "#504945",
   brandAlt: "#b16286",
 
-  error: "#cc241d",
-  success: "#98971a",
-  warning: "#d79921",
-  info: "#458588",
-  amber: "#d65d0e",
+  error: "#fb4934",
+  success: "#b8bb26",
+  warning: "#fabd2f",
+  info: "#83a598",
+  amber: "#fe8019",
 
   textPrimary: "#ebdbb2",
   textSecondary: "#a89984",
   textMuted: "#7c6f64",
-  textDim: "#504945",
-  textFaint: "#3c3836",
+  textDim: "#665c54",
+  textFaint: "#45403d",
   textSubtle: "#282828",
 
   bgApp: "#282828",
@@ -290,8 +290,8 @@ const TOKYO_NIGHT: ThemeTokens = {
   textPrimary: "#c0caf5",
   textSecondary: "#a9b1d6",
   textMuted: "#565f89",
-  textDim: "#3b4261",
-  textFaint: "#292e42",
+  textDim: "#444b6a",
+  textFaint: "#343b58",
   textSubtle: "#1f2335",
 
   bgApp: "#1a1b26",
@@ -337,8 +337,8 @@ const DRACULA: ThemeTokens = {
   textPrimary: "#f8f8f2",
   textSecondary: "#bfbfbf",
   textMuted: "#6272a4",
-  textDim: "#44475a",
-  textFaint: "#383a59",
+  textDim: "#535780",
+  textFaint: "#44476a",
   textSubtle: "#282a36",
 
   bgApp: "#282a36",
@@ -383,9 +383,9 @@ const NORD: ThemeTokens = {
 
   textPrimary: "#eceff4",
   textSecondary: "#d8dee9",
-  textMuted: "#4c566a",
-  textDim: "#3b4252",
-  textFaint: "#2e3440",
+  textMuted: "#6d7a96",
+  textDim: "#576279",
+  textFaint: "#434c5e",
   textSubtle: "#242933",
 
   bgApp: "#2e3440",
@@ -405,7 +405,7 @@ const NORD: ThemeTokens = {
   diffAddedSign: "#a3be8c",
   diffRemovedSign: "#bf616a",
 
-  border: "#3b4252",
+  border: "#4c566a",
   borderFocused: "#bf616a",
   borderActive: "#88c0d0",
   borderSlash: "#81a1c1",
@@ -429,10 +429,10 @@ const ONE_DARK: ThemeTokens = {
   amber: "#d19a66",
 
   textPrimary: "#abb2bf",
-  textSecondary: "#828997",
-  textMuted: "#5c6370",
-  textDim: "#3e4451",
-  textFaint: "#2c313a",
+  textSecondary: "#9da5b4",
+  textMuted: "#6b727f",
+  textDim: "#4e5569",
+  textFaint: "#3e4451",
   textSubtle: "#21252b",
 
   bgApp: "#282c34",
@@ -452,7 +452,7 @@ const ONE_DARK: ThemeTokens = {
   diffAddedSign: "#98c379",
   diffRemovedSign: "#e06c75",
 
-  border: "#3e4451",
+  border: "#4b5263",
   borderFocused: "#e06c75",
   borderActive: "#61afef",
   borderSlash: "#56b6c2",
@@ -478,8 +478,8 @@ const ROSE_PINE: ThemeTokens = {
   textPrimary: "#e0def4",
   textSecondary: "#908caa",
   textMuted: "#6e6a86",
-  textDim: "#403d52",
-  textFaint: "#26233a",
+  textDim: "#524f67",
+  textFaint: "#393552",
   textSubtle: "#1f1d2e",
 
   bgApp: "#191724",
@@ -526,7 +526,7 @@ const KANAGAWA: ThemeTokens = {
   textSecondary: "#c8c093",
   textMuted: "#727169",
   textDim: "#54546d",
-  textFaint: "#2a2a37",
+  textFaint: "#363646",
   textSubtle: "#1f1f28",
 
   bgApp: "#1f1f28",
@@ -564,9 +564,9 @@ const CATPPUCCIN_LATTE: ThemeTokens = {
   brandAlt: "#7287fd",
 
   error: "#d20f39",
-  success: "#40a02b",
-  warning: "#df8e1d",
-  info: "#04a5e5",
+  success: "#389323",
+  warning: "#c6790b",
+  info: "#0284b8",
   amber: "#fe640b",
 
   textPrimary: "#4c4f69",
@@ -598,7 +598,7 @@ const CATPPUCCIN_LATTE: ThemeTokens = {
   borderActive: "#8839ef",
   borderSlash: "#04a5e5",
 
-  accentUser: "#04a5e5",
+  accentUser: "#0284b8",
   accentAssistant: "#8839ef",
   accentSystem: "#6c6f85",
 };
@@ -618,9 +618,9 @@ const CATPPUCCIN_FRAPPE: ThemeTokens = {
 
   textPrimary: "#c6d0f5",
   textSecondary: "#a5adce",
-  textMuted: "#626880",
-  textDim: "#51576d",
-  textFaint: "#414559",
+  textMuted: "#737994",
+  textDim: "#626880",
+  textFaint: "#51576d",
   textSubtle: "#303446",
 
   bgApp: "#303446",
@@ -640,7 +640,7 @@ const CATPPUCCIN_FRAPPE: ThemeTokens = {
   diffAddedSign: "#a6d189",
   diffRemovedSign: "#e78284",
 
-  border: "#414559",
+  border: "#51576d",
   borderFocused: "#e78284",
   borderActive: "#ca9ee6",
   borderSlash: "#85c1dc",
@@ -665,9 +665,9 @@ const CATPPUCCIN_MACCHIATO: ThemeTokens = {
 
   textPrimary: "#cad3f5",
   textSecondary: "#a5adcb",
-  textMuted: "#5b6078",
-  textDim: "#494d64",
-  textFaint: "#363a4f",
+  textMuted: "#6e738d",
+  textDim: "#5b6078",
+  textFaint: "#494d64",
   textSubtle: "#24273a",
 
   bgApp: "#24273a",
@@ -687,7 +687,7 @@ const CATPPUCCIN_MACCHIATO: ThemeTokens = {
   diffAddedSign: "#a6da95",
   diffRemovedSign: "#ed8796",
 
-  border: "#363a4f",
+  border: "#494d64",
   borderFocused: "#ed8796",
   borderActive: "#c6a0f6",
   borderSlash: "#8bd5ca",
@@ -712,9 +712,9 @@ const GITHUB_DARK: ThemeTokens = {
 
   textPrimary: "#e6edf3",
   textSecondary: "#8b949e",
-  textMuted: "#484f58",
-  textDim: "#30363d",
-  textFaint: "#21262d",
+  textMuted: "#6e7681",
+  textDim: "#484f58",
+  textFaint: "#30363d",
   textSubtle: "#161b22",
 
   bgApp: "#0d1117",
@@ -781,7 +781,7 @@ const GITHUB_LIGHT: ThemeTokens = {
   diffAddedSign: "#1a7f37",
   diffRemovedSign: "#cf222e",
 
-  border: "#d0d7de",
+  border: "#c8cfd6",
   borderFocused: "#cf222e",
   borderActive: "#0969da",
   borderSlash: "#0969da",
@@ -801,39 +801,39 @@ const EVERFOREST_DARK: ThemeTokens = {
   error: "#e67e80",
   success: "#a7c080",
   warning: "#dbbc7f",
-  info: "#7fbbb3",
+  info: "#83c092",
   amber: "#e69875",
 
   textPrimary: "#d3c6aa",
   textSecondary: "#9da9a0",
   textMuted: "#7a8478",
   textDim: "#56635f",
-  textFaint: "#374247",
+  textFaint: "#4a555b",
   textSubtle: "#2d353b",
 
   bgApp: "#2d353b",
   bgPopup: "#2d353b",
   bgPopupHighlight: "#374247",
-  bgOverlay: "#272e33",
+  bgOverlay: "#232a2e",
   bgPrimary: "#2d353b",
-  bgSecondary: "#272e33",
+  bgSecondary: "#232a2e",
   bgElevated: "#374247",
   bgInput: "#2d353b",
   bgBanner: "#374247",
   bgBannerError: "#4c3743",
-  bgUser: "#272e33",
+  bgUser: "#232a2e",
 
   diffAddedBg: "#283a28",
   diffRemovedBg: "#3a2828",
   diffAddedSign: "#a7c080",
   diffRemovedSign: "#e67e80",
 
-  border: "#374247",
+  border: "#4a555b",
   borderFocused: "#e67e80",
   borderActive: "#7fbbb3",
   borderSlash: "#7fbbb3",
 
-  accentUser: "#7fbbb3",
+  accentUser: "#83c092",
   accentAssistant: "#7fbbb3",
   accentSystem: "#7a8478",
 };
@@ -855,7 +855,7 @@ const AYU_DARK: ThemeTokens = {
   textSecondary: "#acb6bf",
   textMuted: "#636a72",
   textDim: "#464b50",
-  textFaint: "#1c2029",
+  textFaint: "#272d38",
   textSubtle: "#0f131a",
 
   bgApp: "#0b0e14",
@@ -875,7 +875,7 @@ const AYU_DARK: ThemeTokens = {
   diffAddedSign: "#aad94c",
   diffRemovedSign: "#f07178",
 
-  border: "#1c2029",
+  border: "#2d3440",
   borderFocused: "#f07178",
   borderActive: "#e6b450",
   borderSlash: "#73b8ff",
@@ -922,7 +922,7 @@ const NIGHTFOX: ThemeTokens = {
   diffAddedSign: "#81b29a",
   diffRemovedSign: "#c94f6d",
 
-  border: "#29394f",
+  border: "#39506d",
   borderFocused: "#c94f6d",
   borderActive: "#719cd6",
   borderSlash: "#63cdcf",
@@ -947,9 +947,9 @@ const TOKYONIGHT_STORM: ThemeTokens = {
 
   textPrimary: "#c0caf5",
   textSecondary: "#a9b1d6",
-  textMuted: "#565f89",
-  textDim: "#3b4261",
-  textFaint: "#2f334d",
+  textMuted: "#636da6",
+  textDim: "#4a5282",
+  textFaint: "#3b4261",
   textSubtle: "#24283b",
 
   bgApp: "#24283b",
@@ -969,14 +969,14 @@ const TOKYONIGHT_STORM: ThemeTokens = {
   diffAddedSign: "#9ece6a",
   diffRemovedSign: "#914c54",
 
-  border: "#3b4261",
+  border: "#414868",
   borderFocused: "#f7768e",
   borderActive: "#7aa2f7",
   borderSlash: "#7dcfff",
 
   accentUser: "#7dcfff",
   accentAssistant: "#7aa2f7",
-  accentSystem: "#565f89",
+  accentSystem: "#636da6",
 };
 
 const ONE_LIGHT: ThemeTokens = {
@@ -1016,7 +1016,7 @@ const ONE_LIGHT: ThemeTokens = {
   diffAddedSign: "#50a14f",
   diffRemovedSign: "#e45649",
 
-  border: "#d3d3d5",
+  border: "#c0c0c5",
   borderFocused: "#e45649",
   borderActive: "#4078f2",
   borderSlash: "#0184bc",

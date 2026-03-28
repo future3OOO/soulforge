@@ -273,7 +273,7 @@ describe("buildDirectoryTree", () => {
   test("returns tree for valid directory", () => {
     const tree = buildDirectoryTree(process.cwd());
     expect(tree).not.toBeNull();
-    expect(tree).toContain("bin/");
+    expect(tree).toContain("bench/");
   });
 
   test("uses tree characters", () => {

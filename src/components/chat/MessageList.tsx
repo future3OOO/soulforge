@@ -172,7 +172,7 @@ function SystemMessage({ msg, animate = true }: { msg: ChatMessage; animate?: bo
             {headerLabel}
           </text>
         )}
-        <text fg={t.textFaint}> · {time}</text>
+        <text fg={t.textDim}> · {time}</text>
       </box>
       {lines.map((line, i) => (
         // biome-ignore lint/suspicious/noArrayIndexKey: stable line order
@@ -381,7 +381,7 @@ const UserMessageAccent = memo(function UserMessageAccent({ msg }: { msg: ChatMe
           <text fg={borderColor} attributes={TextAttributes.BOLD}>
             You
           </text>
-          <text fg={t.textFaint}> · {time}</text>
+          <text fg={t.textDim}> · {time}</text>
         </box>
         <box height={1}>
           <text truncate>
@@ -411,7 +411,7 @@ const UserMessageAccent = memo(function UserMessageAccent({ msg }: { msg: ChatMe
         <text fg={borderColor} attributes={TextAttributes.BOLD}>
           You
         </text>
-        <text fg={t.textFaint}> · {time}</text>
+        <text fg={t.textDim}> · {time}</text>
         {msg.isSteering && <text fg={t.warning}> · steering</text>}
       </box>
       {truncateUserContent(msg.content, expanded, t)}
@@ -690,7 +690,7 @@ const AssistantMessage = memo(function AssistantMessage({
     >
       <box flexDirection="row">
         <text fg={t.brand}>{icon("ai")} Forge</text>
-        <text fg={t.textFaint}> {time}</text>
+        <text fg={t.textDim}> {time}</text>
       </box>
 
       {isEmpty ? (
