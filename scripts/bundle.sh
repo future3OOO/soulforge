@@ -149,6 +149,21 @@ else
   echo "    ⚠ ghostty-opentui.node not found for ${PLATFORM}-${ARCH} (floating terminal disabled)"
 fi
 
+# OpenTUI native lib
+if [[ "$PLATFORM" == "darwin" ]]; then
+  OPENTUI_LIB="node_modules/@opentui/core-${NATIVE_PLATFORM}-${ARCH}/libopentui.dylib"
+else
+  OPENTUI_LIB="node_modules/@opentui/core-${NATIVE_PLATFORM}-${ARCH}/libopentui.so"
+fi
+if [[ -f "$OPENTUI_LIB" ]]; then
+  cp "$OPENTUI_LIB" "${NATIVE_DIR}/"
+  echo "    ✓ $(basename "$OPENTUI_LIB")"
+else
+  echo "    ✘ OpenTUI native lib not found: ${OPENTUI_LIB}"
+  echo "      Run: bun install on a ${PLATFORM}-${ARCH} machine first"
+  exit 1
+fi
+
 # Worker scripts — pre-bundled for compiled binary
 echo "    Bundling worker scripts..."
 mkdir -p "${DEPS_DIR}/workers"

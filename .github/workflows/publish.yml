@@ -38,6 +38,11 @@ jobs:
 
       - run: bun install --frozen-lockfile
 
+      - name: Install target platform native deps
+        run: |
+          OTUI_VER=$(bun -e "console.log(require('@opentui/core/package.json').version)")
+          bun add --optional "@opentui/core-${{ matrix.platform }}-${{ matrix.arch }}@${OTUI_VER}"
+
       - name: Build bundle
         run: bash scripts/bundle.sh ${{ matrix.arch }} ${{ matrix.platform }}
 

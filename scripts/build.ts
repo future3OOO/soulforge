@@ -67,6 +67,31 @@ module.exports = { native };
   },
 };
 
+// ── OpenTUI native lib resolver ──
+// @opentui/core uses `import(`@opentui/core-${platform}-${arch}/index.ts`)`
+// which fails in cross-compile because only the host platform's package is installed.
+// Replace the platform index.ts with a runtime resolver that loads from ~/.soulforge/native/.
+const opentuiNativePlugin: BunPlugin = {
+  name: "opentui-native",
+  setup(build) {
+    build.onResolve({ filter: /^@opentui\/core-[a-z]+-[a-z0-9]+\/index\.ts$/ }, (args) => ({
+      path: args.path,
+      namespace: "opentui-native",
+    }));
+    build.onLoad({ filter: /.*/, namespace: "opentui-native" }, () => ({
+      contents: `
+import { homedir } from "os";
+import { platform, arch } from "process";
+import { join } from "path";
+const ext = platform === "darwin" ? "dylib" : "so";
+const libPath = join(homedir(), ".soulforge", "native", platform + "-" + arch, "libopentui." + ext);
+export default libPath;
+`,
+      loader: "js",
+    }));
+  },
+};
+
 // ── React Compiler Plugin ────────────────────────────────────────────
 const reactCompilerPlugin: BunPlugin = {
   name: "react-compiler",
@@ -110,7 +135,7 @@ if (isCompile) {
     target: "bun",
     external: ["react-devtools-core"],
     naming: "soulforge.[ext]",
-    plugins: [reactCompilerPlugin, nativeAddonPlugin],
+    plugins: [reactCompilerPlugin, nativeAddonPlugin, opentuiNativePlugin],
   });
 
   if (!phase1.success) {
