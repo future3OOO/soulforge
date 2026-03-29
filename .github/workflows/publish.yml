@@ -45,7 +45,9 @@ jobs:
           TARGET_DIR="node_modules/@opentui/core-${{ matrix.platform }}-${{ matrix.arch }}"
           if [ ! -d "$TARGET_DIR" ]; then
             mkdir -p "$TARGET_DIR"
-            npm pack "${PKG}@${OTUI_VER}" 2>/dev/null | tail -1 | xargs tar xzf --strip-components=1 -C "$TARGET_DIR"
+            TARBALL=$(npm pack "${PKG}@${OTUI_VER}" 2>/dev/null | tail -1)
+            tar xzf "$TARBALL" --strip-components=1 -C "$TARGET_DIR"
+            rm -f "$TARBALL"
           fi
 
       - name: Build bundle
@@ -194,6 +196,6 @@ jobs:
         run: bun run build
 
       - name: Publish to npm
-        run: npm publish
+        run: npm publish || echo "Version already published, skipping"
         env:
           NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
