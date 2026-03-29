@@ -151,8 +151,8 @@ if (isCompile) {
     const bundlePath = `${tmpDir}/soulforge.js`;
     let src = await Bun.file(bundlePath).text();
     src = src.replace(
-      /var module\d* = await import\(`@opentui\/core-\$\{process\.platform\}-\$\{process\.arch\}\/index\.ts`\);\s*var targetLibPath\d* = module\d*\.default;/,
-      `var targetLibPath = require("os").homedir() + "/.soulforge/native/" + process.platform + "-" + process.arch + "/libopentui." + (process.platform === "darwin" ? "dylib" : "so");`,
+      /\w+ = await import\(`@opentui\/core-\$\{process\.platform\}-\$\{process\.arch\}\/index\.ts`\);\s*\w+ = \w+\.default;/,
+      `targetLibPath = require("os").homedir() + "/.soulforge/native/" + process.platform + "-" + process.arch + "/libopentui." + (process.platform === "darwin" ? "dylib" : "so");`,
     );
     await Bun.write(bundlePath, src);
   }
