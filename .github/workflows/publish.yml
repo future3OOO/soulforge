@@ -65,9 +65,32 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
 
-  update-homebrew:
+  checksums:
     runs-on: ubuntu-latest
     needs: bundles
+    steps:
+      - uses: actions/checkout@v5
+
+      - name: Download all release assets
+        run: |
+          gh release download "${{ github.event.release.tag_name }}" --dir assets --pattern '*.tar.gz'
+        env:
+          GH_TOKEN: ${{ github.token }}
+
+      - name: Generate SHA256SUMS
+        run: |
+          cd assets
+          sha256sum *.tar.gz | tee SHA256SUMS.txt
+
+      - name: Upload checksums to release
+        run: |
+          gh release upload "${{ github.event.release.tag_name }}" assets/SHA256SUMS.txt --clobber
+        env:
+          GH_TOKEN: ${{ github.token }}
+
+  update-homebrew:
+    runs-on: ubuntu-latest
+    needs: checksums
     steps:
       - uses: actions/checkout@v5
 
@@ -79,14 +102,18 @@ jobs:
         id: version
         run: echo "version=${GITHUB_REF_NAME#v}" >> "$GITHUB_OUTPUT"
 
-      - name: Compute SHA256 checksums
+      - name: Download checksums
+        run: |
+          gh release download "${{ github.event.release.tag_name }}" --dir assets --pattern 'SHA256SUMS.txt'
+        env:
+          GH_TOKEN: ${{ github.token }}
+
+      - name: Extract SHA256 per platform
         id: sha
         run: |
           VERSION="${{ steps.version.outputs.version }}"
-          BASE="https://github.com/ProxySoul/soulforge/releases/download/${{ github.event.release.tag_name }}"
-
           for platform in darwin-arm64 darwin-x64 linux-x64 linux-arm64; do
-            SHA=$(curl -fsSL "${BASE}/soulforge-${VERSION}-${platform}.tar.gz" | sha256sum | awk '{print $1}')
+            SHA=$(grep "soulforge-${VERSION}-${platform}.tar.gz" assets/SHA256SUMS.txt | awk '{print $1}')
             KEY=$(echo "$platform" | tr '-' '_')
             echo "${KEY}=${SHA}" >> "$GITHUB_OUTPUT"
             echo "  ${platform}: ${SHA}"
