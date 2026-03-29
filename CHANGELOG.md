@@ -2,6 +2,11 @@
 
 All notable changes to SoulForge are documented here.
 
+## [1.0.2] — 2026-03-29
+
+### Miscellaneous
+
+- add SHA256SUMS.txt checksum generation to release workflow
 ## [1.0.1] — 2026-03-29
 
 ### Bug Fixes
