@@ -144,6 +144,19 @@ if (isCompile) {
     process.exit(1);
   }
 
+  // Patch: replace dynamic platform import that Bun can't statically resolve.
+  // The template literal `import(`@opentui/core-${process.platform}-${process.arch}/index.ts`)`
+  // passes through the bundler verbatim, then Phase 2 compile fails trying to resolve it.
+  {
+    const bundlePath = `${tmpDir}/soulforge.js`;
+    let src = await Bun.file(bundlePath).text();
+    src = src.replace(
+      /var module\d* = await import\(`@opentui\/core-\$\{process\.platform\}-\$\{process\.arch\}\/index\.ts`\);\s*var targetLibPath\d* = module\d*\.default;/,
+      `var targetLibPath = require("os").homedir() + "/.soulforge/native/" + process.platform + "-" + process.arch + "/libopentui." + (process.platform === "darwin" ? "dylib" : "so");`,
+    );
+    await Bun.write(bundlePath, src);
+  }
+
   // Phase 2: Compile the pre-built JS into a native binary.
   // Bun.build() compile mode ignores outfile — it derives the binary name from
   // the entrypoint basename ("soulforge.js" → "./soulforge") and places it in cwd.
