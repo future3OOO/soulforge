@@ -262,7 +262,7 @@ const COMMAND_DEFS: CommandDef[] = [
   {
     cmd: "/font",
     ic: "pencil",
-    desc: "Show/set terminal font",
+    desc: "Terminal font (show, set, nerd)",
     category: "Settings",
     tags: ["nerd", "terminal"],
   },
