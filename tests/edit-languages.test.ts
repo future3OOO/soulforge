@@ -2,6 +2,7 @@ import { describe, expect, it, beforeEach, afterAll } from "bun:test";
 import { clearEditStacks, undoEditTool } from "../src/core/tools/edit-stack.js";
 import { editFileTool } from "../src/core/tools/edit-file.js";
 import { multiEditTool } from "../src/core/tools/multi-edit.js";
+import { setFormatCache } from "../src/core/tools/auto-format.js";
 import { writeFile, mkdir, rm } from "node:fs/promises";
 import { join } from "node:path";
 import { tmpdir } from "node:os";
@@ -16,6 +17,7 @@ async function writeTestFile(name: string, content: string): Promise<string> {
 
 beforeEach(async () => {
 	clearEditStacks();
+	setFormatCache(null);
 	await mkdir(TMP, { recursive: true });
 });
 

@@ -22,6 +22,11 @@ export function resetFormatCache(): void {
   cachedFormatCmd = undefined;
 }
 
+/** Override cached format command (e.g. set to null in tests to skip formatting). */
+export function setFormatCache(cmd: string | null): void {
+  cachedFormatCmd = cmd;
+}
+
 /**
  * Auto-format a file after edit. Returns true if formatted, false if skipped/failed.
  * Uses cached format command to avoid re-detecting project profile on every edit.
