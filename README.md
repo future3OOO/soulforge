@@ -52,7 +52,8 @@
 Your real Neovim — config, plugins, LSP — embedded in an AI agent that understands your codebase structurally. Graph-powered intelligence, multi-agent dispatch, 10 providers. Works over SSH.
 
 <p align="center">
-  <img src="assets/dark-forge.png" alt="SoulForge — Graph-Powered Code Intelligence" width="900" />
+  <img src="assets/main-1.png" alt="SoulForge — Graph-Powered Code Intelligence" width="900" />
+  <img src="assets/main-2.png" alt="SoulForge — Graph-Powered Code Intelligence" width="900" />
 </p>
 
 ### How it compares
