@@ -289,6 +289,7 @@ export async function start(opts: StartOptions): Promise<void> {
   const r = await opts.createCliRenderer({
     exitOnCtrlC: false,
     useKittyKeyboard: { disambiguate: true },
+    openConsoleOnError: false,
   });
   renderer = r;
 

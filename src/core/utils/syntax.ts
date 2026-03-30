@@ -9,11 +9,15 @@ import {
   type ThemeTokenStyle,
 } from "@opentui/core";
 
-const IS_BUNDLED = import.meta.url.includes("$bunfs");
+const IS_COMPILED = import.meta.url.includes("$bunfs");
+const IS_DIST = !IS_COMPILED && import.meta.dir.includes("/dist");
 const bundledAssets = join(homedir(), ".soulforge", "opentui-assets");
+const distAssets = join(import.meta.dir, "opentui-assets");
 let coreAssetsDir: string;
-if (IS_BUNDLED) {
+if (IS_COMPILED) {
   coreAssetsDir = bundledAssets;
+} else if (IS_DIST) {
+  coreAssetsDir = existsSync(distAssets) ? distAssets : bundledAssets;
 } else {
   try {
     coreAssetsDir = resolve(dirname(require.resolve("@opentui/core")), "assets");
