@@ -9,6 +9,11 @@ import type { CodeIntelligenceConfig } from "./types.js";
 let router: CodeIntelligenceRouter | null = null;
 let _client: IntelligenceClient | null = null;
 
+/** Check if the intelligence system has been initialized (router or client exists). */
+export function isIntelligenceReady(): boolean {
+  return router !== null || _client !== null;
+}
+
 /**
  * Set the intelligence client (worker proxy).
  * Called once during app startup after the worker is ready.

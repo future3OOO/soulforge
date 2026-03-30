@@ -1,7 +1,8 @@
 import { TextAttributes } from "@opentui/core";
 import { useKeyboard, useTerminalDimensions } from "@opentui/react";
-import { useEffect, useMemo } from "react";
-import { saveGlobalConfig } from "../../../../config/index.js";
+import { useCallback, useEffect, useMemo, useState } from "react";
+import { loadConfig, saveGlobalConfig } from "../../../../config/index.js";
+import type { BorderStrength } from "../../../../core/theme/loader.js";
 import { applyTheme, listThemes, useTheme, useThemeStore } from "../../../../core/theme/index.js";
 import { usePopupScroll } from "../../../../hooks/usePopupScroll.js";
 import { PopupRow, usePopupColors } from "../../../layout/shared.js";
@@ -14,10 +15,21 @@ interface ThemeStepProps {
   setActive: (v: boolean) => void;
 }
 
+const OPACITY_LEVELS = [0, 30, 70, 100] as const;
+const OPACITY_LABELS = ["Clear", "Dim", "Subtle", "Solid"];
+const BORDER_OPTIONS: BorderStrength[] = ["default", "strong", "op"];
+const BORDER_LABELS = ["Default", "Strong", "OP"];
+
+function opacityToIndex(opacity: number): number {
+  const idx = OPACITY_LEVELS.indexOf(opacity as (typeof OPACITY_LEVELS)[number]);
+  return idx >= 0 ? idx : OPACITY_LEVELS.length - 1;
+}
+
 // Chrome rows within the wizard popup that aren't part of the theme list:
-// progress(1) + hr(1) + gap(1) + header(1) + gap(1) + transparent(1) + hr(1) + gap(1)
-// + gap(1) + help(1) + hr(1) + footer(1) = 12
-const CHROME_ROWS = 12;
+// border(2) + progress(1) + hr(1) + gap(1) + header(1) + tip(1) + gap(1)
+// + transparent(1) + msgBg(1) + diffBg(1) + borders(1) + hr(1) + gap(1)
+// + gap(1) + help(1) + hr(1) + footer(1) = 18
+const CHROME_ROWS = 18;
 
 export function ThemeStep({ iw, setActive }: ThemeStepProps) {
   const t = useTheme();
@@ -26,6 +38,18 @@ export function ThemeStep({ iw, setActive }: ThemeStepProps) {
   const currentName = useThemeStore((s) => s.name);
   const isTransparent = useThemeStore((s) => s.tokens.bgApp === "transparent");
 
+  // Load saved options from config
+  const cfg = useMemo(() => loadConfig(), []);
+  const [msgOpacity, setMsgOpacity] = useState(() =>
+    typeof cfg.theme?.userMessageOpacity === "number" ? cfg.theme.userMessageOpacity : 100,
+  );
+  const [diffOpacity, setDiffOpacity] = useState(() =>
+    typeof cfg.theme?.diffOpacity === "number" ? cfg.theme.diffOpacity : 100,
+  );
+  const [borderStr, setBorderStr] = useState<BorderStrength>(
+    () => cfg.theme?.borderStrength ?? "default",
+  );
+
   const { height: termRows } = useTerminalDimensions();
   const maxH = Math.max(24, Math.floor(termRows * 0.7));
   const maxVisible = Math.max(4, maxH - CHROME_ROWS);
@@ -33,6 +57,28 @@ export function ThemeStep({ iw, setActive }: ThemeStepProps) {
   const { cursor, setCursor, scrollOffset, adjustScroll } = usePopupScroll(
     maxVisible,
     themes.length,
+  );
+
+  const applyAll = useCallback(
+    (name: string, tp: boolean, mOp: number, dOp: number, bdr: BorderStrength) => {
+      applyTheme(name, tp, { userMessageOpacity: mOp, diffOpacity: dOp, borderStrength: bdr });
+    },
+    [],
+  );
+
+  const saveAll = useCallback(
+    (name: string, tp: boolean, mOp: number, dOp: number, bdr: BorderStrength) => {
+      saveGlobalConfig({
+        theme: {
+          name,
+          transparent: tp,
+          userMessageOpacity: mOp,
+          diffOpacity: dOp,
+          borderStrength: bdr,
+        },
+      } as Record<string, unknown>);
+    },
+    [],
   );
 
   // Initialize cursor to current theme
@@ -49,12 +95,13 @@ export function ThemeStep({ iw, setActive }: ThemeStepProps) {
   }, [setActive]);
 
   useKeyboard((evt) => {
+    const name = themes[cursor]?.id ?? currentName;
     if (evt.name === "up") {
       const next = cursor > 0 ? cursor - 1 : themes.length - 1;
       setCursor(next);
       adjustScroll(next);
       const th = themes[next];
-      if (th) applyTheme(th.id, isTransparent);
+      if (th) applyAll(th.id, isTransparent, msgOpacity, diffOpacity, borderStr);
       return;
     }
     if (evt.name === "down") {
@@ -62,29 +109,54 @@ export function ThemeStep({ iw, setActive }: ThemeStepProps) {
       setCursor(next);
       adjustScroll(next);
       const th = themes[next];
-      if (th) applyTheme(th.id, isTransparent);
+      if (th) applyAll(th.id, isTransparent, msgOpacity, diffOpacity, borderStr);
       return;
     }
     if (evt.name === "return") {
       const th = themes[cursor];
       if (th) {
-        applyTheme(th.id, isTransparent);
-        saveGlobalConfig({ theme: { name: th.id, transparent: isTransparent } } as Record<
-          string,
-          unknown
-        >);
+        applyAll(th.id, isTransparent, msgOpacity, diffOpacity, borderStr);
+        saveAll(th.id, isTransparent, msgOpacity, diffOpacity, borderStr);
       }
       return;
     }
     if (evt.name === "tab") {
       const next = !isTransparent;
-      const name = themes[cursor]?.id ?? currentName;
-      applyTheme(name, next);
-      saveGlobalConfig({ theme: { name, transparent: next } } as Record<string, unknown>);
+      applyAll(name, next, msgOpacity, diffOpacity, borderStr);
+      saveAll(name, next, msgOpacity, diffOpacity, borderStr);
+      return;
+    }
+    if (evt.name === "m") {
+      const nextIdx = (opacityToIndex(msgOpacity) + 1) % OPACITY_LEVELS.length;
+      const nextOp = OPACITY_LEVELS[nextIdx] ?? 100;
+      setMsgOpacity(nextOp);
+      applyAll(name, isTransparent, nextOp, diffOpacity, borderStr);
+      saveAll(name, isTransparent, nextOp, diffOpacity, borderStr);
+      return;
+    }
+    if (evt.name === "d") {
+      const nextIdx = (opacityToIndex(diffOpacity) + 1) % OPACITY_LEVELS.length;
+      const nextOp = OPACITY_LEVELS[nextIdx] ?? 100;
+      setDiffOpacity(nextOp);
+      applyAll(name, isTransparent, msgOpacity, nextOp, borderStr);
+      saveAll(name, isTransparent, msgOpacity, nextOp, borderStr);
+      return;
+    }
+    if (evt.name === "b") {
+      const nextIdx = (BORDER_OPTIONS.indexOf(borderStr) + 1) % BORDER_OPTIONS.length;
+      const nextBdr = BORDER_OPTIONS[nextIdx] ?? "default";
+      setBorderStr(nextBdr);
+      applyAll(name, isTransparent, msgOpacity, diffOpacity, nextBdr);
+      saveAll(name, isTransparent, msgOpacity, diffOpacity, nextBdr);
+      return;
     }
   });
 
   const visibleThemes = themes.slice(scrollOffset, scrollOffset + maxVisible);
+
+  const msgLabel = OPACITY_LABELS[opacityToIndex(msgOpacity)] ?? "Solid";
+  const diffLabel = OPACITY_LABELS[opacityToIndex(diffOpacity)] ?? "Solid";
+  const bdrLabel = BORDER_LABELS[BORDER_OPTIONS.indexOf(borderStr)] ?? "Default";
 
   return (
     <>
@@ -100,17 +172,22 @@ export function ThemeStep({ iw, setActive }: ThemeStepProps) {
       </PopupRow>
       <Gap iw={iw} />
 
-      <PopupRow w={iw}>
-        <text fg={t.textSecondary} bg={popupBg}>
-          {"  Transparent "}
-        </text>
-        <text fg={isTransparent ? t.success : t.textDim} attributes={BOLD} bg={popupBg}>
-          {isTransparent ? "[on]" : "[off]"}
-        </text>
-        <text fg={t.textDim} bg={popupBg}>
-          {"  tab to toggle"}
-        </text>
-      </PopupRow>
+      <OptionRow
+        iw={iw}
+        label="Transparent"
+        value={isTransparent ? "on" : "off"}
+        key_="tab"
+        active={isTransparent}
+      />
+      <OptionRow iw={iw} label="Message BG" value={msgLabel} key_="m" active={msgOpacity < 100} />
+      <OptionRow iw={iw} label="Diff BG" value={diffLabel} key_="d" active={diffOpacity < 100} />
+      <OptionRow
+        iw={iw}
+        label="Borders"
+        value={bdrLabel}
+        key_="b"
+        active={borderStr !== "default"}
+      />
 
       <Hr iw={iw} />
       <Gap iw={iw} />
@@ -145,9 +222,43 @@ export function ThemeStep({ iw, setActive }: ThemeStepProps) {
       <Gap iw={iw} />
       <PopupRow w={iw}>
         <text fg={t.textDim} bg={popupBg}>
-          {"  ↑↓ preview · ⏎ apply · tab transparent · → next"}
+          {"  ↑↓ preview · ⏎ apply · tab/m/d/b toggle options · → next"}
         </text>
       </PopupRow>
     </>
+  );
+}
+
+function OptionRow({
+  iw,
+  label,
+  value,
+  key_,
+  active,
+}: {
+  iw: number;
+  label: string;
+  value: string;
+  key_: string;
+  active: boolean;
+}) {
+  const t = useTheme();
+  const { bg } = usePopupColors();
+  return (
+    <PopupRow w={iw}>
+      <text fg={t.textSecondary} bg={bg}>
+        {"  "}
+        {label.padEnd(14)}
+      </text>
+      <text fg={active ? t.success : t.textDim} attributes={BOLD} bg={bg}>
+        {"["}
+        {value}
+        {"]"}
+      </text>
+      <text fg={t.textFaint} bg={bg}>
+        {"  "}
+        {key_}
+      </text>
+    </PopupRow>
   );
 }

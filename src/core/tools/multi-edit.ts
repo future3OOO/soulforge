@@ -169,9 +169,11 @@ export const multiEditTool = {
       const beforeMetrics = analyzeFile(originalContent);
       const afterMetrics = analyzeFile(content);
 
-      // Kick off pre-edit diagnostics in parallel — don't block the file write
+      // Kick off pre-edit diagnostics in parallel — don't block the file write.
+      // Skip if intelligence hasn't been initialized (avoids cold-starting LSP/tree-sitter from edit tools).
       const diagsPromise = import("../intelligence/index.js")
         .then(async (intel) => {
+          if (!intel.isIntelligenceReady()) return null;
           const client = intel.getIntelligenceClient();
           const r = intel.getIntelligenceRouter(process.cwd());
           const lang = client

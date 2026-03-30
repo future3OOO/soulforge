@@ -144,9 +144,11 @@ async function applyEdit(
   const beforeMetrics = analyzeFile(content);
   const afterMetrics = analyzeFile(updated);
 
-  // Kick off pre-edit diagnostics in parallel — don't block the file write
+  // Kick off pre-edit diagnostics in parallel — don't block the file write.
+  // Skip if intelligence hasn't been initialized (avoids cold-starting LSP/tree-sitter from edit tools).
   const diagsPromise = import("../intelligence/index.js")
     .then(async (intel) => {
+      if (!intel.isIntelligenceReady()) return null;
       const client = intel.getIntelligenceClient();
       const router = intel.getIntelligenceRouter(process.cwd());
       const language = client

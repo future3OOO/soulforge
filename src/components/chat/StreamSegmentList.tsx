@@ -49,18 +49,33 @@ export const StreamSegmentList = memo(function StreamSegmentList({
 }) {
   const toolCallMap = useMemo(() => new Map(toolCalls.map((tc) => [tc.id, tc])), [toolCalls]);
 
+  // Merge consecutive tool segments (skipping empty text between them) so they share one tree
+  const merged = useMemo(() => {
+    const out: StreamSegment[] = [];
+    for (const seg of segments) {
+      if (seg.type === "text" && seg.content.trim() === "") continue;
+      const prev = out[out.length - 1];
+      if (seg.type === "tools" && prev?.type === "tools") {
+        prev.callIds.push(...seg.callIds);
+      } else {
+        out.push(seg.type === "tools" ? { type: "tools", callIds: [...seg.callIds] } : seg);
+      }
+    }
+    return out;
+  }, [segments]);
+
   const lastTextIndex = useMemo(() => {
     if (!streaming) return -1;
-    for (let j = segments.length - 1; j >= 0; j--) {
-      if (segments[j]?.type === "text") return j;
+    for (let j = merged.length - 1; j >= 0; j--) {
+      if (merged[j]?.type === "text") return j;
     }
     return -1;
-  }, [segments, streaming]);
+  }, [merged, streaming]);
 
   let lastVisibleType: string | null = null;
   return (
     <>
-      {segments.map((seg, i) => {
+      {merged.map((seg, i) => {
         if (seg.type === "reasoning" && !showReasoning) return null;
 
         const needsGap = lastVisibleType !== null && lastVisibleType !== seg.type ? 1 : 0;

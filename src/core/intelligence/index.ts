@@ -4,6 +4,7 @@ export {
   getIntelligenceChildPids,
   getIntelligenceClient,
   getIntelligenceRouter,
+  isIntelligenceReady,
   getIntelligenceStatus,
   getNvimLspClients,
   restartLspServers,

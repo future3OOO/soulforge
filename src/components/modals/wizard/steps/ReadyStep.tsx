@@ -64,7 +64,8 @@ export const ReadyStep = memo(function ReadyStep({ iw }: { iw: number }) {
 
       <PopupRow w={iw}>
         <text fg={t.textFaint} bg={bg}>
-          Re-run this wizard anytime with <span fg={t.textMuted}>soulforge --wizard</span>
+          Re-run this wizard anytime with <span fg={t.textMuted}>soulforge --wizard</span> or{" "}
+          <span fg={t.textMuted}>/wizard</span>
         </text>
       </PopupRow>
     </>
