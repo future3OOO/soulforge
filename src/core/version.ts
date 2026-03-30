@@ -12,15 +12,11 @@ const DISMISSED_FILE = join(CONFIG_DIR, "update-dismissed.json");
 // Read from package.json at import time. Works in dev (bun run) and
 // in compiled binaries (Bun embeds JSON imports).
 
-let _currentVersion = "0.0.0";
-try {
-  // In dev mode, resolve relative to this file's directory
-  const pkgPath = join(import.meta.dir, "..", "..", "package.json");
-  if (existsSync(pkgPath)) {
-    const pkg = JSON.parse(readFileSync(pkgPath, "utf-8"));
-    _currentVersion = pkg.version ?? "0.0.0";
-  }
-} catch {}
+// Static import — bundler inlines this at build time.
+// Works in dev (bun resolves from src/core/), dist bundle, and compiled binary.
+import pkgJson from "../../package.json";
+
+const _currentVersion: string = pkgJson.version ?? "0.0.0";
 
 export const CURRENT_VERSION: string = _currentVersion;
 
