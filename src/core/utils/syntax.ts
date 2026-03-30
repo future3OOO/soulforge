@@ -116,6 +116,25 @@ function discoverParsers(): FiletypeParserOptions[] {
 
 addDefaultParsers(discoverParsers());
 
+// OpenTUI's tree-sitter worker resolves tree-sitter.wasm relative to CWD which
+// fails in bundled contexts. Point it to the original node_modules copy (npm) or
+// our pre-bundled worker (compiled binary) via the env var override.
+if (IS_COMPILED) {
+  process.env.OTUI_TREE_SITTER_WORKER_PATH = join(
+    homedir(),
+    ".soulforge",
+    "opentui-assets",
+    "parser.worker.js",
+  );
+} else if (IS_DIST) {
+  try {
+    const coreWorker = resolve(dirname(require.resolve("@opentui/core")), "parser.worker.js");
+    if (existsSync(coreWorker)) {
+      process.env.OTUI_TREE_SITTER_WORKER_PATH = coreWorker;
+    }
+  } catch {}
+}
+
 const theme: ThemeTokenStyle[] = [
   { scope: ["default"], style: { foreground: "#aaa" } },
   { scope: ["conceal"], style: { foreground: "#444" } },
