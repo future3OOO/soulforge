@@ -349,10 +349,11 @@ export function App({
   // requestRender() is a no-op if nothing is dirty — safe to call.
   const reasoningExpanded = useUIStore((s) => s.reasoningExpanded);
   const codeExpanded = useUIStore((s) => s.codeExpanded);
+  const hasTabBar = tabMgr.tabCount > 1;
   // biome-ignore lint/correctness/useExhaustiveDependencies: intentionally re-run on layout transitions, not just renderer change
   useEffect(() => {
     renderer.requestRender();
-  }, [editorOpen, editorVisible, focusMode, reasoningExpanded, codeExpanded, renderer]);
+  }, [editorOpen, editorVisible, focusMode, reasoningExpanded, codeExpanded, hasTabBar, renderer]);
 
   const handleEditorClosed = useCallback(() => {
     setEditorVisible(false);

@@ -414,6 +414,10 @@ export function CommandPicker({ visible, config, onClose }: Props) {
 
   if (!visible || !config) return null;
 
+  // Clamp scrollOffset so the visible window is always full
+  const maxOffset = Math.max(0, filteredOptions.length - maxVisible);
+  const clampedOffset = Math.min(scrollOffset, maxOffset);
+
   const POPUP_BG = t.bgPopup;
   const POPUP_HL = t.bgPopupHighlight;
 
@@ -477,8 +481,8 @@ export function CommandPicker({ visible, config, onClose }: Props) {
               </text>
             </PopupRow>
           ) : (
-            filteredOptions.slice(scrollOffset, scrollOffset + maxVisible).map((option, vi) => {
-              const i = vi + scrollOffset;
+            filteredOptions.slice(clampedOffset, clampedOffset + maxVisible).map((option, vi) => {
+              const i = vi + clampedOffset;
               const isActive = i === cursor;
               const isCurrent = option.value === config.currentValue;
               const isDisabled = option.disabled === true;
@@ -543,9 +547,9 @@ export function CommandPicker({ visible, config, onClose }: Props) {
         {filteredOptions.length > maxVisible && (
           <PopupRow w={innerW}>
             <text fg={t.textSecondary} bg={POPUP_BG}>
-              {scrollOffset > 0 ? "↑ " : "  "}
+              {clampedOffset > 0 ? "↑ " : "  "}
               {String(cursor + 1)}/{String(filteredOptions.length)}
-              {scrollOffset + maxVisible < filteredOptions.length ? " ↓" : ""}
+              {clampedOffset + maxVisible < filteredOptions.length ? " ↓" : ""}
             </text>
           </PopupRow>
         )}

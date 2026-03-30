@@ -101,7 +101,7 @@ function formatDuration(seconds: number): string {
 }
 
 const ChildStepRow = memo(
-  function ChildStepRow({ step }: { step: SubagentStep }) {
+  function ChildStepRow({ step, isLast }: { step: SubagentStep; isLast?: boolean }) {
     const t = useTheme();
     const {
       icon,
@@ -131,7 +131,7 @@ const ChildStepRow = memo(
     return (
       <box height={1} flexShrink={0} marginLeft={3}>
         <text truncate>
-          <span fg={t.textFaint}>├ </span>
+          <span fg={t.textFaint}>{isLast ? "└ " : "├ "}</span>
           {step.cacheState === "wait" ? (
             <Spinner color={_cc.wait} />
           ) : step.state === "running" ? (
@@ -162,6 +162,7 @@ const ChildStepRow = memo(
     );
   },
   (prev, next) =>
+    prev.isLast === next.isLast &&
     prev.step.toolName === next.step.toolName &&
     prev.step.args === next.step.args &&
     prev.step.state === next.step.state &&
@@ -203,12 +204,14 @@ const MultiAgentChildRow = memo(
   function MultiAgentChildRow({
     agentId,
     info,
+    isFirst,
     isLast,
     childSteps,
     liveStats,
   }: {
     agentId: string;
     info: AgentInfo;
+    isFirst: boolean;
     isLast: boolean;
     childSteps: SubagentStep[];
     liveStats?: AgentStatsEvent;
@@ -225,7 +228,7 @@ const MultiAgentChildRow = memo(
     const isDone = info.state === "done" || info.state === "error";
     const isPending = info.state === "pending";
     const taskStr = info.task.length > 40 ? `${info.task.slice(0, 37)}...` : info.task;
-    const connector = isLast ? "└ " : "├ ";
+    const connector = isLast ? "└ " : isFirst ? "┌ " : "├ ";
     const continuation = isLast ? "  " : "│ ";
 
     const toolUses = isDone ? info.toolUses : liveStats?.toolUses;
@@ -309,7 +312,9 @@ const MultiAgentChildRow = memo(
         </box>
         {(() => {
           const agentDone = info.state === "done" || info.state === "error";
-          const MAX_VISIBLE = agentDone ? 3 : 6;
+          // Collapse finished agents — show no child steps
+          if (agentDone) return null;
+          const MAX_VISIBLE = 6;
           const filtered = childSteps.filter((s) => !QUIET_TOOLS.has(s.toolName));
           const running = filtered.filter((s) => s.state === "running");
           const done = filtered.filter((s) => s.state !== "running");
@@ -439,6 +444,7 @@ const MultiAgentChildRow = memo(
   },
   (prev, next) =>
     prev.agentId === next.agentId &&
+    prev.isFirst === next.isFirst &&
     prev.isLast === next.isLast &&
     prev.info.state === next.info.state &&
     prev.info.role === next.info.role &&
@@ -621,6 +627,7 @@ const ToolRow = memo(
                     key={agentId}
                     agentId={agentId}
                     info={info}
+                    isFirst={idx === 0}
                     isLast={isLastVisible && allAccountedFor}
                     childSteps={agentSteps}
                     liveStats={liveStats.get(agentId)}
@@ -653,10 +660,15 @@ const ToolRow = memo(
                       </text>
                     </box>
                   )}
-                  {visible.map((step) => {
+                  {visible.map((step, si) => {
                     const stableIdx = allChildSteps.indexOf(step);
+                    const last = si === visible.length - 1 && !showThinking;
                     return (
-                      <ChildStepRow key={`${step.toolName}-${String(stableIdx)}`} step={step} />
+                      <ChildStepRow
+                        key={`${step.toolName}-${String(stableIdx)}`}
+                        step={step}
+                        isLast={last}
+                      />
                     );
                   })}
                   {showThinking && (
@@ -728,7 +740,7 @@ function renderToolCall(
   seconds: number | undefined,
   diffStyle: "default" | "sidebyside" | "compact",
   t: { textMuted: string; amber: string; textFaint: string },
-  connector?: { isLast: boolean },
+  connector?: { isFirst: boolean; isLast: boolean },
 ) {
   if ((tc.toolName === "write_plan" || tc.toolName === "plan") && tc.args) {
     try {
@@ -752,14 +764,9 @@ function renderToolCall(
     } catch {}
   }
   if (connector) {
+    const char = connector.isLast ? "└ " : connector.isFirst ? "┌ " : "├ ";
     return (
-      <ToolRow
-        key={tc.id}
-        tc={tc}
-        seconds={seconds}
-        diffStyle={diffStyle}
-        connectorChar={connector.isLast ? "└ " : "├ "}
-      />
+      <ToolRow key={tc.id} tc={tc} seconds={seconds} diffStyle={diffStyle} connectorChar={char} />
     );
   }
   return <ToolRow key={tc.id} tc={tc} seconds={seconds} diffStyle={diffStyle} />;
@@ -804,6 +811,7 @@ export const ToolCallDisplay = memo(function ToolCallDisplay({
     <box flexDirection="column">
       {visible.map((tc, i) =>
         renderToolCall(tc, elapsed.get(tc.id), diffStyle, t, {
+          isFirst: i === 0,
           isLast: i === visible.length - 1,
         }),
       )}

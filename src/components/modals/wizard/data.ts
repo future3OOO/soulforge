@@ -147,4 +147,4 @@ export const BLINK_INITIAL_MS = 400;
 
 /* ── Layout constants ─────────────────────────────────────────── */
 
-export const MAX_W = 90;
+export const MAX_W = 100;

@@ -30,7 +30,10 @@ export function ThemeStep({ iw, setActive }: ThemeStepProps) {
   const maxH = Math.max(24, Math.floor(termRows * 0.7));
   const maxVisible = Math.max(4, maxH - CHROME_ROWS);
 
-  const { cursor, setCursor, scrollOffset, adjustScroll } = usePopupScroll(maxVisible);
+  const { cursor, setCursor, scrollOffset, adjustScroll } = usePopupScroll(
+    maxVisible,
+    themes.length,
+  );
 
   // Initialize cursor to current theme
   useEffect(() => {

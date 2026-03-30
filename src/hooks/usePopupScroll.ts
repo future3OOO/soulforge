@@ -9,19 +9,24 @@ interface PopupScrollState {
   resetScroll: () => void;
 }
 
-export function usePopupScroll(maxVisible: number): PopupScrollState {
+export function usePopupScroll(maxVisible: number, totalItems?: number): PopupScrollState {
   const [cursor, setCursor] = useState(0);
   const [scrollOffset, setScrollOffset] = useState(0);
 
   const adjustScroll = useCallback(
     (nextCursor: number) => {
       setScrollOffset((prev) => {
-        if (nextCursor < prev) return nextCursor;
-        if (nextCursor >= prev + maxVisible) return nextCursor - maxVisible + 1;
-        return prev;
+        let next = prev;
+        if (nextCursor < prev) next = nextCursor;
+        else if (nextCursor >= prev + maxVisible) next = nextCursor - maxVisible + 1;
+        // Clamp so the visible window is always full when possible
+        if (totalItems != null && totalItems > maxVisible) {
+          next = Math.min(next, totalItems - maxVisible);
+        }
+        return Math.max(0, next);
       });
     },
-    [maxVisible],
+    [maxVisible, totalItems],
   );
 
   const resetScroll = useCallback(() => {
