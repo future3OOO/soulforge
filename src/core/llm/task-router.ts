@@ -1,6 +1,6 @@
 import type { TaskRouter } from "../../types/index.js";
 
-export type TaskType = "coding" | "exploration" | "webSearch" | "compact" | "default";
+type TaskType = "coding" | "exploration" | "webSearch" | "compact" | "default";
 
 /**
  * Resolve which model ID to use for a given task type.

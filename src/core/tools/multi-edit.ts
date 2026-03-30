@@ -64,11 +64,19 @@ export const multiEditTool = {
       // Each edit sees the result of all prior edits — overlapping edits fail explicitly.
       // lineOffset tracks cumulative line count changes from prior edits so that
       // lineStart values (which reference the ORIGINAL file) stay accurate.
+      // Sort edits top-to-bottom by lineStart so the cumulative offset is correct —
+      // each edit only shifts lines below it. Edits without lineStart go last (string-match fallback).
+      const sortedEdits = [...args.edits].sort((a, b) => {
+        if (a.lineStart == null && b.lineStart == null) return 0;
+        if (a.lineStart == null) return 1;
+        if (b.lineStart == null) return -1;
+        return a.lineStart - b.lineStart;
+      });
       let lineOffset = 0;
       const warnings: string[] = [];
 
-      for (let i = 0; i < args.edits.length; i++) {
-        const edit = args.edits[i];
+      for (let i = 0; i < sortedEdits.length; i++) {
+        const edit = sortedEdits[i];
         if (!edit) continue;
         const label = `Edit ${String(i + 1)}/${String(args.edits.length)}`;
         const adjustedLineStart = edit.lineStart != null ? edit.lineStart + lineOffset : undefined;

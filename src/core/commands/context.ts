@@ -5,11 +5,11 @@ import { getThemeTokens } from "../theme/index.js";
 import type { CommandContext, CommandHandler } from "./types.js";
 import { sysMsg } from "./utils.js";
 
-export function openRepoMapMenu(_ctx: CommandContext): void {
+function openRepoMapMenu(_ctx: CommandContext): void {
   useUIStore.getState().openModal("repoMapStatus");
 }
 
-export function openMemoryMenu(ctx: CommandContext): void {
+function openMemoryMenu(ctx: CommandContext): void {
   const memMgr = ctx.contextManager.getMemoryManager();
 
   const showMain = () => {

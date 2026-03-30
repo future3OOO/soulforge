@@ -18,7 +18,7 @@ export interface CommandPickerOption {
   disabled?: boolean;
 }
 
-export interface PickerToggle {
+interface PickerToggle {
   key: string;
   label: string;
   value: boolean;
@@ -26,7 +26,7 @@ export interface PickerToggle {
   onToggle: () => string | undefined;
 }
 
-export interface PickerSelector {
+interface PickerSelector {
   key: string;
   label: string;
   options: string[];

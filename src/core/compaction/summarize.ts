@@ -14,7 +14,7 @@ import type { WorkingStateManager } from "./working-state.js";
  *    verification pass that sees everything.
  * 3. Merge and return the final summary string.
  */
-export interface V2SummaryResult {
+interface V2SummaryResult {
   summary: string;
   usage?: { inputTokens: number; outputTokens: number };
 }

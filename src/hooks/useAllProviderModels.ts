@@ -20,13 +20,13 @@ const ENV_SK: Record<string, SecretKey> = {
   AI_GATEWAY_API_KEY: "vercel-gateway-api-key",
 };
 
-export interface ProviderModelsState {
+interface ProviderModelsState {
   items: ProviderModelInfo[];
   loading: boolean;
   error?: string;
 }
 
-export interface UseAllProviderModelsReturn {
+interface UseAllProviderModelsReturn {
   providerData: Record<string, ProviderModelsState>;
   availability: Map<string, boolean>;
   anyLoading: boolean;

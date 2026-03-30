@@ -397,6 +397,24 @@ describe("multi_edit tool: mismatch behavior", () => {
 		]);
 	}, 30_000);
 
+	it("handles out-of-order edits — sorts by lineStart before applying", async () => {
+		const path = await writeTestFile("out-of-order.ts",
+			"line1\nline2\nline3\nline4\nline5\nline6\nline7\nline8");
+		const result = await multiEditTool.execute({
+			path,
+			edits: [
+				{ oldString: "line6", newString: "SIX\nSIX-B", lineStart: 6 },
+				{ oldString: "line2", newString: "TWO", lineStart: 2 },
+				{ oldString: "line4", newString: "FOUR\nFOUR-B\nFOUR-C", lineStart: 4 },
+			],
+		});
+		expect(result.success).toBe(true);
+		const content = await Bun.file(path).text();
+		expect(content.split("\n")).toEqual([
+			"line1", "TWO", "line3", "FOUR", "FOUR-B", "FOUR-C", "line5", "SIX", "SIX-B", "line7", "line8",
+		]);
+	}, 30_000);
+
 	it("single undo reverts entire multi_edit batch", async () => {
 		const original = "1\n2\n3\n4\n5\n6\n7";
 		const path = await writeTestFile("multi-undo.ts", original);

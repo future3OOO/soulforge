@@ -66,13 +66,24 @@ export function fuzzyWhitespaceMatch(
   for (const normalize of [
     // Level 1: whitespace normalization only
     (line: string) => line.replace(/^[\t ]+/, "").trimEnd(),
-    // Level 2: also normalize escape sequences (handles JSON escape corruption)
+    // Level 2: also normalize escape sequences (handles JSON double-escape corruption)
     (line: string) =>
       line
         .replace(/^[\t ]+/, "")
         .trimEnd()
         .replace(/\\{2,}/g, "\\") // collapse multiple backslashes
         .replace(/\\([[\](){}|.*+?^$])/g, "$1"), // unescape regex metacharacters
+    // Level 3: strip ALL spurious backslash escapes from LLM markdown corruption.
+    // After JSON parsing, only standard escapes survive (\n, \t, \r, \\, \", \/).
+    // Anything else (\`, \#, \', \@, \~, \!, etc.) is LLM corruption.
+    // We strip \X where X is not an alphanumeric char or standard escape target —
+    // this covers every language without maintaining a character list.
+    (line: string) =>
+      line
+        .replace(/^[\t ]+/, "")
+        .trimEnd()
+        .replace(/\\{2,}/g, "\\")
+        .replace(/\\([^nrtbfuU0-9a-zA-Z\\])/g, "$1"),
   ]) {
     const normalizedOld = oldLines.map(normalize);
 

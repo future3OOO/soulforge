@@ -211,7 +211,7 @@ export function getProxyPid(): number | null {
   return proxyProcess?.pid ?? null;
 }
 
-export interface ProxyProvider {
+interface ProxyProvider {
   id: string;
   name: string;
   flag: string;
@@ -316,7 +316,7 @@ export function runProxyLogin(
   return { promise, abort };
 }
 
-export interface ProxyVersionInfo {
+interface ProxyVersionInfo {
   installed: string;
   latest: string | null;
   updateAvailable: boolean;

@@ -396,6 +396,6 @@ export async function cleanupDispatchDir(
 }
 
 /** Build the dispatch context dir path for a given tab + dispatch. */
-export function dispatchDir(cwd: string, tabId: string, dispatchId: string): string {
+function dispatchDir(cwd: string, tabId: string, dispatchId: string): string {
   return join(cwd, ".soulforge", "dispatch", `tab-${tabId}`, dispatchId);
 }

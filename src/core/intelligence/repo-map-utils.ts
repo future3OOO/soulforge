@@ -390,7 +390,7 @@ interface CollectedFile {
   mtimeMs: number;
 }
 
-export const MAX_FILE_SIZE = 500_000;
+const MAX_FILE_SIZE = 500_000;
 
 const MAX_DEPTH = 10;
 

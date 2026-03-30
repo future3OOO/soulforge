@@ -69,30 +69,6 @@ export const SectionLabel = memo(function SectionLabel({
   );
 });
 
-export const KV = memo(function KV({
-  iw,
-  label,
-  desc,
-}: {
-  iw: number;
-  label: string;
-  desc: string;
-}) {
-  const t = useTheme();
-  const { bg } = usePopupColors();
-  return (
-    <PopupRow w={iw}>
-      <text fg={t.info} attributes={BOLD} bg={bg}>
-        {"  "}
-        {label.padEnd(30)}
-      </text>
-      <text fg={t.textPrimary} bg={bg}>
-        {desc}
-      </text>
-    </PopupRow>
-  );
-});
-
 export const Feat = memo(function Feat({
   iw,
   ic,

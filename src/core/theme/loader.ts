@@ -124,7 +124,7 @@ const BORDER_STRENGTH_FACTOR: Record<BorderStrength, number> = {
 
 export type BorderStrength = "default" | "strong" | "op";
 
-export interface TransparencyOptions {
+interface TransparencyOptions {
   userMessageOpacity?: number;
   diffOpacity?: number;
   borderStrength?: BorderStrength;

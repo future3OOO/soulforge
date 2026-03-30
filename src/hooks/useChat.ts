@@ -77,7 +77,7 @@ export interface TabState {
   forgeMode: import("../types/index.js").ForgeMode;
 }
 
-export interface TokenUsage {
+interface TokenUsage {
   prompt: number;
   completion: number;
   total: number;

@@ -77,7 +77,7 @@ const TOOL_CATEGORIES: Record<string, ToolCategory> = {
   soul_impact: "soul-map",
 };
 
-export function getCategoryColors(): Record<string, string> {
+function getCategoryColors(): Record<string, string> {
   const t = getThemeTokens();
   return {
     file: t.info,
@@ -209,6 +209,45 @@ export const TOOL_LABELS: Record<string, string> = {
   soul_grep: "Searching",
   soul_find: "Finding",
   soul_analyze: "Analyzing",
+  soul_impact: "Impact analysis",
+  _nudge: "Output nudge",
+};
+
+/** Past-tense labels for completed tool calls */
+export const TOOL_LABELS_DONE: Record<string, string> = {
+  read_file: "Read",
+  edit_file: "Edited",
+  multi_edit: "Edited",
+  undo_edit: "Undid",
+  list_dir: "Listed",
+  shell: "Ran",
+  grep: "Searched",
+  glob: "Globbed",
+  dispatch: "Dispatched",
+  web_search: "Searched web",
+  fetch_page: "Fetched page",
+  memory: "Memory",
+  skills: "Skills",
+  editor: "Editor",
+  git: "Git",
+  navigate: "Navigated",
+  analyze: "Analyzed",
+  rename_symbol: "Renamed symbol",
+  move_symbol: "Moved symbol",
+  rename_file: "Moved file",
+  refactor: "Refactored",
+  project: "Project",
+  test_scaffold: "Scaffolded tests",
+  discover_pattern: "Discovered",
+  editor_panel: "Opened editor",
+  plan: "Planned",
+  update_plan_step: "Updated plan",
+  ask_user: "Asked",
+  task_list: "Tasks",
+  code_execution: "Executed",
+  soul_grep: "Searched",
+  soul_find: "Found",
+  soul_analyze: "Analyzed",
   soul_impact: "Impact analysis",
   _nudge: "Output nudge",
 };

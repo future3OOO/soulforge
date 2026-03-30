@@ -80,6 +80,49 @@ describe("fuzzyWhitespaceMatch — escape normalization", () => {
 		const newStr = "console.log('bar');";
 		expect(fuzzyWhitespaceMatch(content, oldStr, newStr)).toBeNull();
 	});
+
+	it("matches when oldStr has escaped backticks from LLM markdown corruption", () => {
+		const content = "    parts.push(`done ${count} items`);";
+		const oldStr = "    parts.push(\\`done ${count} items\\`);";
+		const newStr = "    parts.push(`finished ${count} items`);";
+		const result = fuzzyWhitespaceMatch(content, oldStr, newStr);
+		expect(result).not.toBeNull();
+		expect(result!.oldStr).toBe(content);
+	});
+
+	it("matches multi-line template literals with escaped backticks", () => {
+		const content = "  const msg = `hello ${name},\n  welcome to ${place}`;\n  return msg;";
+		const oldStr = "  const msg = \\`hello ${name},\n  welcome to ${place}\\`;\n  return msg;";
+		const newStr = "  const msg = `hi ${name},\n  welcome to ${place}`;\n  return msg;";
+		const result = fuzzyWhitespaceMatch(content, oldStr, newStr);
+		expect(result).not.toBeNull();
+		expect(result!.oldStr).toBe(content);
+	});
+
+	it("matches Ruby string interpolation with escaped hash", () => {
+		const content = '  puts "Hello #{name}, you have #{count} items"';
+		const oldStr = '  puts "Hello \\#{name}, you have \\#{count} items"';
+		const newStr = '  puts "Hi #{name}, you have #{count} items"';
+		const result = fuzzyWhitespaceMatch(content, oldStr, newStr);
+		expect(result).not.toBeNull();
+		expect(result!.oldStr).toBe(content);
+	});
+
+	it("matches shell single quotes with escaped apostrophe", () => {
+		const content = "  echo 'it\\'s working'";
+		const oldStr = "  echo \\'it\\'s working\\'";
+		const newStr = "  echo 'it\\'s done'";
+		const result = fuzzyWhitespaceMatch(content, oldStr, newStr);
+		expect(result).not.toBeNull();
+	});
+
+	it("matches markdown-like content with escaped tilde", () => {
+		const content = "  const re = /~[^~]+~/g;";
+		const oldStr = "  const re = /\\~[^\\~]+\\~/g;";
+		const newStr = "  const re = /~[^~]*~/g;";
+		const result = fuzzyWhitespaceMatch(content, oldStr, newStr);
+		expect(result).not.toBeNull();
+	});
 });
 
 // ════════════════════════════════════════════════════════════

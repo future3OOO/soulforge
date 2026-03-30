@@ -60,7 +60,7 @@ export function binaryHint(ext: string): string {
  * Format a binary file error with size and helpful hints.
  * Returns null if the file is not binary or doesn't exist.
  */
-export function checkBinaryFile(filePath: string): string | null {
+function checkBinaryFile(filePath: string): string | null {
   try {
     if (!existsSync(filePath)) return null;
     const stat = statSync(filePath);

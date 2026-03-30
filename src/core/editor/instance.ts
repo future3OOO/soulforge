@@ -9,9 +9,6 @@ let syncOnEdit = false;
 export function setSyncEditorOnEdit(enabled: boolean): void {
   syncOnEdit = enabled;
 }
-export function getSyncEditorOnEdit(): boolean {
-  return syncOnEdit;
-}
 
 export function setNvimInstance(nvim: NvimInstance | null): void {
   instance = nvim;

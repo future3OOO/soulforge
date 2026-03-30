@@ -410,7 +410,7 @@ const RUNTIME_LABELS: Record<string, string> = {
   swift: "swift",
 };
 
-export interface CodeExecInfo {
+interface CodeExecInfo {
   runtime: string;
   code: string;
   preview: string;

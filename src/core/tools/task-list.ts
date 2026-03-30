@@ -1,6 +1,6 @@
 import type { ToolResult } from "../../types/index.js";
 
-export type TaskStatus = "pending" | "in-progress" | "done" | "blocked";
+type TaskStatus = "pending" | "in-progress" | "done" | "blocked";
 
 export interface Task {
   id: number;

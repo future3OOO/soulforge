@@ -6,6 +6,7 @@ import {
   CATEGORY_COLORS,
   getBackendLabel,
   resolveToolDisplay,
+  TOOL_LABELS_DONE,
   type ToolCategory,
 } from "../../core/tool-display.js";
 import { DiffView } from "./DiffView.js";
@@ -260,7 +261,13 @@ export function buildLiveToolRowProps(
     : codeExecDisplay
       ? codeExecDisplay.icon
       : toolDisplay.icon;
-  const labelVal = isRepoMapHit ? "Soul Map" : codeExec ? codeExec.runtime : toolDisplay.label;
+  const labelVal = isRepoMapHit
+    ? "Soul Map"
+    : codeExec
+      ? codeExec.runtime
+      : tc.state !== "running"
+        ? (TOOL_LABELS_DONE[tc.toolName] ?? toolDisplay.label)
+        : toolDisplay.label;
   const iconColorVal = isRepoMapHit
     ? getThemeTokens().info
     : codeExecDisplay
@@ -427,7 +434,7 @@ export function buildFinalToolRowProps(tc: {
     isDone: true,
     icon: toolDisplay.icon,
     iconColor: toolDisplay.iconColor,
-    label: toolDisplay.label,
+    label: TOOL_LABELS_DONE[tc.name] ?? toolDisplay.label,
     category,
     categoryColor,
     backendTag,

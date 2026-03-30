@@ -17,11 +17,6 @@ async function getFormatCommand(cwd: string): Promise<string | null> {
   return cachedFormatCmd;
 }
 
-/** Reset cached format command (e.g. on cwd change). */
-export function resetFormatCache(): void {
-  cachedFormatCmd = undefined;
-}
-
 /** Override cached format command (e.g. set to null in tests to skip formatting). */
 export function setFormatCache(cmd: string | null): void {
   cachedFormatCmd = cmd;

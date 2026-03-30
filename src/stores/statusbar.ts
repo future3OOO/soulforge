@@ -6,7 +6,7 @@ import { getNvimPid } from "../core/editor/instance.js";
 import { getIntelligenceChildPids } from "../core/intelligence/index.js";
 import { getProxyPid } from "../core/proxy/lifecycle.js";
 
-export interface PerModelUsage {
+interface PerModelUsage {
   input: number;
   output: number;
   cacheRead: number;
@@ -180,7 +180,7 @@ const ZERO_USAGE: TokenUsage = {
   modelBreakdown: {},
 };
 
-export interface ProcessRss {
+interface ProcessRss {
   mainMB: number;
   nvimMB: number;
   proxyMB: number;
