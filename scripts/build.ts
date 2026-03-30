@@ -201,8 +201,26 @@ if (isCompile) {
     process.exit(1);
   }
 
+  // Build workers separately — npm installs need them as standalone files
+  const workerResult = await Bun.build({
+    entrypoints: [
+      "src/core/workers/intelligence.worker.ts",
+      "src/core/workers/io.worker.ts",
+    ],
+    outdir: "dist/workers",
+    target: "bun",
+    naming: "[name].[ext]",
+    plugins: [reactCompilerPlugin],
+  });
+
+  if (!workerResult.success) {
+    console.error("Worker build failed:");
+    for (const log of workerResult.logs) console.error(log);
+    process.exit(1);
+  }
+
   const elapsed = (performance.now() - start).toFixed(0);
-  const count = result.outputs.length;
+  const count = result.outputs.length + workerResult.outputs.length;
   console.log(
     `✓ Built ${count} artifact${count === 1 ? "" : "s"} with React Compiler in ${elapsed}ms`,
   );

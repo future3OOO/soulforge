@@ -23,7 +23,8 @@ import { WorkerClient } from "./rpc.js";
 
 export type TrackedResult<T> = { value: T; backend: string } | null;
 
-const IS_BUNDLED = import.meta.url.includes("$bunfs");
+const IS_COMPILED = import.meta.url.includes("$bunfs");
+const IS_DIST = !IS_COMPILED && import.meta.dir.includes("/dist");
 
 type SummaryGenerator = (
   batch: SymbolForSummary[],
@@ -66,9 +67,11 @@ export class IntelligenceClient extends WorkerClient {
   private static readonly SCAN_TIMEOUT = 300_000; // 5 min for full repo scan
 
   constructor(cwd: string) {
-    const workerPath = IS_BUNDLED
+    const workerPath = IS_COMPILED
       ? join(homedir(), ".soulforge", "workers", "intelligence.worker.js")
-      : join(import.meta.dir, "intelligence.worker.ts");
+      : IS_DIST
+        ? join(import.meta.dir, "workers", "intelligence.worker.js")
+        : join(import.meta.dir, "intelligence.worker.ts");
     super(workerPath, { cwd });
     this._cwd = cwd;
 

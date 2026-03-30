@@ -168,25 +168,33 @@ jobs:
             end
 
             def install
-              system "./install.sh", "--quiet"
-              # Create wrapper scripts instead of symlinks — symlinks to ~/.soulforge/
-              # fail because brew validates targets during link phase
+              # Stage everything in libexec — install phase runs in a sandbox
+              # where HOME is a temp dir, so we can't write to ~/.soulforge/ here
+              libexec.install Dir["*"]
+
+              # Wrapper scripts use $HOME (shell expansion at runtime, not Ruby
+              # interpolation at install time) so they resolve to the real home dir
               (bin/"soulforge").write <<~SH
                 #!/bin/bash
-                exec "#{Dir.home}/.soulforge/bin/soulforge" "$@"
+                exec "$HOME/.soulforge/bin/soulforge" "$@"
               SH
               (bin/"sf").write <<~SH
                 #!/bin/bash
-                exec "#{Dir.home}/.soulforge/bin/soulforge" "$@"
+                exec "$HOME/.soulforge/bin/soulforge" "$@"
               SH
               chmod 0755, bin/"soulforge"
               chmod 0755, bin/"sf"
             end
 
+            def post_install
+              # post_install runs outside the sandbox with the real HOME
+              system "#{libexec}/install.sh", "--quiet"
+            end
+
             def caveats
               <<~EOS
                 SoulForge installed to ~/.soulforge/
-                Run 'soulforge' to start, or 'soulforge --help' for options.
+                Run 'soulforge' or 'sf' to start.
               EOS
             end
 
