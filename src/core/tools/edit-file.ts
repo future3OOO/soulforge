@@ -49,7 +49,7 @@ export function buildRichEditError(
       ? "\n[Escape-heavy content detected — use lineStart for line-based replacement, or use editor(action: edit, startLine, endLine, replacement)]"
       : "";
   return {
-    output: `old_string not found in file (re-read performed — content below is current):\n${snippet}${escapeHint}`,
+    output: `old_string not found in file. Current content at that region:\n${snippet}${escapeHint}`,
   };
 }
 
@@ -255,7 +255,8 @@ export const editFileTool = {
   name: "edit_file",
   description:
     "[TIER-1] Edit a file by replacing content. Read first, then provide path, oldString, newString. " +
-    "Always provide lineStart (1-indexed from read_file output) — the range is derived from oldString line count. " +
+    "Provide lineStart (1-indexed from read_file output) for reliable line-anchored matching — " +
+    "the range is derived from oldString line count. Without lineStart, falls back to string matching (fails if ambiguous). " +
     "Empty oldString creates a new file. Use multi_edit for multiple changes to the same file. " +
     "Edits are applied immediately.",
   execute: async (args: EditFileArgs): Promise<ToolResult> => {

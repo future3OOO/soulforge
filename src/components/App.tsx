@@ -1172,13 +1172,6 @@ export function App({
       <SkillSearch
         visible={modalSkillSearch}
         contextManager={tabMgr.getActiveChat()?.contextManager ?? contextManager}
-        agentSkillsEnabled={!toolsState.disabledTools.has("skills")}
-        onToggleAgentSkills={() => {
-          toolsState.toggleTool("skills");
-          addSystemMessage(
-            `Agent skills ${toolsState.disabledTools.has("skills") ? "enabled" : "disabled"}`,
-          );
-        }}
         onClose={getCloser("skillSearch")}
         onSystemMessage={addSystemMessage}
       />

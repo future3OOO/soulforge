@@ -32,8 +32,6 @@ const TAB_LABELS: Record<Tab, string> = {
 interface Props {
   visible: boolean;
   contextManager: ContextManager;
-  agentSkillsEnabled: boolean;
-  onToggleAgentSkills: () => void;
   onClose: () => void;
   onSystemMessage: (msg: string) => void;
 }
@@ -41,8 +39,6 @@ interface Props {
 export const SkillSearch = memo(function SkillSearch({
   visible,
   contextManager,
-  agentSkillsEnabled,
-  onToggleAgentSkills,
   onClose,
   onSystemMessage,
 }: Props) {
@@ -238,11 +234,6 @@ export const SkillSearch = memo(function SkillSearch({
     if (evt.name === "backspace" || evt.name === "delete") {
       setQuery((prev) => prev.slice(0, -1));
       resetScroll();
-      return;
-    }
-
-    if (evt.name === "a" && !evt.ctrl && !evt.meta && !query) {
-      onToggleAgentSkills();
       return;
     }
 
@@ -608,18 +599,6 @@ export const SkillSearch = memo(function SkillSearch({
 
         <PopupRow w={innerW}>
           <text>{""}</text>
-        </PopupRow>
-        <PopupRow w={innerW}>
-          <text fg={t.textMuted} bg={POPUP_BG}>
-            Agent access:{" "}
-          </text>
-          <text fg={agentSkillsEnabled ? t.success : t.error} bg={POPUP_BG}>
-            {agentSkillsEnabled ? "on" : "off"}
-          </text>
-          <text fg={t.textDim} bg={POPUP_BG}>
-            {" "}
-            (a to toggle)
-          </text>
         </PopupRow>
         <PopupRow w={innerW}>
           <text fg={t.textMuted} bg={POPUP_BG}>

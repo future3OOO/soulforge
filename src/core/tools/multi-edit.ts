@@ -28,9 +28,10 @@ interface MultiEditArgs {
 export const multiEditTool = {
   name: "multi_edit",
   description:
-    "Apply multiple edits to a single file atomically. All-or-nothing validation. " +
-    "Each edit's oldString and lineStart reference the ORIGINAL file — the tool handles offset tracking internally. " +
-    "Always provide lineStart (1-indexed). The range is derived from oldString line count.",
+    "Apply multiple edits to a single file atomically. All-or-nothing: if any edit fails, ZERO edits are applied. " +
+    "lineStart values reference the ORIGINAL file (pre-edit) — the tool tracks cumulative line offsets internally. " +
+    "Provide lineStart (1-indexed) for reliable line-anchored matching. Without it, falls back to string matching against evolved content. " +
+    "The range is derived from oldString line count.",
   execute: async (args: MultiEditArgs): Promise<ToolResult> => {
     try {
       const filePath = resolve(args.path);
@@ -73,7 +74,6 @@ export const multiEditTool = {
         return a.lineStart - b.lineStart;
       });
       let lineOffset = 0;
-      const warnings: string[] = [];
 
       for (let i = 0; i < sortedEdits.length; i++) {
         const edit = sortedEdits[i];
@@ -128,8 +128,8 @@ export const multiEditTool = {
               .join("\n");
             return {
               success: false,
-              output: `Edit ${String(i + 1)}: oldString does not match lines ${String(edit.lineStart)}-${String((edit.lineStart ?? 0) + oldLineCount - 1)}. Actual content:\n${rangeSnippet}\nRe-read the file and retry with the correct content.`,
-              error: `edit ${String(i + 1)}: oldString mismatch at line range`,
+              output: `Edit ${String(i + 1)}/${String(args.edits.length)} failed: oldString does not match lines ${String(edit.lineStart)}-${String((edit.lineStart ?? 0) + oldLineCount - 1)}. NO edits were applied (atomic rollback). Actual content at that range:\n${rangeSnippet}\nRe-read the file and retry ALL edits.`,
+              error: `edit ${String(i + 1)}: oldString mismatch at line range (0 edits applied)`,
             };
           }
           // Line range invalid — fall through to string-based matching
@@ -139,8 +139,8 @@ export const multiEditTool = {
         if (content.includes(edit.oldString)) {
           const occurrences = content.split(edit.oldString).length - 1;
           if (occurrences > 1) {
-            const msg = `${label}: found ${String(occurrences)} matches. Provide lineStart to disambiguate.`;
-            return { success: false, output: msg, error: msg };
+            const msg = `${label}: found ${String(occurrences)} matches. Provide lineStart to disambiguate. NO edits were applied (atomic rollback).`;
+            return { success: false, output: msg, error: `${label}: ambiguous match (0 edits applied)` };
           }
           // Single occurrence — safe to replace
           const idx = content.indexOf(edit.oldString);
@@ -168,8 +168,8 @@ export const multiEditTool = {
         const err = buildRichEditError(content, edit.oldString, adjustedLineStart);
         return {
           success: false,
-          output: `${label} failed: ${err.output}`,
-          error: `edit ${String(i + 1)} failed`,
+          output: `${label} failed: ${err.output}\nNO edits were applied (atomic rollback). Re-read the file and retry ALL edits.`,
+          error: `edit ${String(i + 1)} failed (0 edits applied)`,
         };
       }
 
@@ -211,8 +211,8 @@ export const multiEditTool = {
       // CAS: verify file hasn't been modified since we read it
       const currentOnDisk = await readFile(filePath, "utf-8");
       if (currentOnDisk !== originalContent) {
-        const msg = "File was modified concurrently since last read. Re-read and retry.";
-        return { success: false, output: msg, error: "concurrent modification" };
+        const msg = "File was modified concurrently since last read. NO edits were applied (atomic rollback). Re-read and retry ALL edits.";
+        return { success: false, output: msg, error: "concurrent modification (0 edits applied)" };
       }
 
       // Push single undo entry for the entire batch — write immediately
@@ -242,7 +242,6 @@ export const multiEditTool = {
       }
 
       let output = `Applied ${String(args.edits.length)} edits to ${args.path}`;
-      if (warnings.length > 0) output += `\n⚠ ${warnings.join("\n⚠ ")}`;
       if (deltas.length > 0) output += ` (${deltas.join(", ")})`;
 
       // Auto-format after edit (cached command, 5s timeout)

@@ -87,7 +87,6 @@ export async function readBufferContent(filePath: string): Promise<string> {
   // If this file was just written by a tool, read from disk to avoid stale nvim buffer
   const toolWriteTime = recentToolWrites.get(filePath);
   if (toolWriteTime && Date.now() - toolWriteTime < TOOL_WRITE_FRESHNESS_MS) {
-    recentToolWrites.delete(filePath);
     return readFile(filePath, "utf-8");
   }
 
