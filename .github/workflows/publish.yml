@@ -183,12 +183,35 @@ jobs:
               # (which has full permissions).
               (bin/"soulforge").write <<~SH
                 #!/bin/bash
-                SF="\$HOME/.soulforge/bin/soulforge"
+                set -euo pipefail
                 CELLAR="#{libexec}"
+                SF="\$HOME/.soulforge/bin/soulforge"
+
+                # post_install may have failed — decompress if still gzipped
+                if [ -f "\$CELLAR/soulforge.gz" ] && [ ! -f "\$CELLAR/soulforge" ]; then
+                  gunzip "\$CELLAR/soulforge.gz" 2>/dev/null || true
+                  find "\$CELLAR/deps/native" -name "*.gz" -exec gunzip {} \\; 2>/dev/null || true
+                  chmod +x "\$CELLAR/soulforge" 2>/dev/null || true
+                fi
+
+                # Verify cellar binary exists
+                if [ ! -x "\$CELLAR/soulforge" ]; then
+                  echo "Error: SoulForge binary not found at \$CELLAR/soulforge" >&2
+                  echo "Try: brew reinstall soulforge" >&2
+                  exit 1
+                fi
+
+                # Run install.sh if missing or outdated
                 if [ ! -x "\$SF" ] || [ "\$CELLAR/soulforge" -nt "\$SF" ]; then
                   echo "Setting up SoulForge..." >&2
-                  bash "\$CELLAR/install.sh" --quiet
+                  if ! bash "\$CELLAR/install.sh" --quiet; then
+                    echo "" >&2
+                    echo "Install failed. Run manually:" >&2
+                    echo "  bash \$CELLAR/install.sh" >&2
+                    exit 1
+                  fi
                 fi
+
                 exec "\$SF" "\$@"
               SH
               (bin/"sf").write <<~SH
@@ -200,7 +223,7 @@ jobs:
             end
 
             def post_install
-              # Only decompress — actual install happens on first user run
+              # Decompress — if this fails, the wrapper handles it on first run
               system "gunzip", libexec/"soulforge.gz" if File.exist?(libexec/"soulforge.gz")
               Dir.glob(libexec/"deps/native/**/*.gz").each { |f| system "gunzip", f }
               system "chmod", "+x", libexec/"soulforge"
