@@ -518,23 +518,27 @@ export class RepoMap {
       }
 
       if (toIndex.length > 0 || stale.length > 0) {
-        await this.resolveUnresolvedRefs();
+        this.onProgress?.(-1, -1); // resolving refs
         await tick();
-        await this.resolveIdentifierRefs();
+        await this.resolveUnresolvedRefs();
         this.onProgress?.(-1, -1);
         await tick();
+        await this.resolveIdentifierRefs();
+        this.onProgress?.(-2, -2); // call graph
+        await tick();
         await this.buildCallGraph();
+        this.onProgress?.(-3, -3); // edges + PageRank
         await tick();
         await this.buildEdges();
         this.linkTestFiles();
         this.rescueOrphans();
-        this.onProgress?.(-2, -2);
+        this.onProgress?.(-4, -4);
         await tick();
         await this.computePageRank();
         await tick();
       }
 
-      this.onProgress?.(-3, -3);
+      this.onProgress?.(-5, -5); // cochanges
       await tick();
       await this.buildCoChanges();
 
@@ -1231,12 +1235,12 @@ export class RepoMap {
           const targetFileId = exportMap.get(ref.name);
           if (targetFileId === undefined) continue;
           if (targetFileId === ref.file_id) continue; // self-ref
-          // Skip if the referring file defines a symbol with the same name (local shadow)
           if (localSymbols.has(`${ref.file_id}:${ref.name}`)) continue;
           update.run(targetFileId, ref.rowid);
         }
       });
       tx();
+      if (i % 2000 === 0) this.onProgress?.(-1, -1); // heartbeat
       if (i + BATCH < unresolvedIds.length) await tick();
     }
   }
@@ -1275,6 +1279,7 @@ export class RepoMap {
         }
       });
       tx();
+      if (i % 1000 === 0) this.onProgress?.(-1, -1); // heartbeat
       if (i + BATCH < unresolved.length) await tick();
     }
 
@@ -2677,6 +2682,7 @@ export class RepoMap {
         }
       });
       tx();
+      if (batchStart % (BATCH_SIZE * 10) === 0) this.onProgress?.(-2, -2); // heartbeat
       if (batchStart + BATCH_SIZE < filesWithImports.length) await tick();
     }
   }
