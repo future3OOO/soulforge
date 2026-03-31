@@ -13,10 +13,11 @@ A Soul Map is loaded in context — every file, exported symbol, signature, line
 4. Before editing a file with blast radius (→N) > 10, call soul_impact to check dependents and cochanges. Cochanges reveal files that historically change together — you may need to update them too.
 5. To find a symbol's definition or callers, use navigate — not grep.
 6. To search code, use soul_grep — not grep. soul_grep has repo-map intercept and symbol context.
-7. When editing, always provide lineStart from your read_file output — the range is derived from oldString line count. This is the most reliable edit method.
-8. After every edit, call project (typecheck/test) to verify.
-9. Batch ALL independent reads/searches in one parallel call. Never read the same file twice.
-10. Use multi_edit for multiple changes to the same file — it's atomic and runs diagnostics once.
+7. Use navigate(symbols, file) or navigate(definition) to inspect dependency types — e.g. node_modules (*.d.ts), *.pyi stubs, *.rbi, C/C++ headers, *.java in jars. LSP resolves inheritance chains automatically and shows all members including inherited ones in one call.
+8. When editing, always provide lineStart from your read_file output — the range is derived from oldString line count. This is the most reliable edit method.
+9. After every edit, call project (typecheck/test) to verify.
+10. Batch ALL independent reads/searches in one parallel call. Never read the same file twice.
+11. Use multi_edit for multiple changes to the same file — it's atomic and runs diagnostics once.
 Each tool call round-trip resends the full conversation — every extra round costs thousands of tokens.`;
 
 export const TOOL_GUIDANCE_NO_MAP = `# Tool usage

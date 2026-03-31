@@ -1,6 +1,6 @@
 import { readFile } from "node:fs/promises";
 import { memo, useEffect, useMemo, useState } from "react";
-import { computeDiff, langFromPath } from "../../core/diff.js";
+import { computeDiff, type DiffLine, langFromPath } from "../../core/diff.js";
 import { icon } from "../../core/icons.js";
 import { useTheme } from "../../core/theme/index.js";
 import { getSyntaxStyle, getTSClient } from "../../core/utils/syntax.js";
@@ -18,40 +18,23 @@ interface Props {
   mode?: DiffMode;
 }
 
-function toUnifiedDiff(filePath: string, oldStr: string, newStr: string): string {
-  const oldLines = oldStr.split("\n");
-  const newLines = newStr.split("\n");
-  const header = [
+function toUnifiedDiff(filePath: string, diffLines: DiffLine[]): string {
+  let oldCount = 0;
+  let newCount = 0;
+  const body: string[] = [];
+  for (const line of diffLines) {
+    if (line.kind === "collapsed") continue;
+    const prefix = line.kind === "add" ? "+" : line.kind === "remove" ? "-" : " ";
+    body.push(`${prefix}${line.content}`);
+    if (line.kind !== "add") oldCount++;
+    if (line.kind !== "remove") newCount++;
+  }
+  return [
     `--- a/${filePath}`,
     `+++ b/${filePath}`,
-    `@@ -1,${String(oldLines.length)} +1,${String(newLines.length)} @@`,
-  ];
-  const body: string[] = [];
-  const maxOld = oldLines.length;
-  const maxNew = newLines.length;
-
-  let oi = 0;
-  let ni = 0;
-  while (oi < maxOld && ni < maxNew) {
-    if (oldLines[oi] === newLines[ni]) {
-      body.push(` ${oldLines[oi]}`);
-      oi++;
-      ni++;
-    } else {
-      body.push(`-${oldLines[oi]}`);
-      oi++;
-    }
-  }
-  while (ni < maxNew) {
-    body.push(`+${newLines[ni]}`);
-    ni++;
-  }
-  while (oi < maxOld) {
-    body.push(`-${oldLines[oi]}`);
-    oi++;
-  }
-
-  return [...header, ...body].join("\n");
+    `@@ -1,${String(oldCount)} +1,${String(newCount)} @@`,
+    ...body,
+  ].join("\n");
 }
 
 export const DiffView = memo(function DiffView({
@@ -100,8 +83,8 @@ export const DiffView = memo(function DiffView({
 
   const unifiedDiff = useMemo(() => {
     if (!success || !computed || isLarge) return null;
-    return toUnifiedDiff(filePath, oldString, newString);
-  }, [success, computed, isLarge, filePath, oldString, newString]);
+    return toUnifiedDiff(filePath, computed.lines);
+  }, [success, computed, isLarge, filePath]);
 
   const viewMode = mode === "sidebyside" ? "split" : "unified";
 

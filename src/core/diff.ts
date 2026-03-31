@@ -1,6 +1,6 @@
 type DiffLineKind = "add" | "remove" | "context" | "collapsed";
 
-interface DiffLine {
+export interface DiffLine {
   kind: DiffLineKind;
   content: string;
   oldNum?: number;

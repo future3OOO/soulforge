@@ -448,13 +448,18 @@ export const TabInstance = memo(function TabInstance({
 
       <box flexGrow={1} flexShrink={1} minHeight={0} flexDirection="row">
         {!hasContent ? (
-          <LandingPage bootProviders={bootProviders} bootPrereqs={bootPrereqs} />
+          <LandingPage
+            bootProviders={bootProviders}
+            bootPrereqs={bootPrereqs}
+            activeModel={chat.activeModel}
+          />
         ) : (
           <AnimatedBorder active={chat.isLoading || chat.isCompacting}>
             <scrollbox
               ref={scrollRef}
               stickyScroll={true}
               stickyStart="bottom"
+              focusable={false}
               flexGrow={1}
               flexShrink={1}
               minHeight={0}

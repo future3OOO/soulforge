@@ -201,6 +201,13 @@ export function SessionPicker({ visible, cwd, onClose, onRestore, onSystemMessag
           )}
         </PopupRow>
 
+        {/* Separator */}
+        <PopupRow w={innerW}>
+          <text fg={t.textSubtle} bg={POPUP_BG}>
+            {"─".repeat(innerW - 4)}
+          </text>
+        </PopupRow>
+
         {/* Column headers */}
         <PopupRow w={innerW}>
           <text fg={t.textMuted} bg={POPUP_BG} attributes={TextAttributes.BOLD}>
@@ -245,24 +252,20 @@ export function SessionPicker({ visible, cwd, onClose, onRestore, onSystemMessag
 
               return (
                 <PopupRow key={session.id} bg={bg} w={innerW}>
-                  <text bg={bg} fg={isActive ? t.brand : t.textFaint}>
-                    {isActive ? "› " : "  "}
-                  </text>
-                  <text
-                    bg={bg}
-                    fg={isActive ? t.textPrimary : t.textSecondary}
-                    attributes={isActive ? TextAttributes.BOLD : undefined}
-                  >
-                    {rpad(title, titleColW)}
-                  </text>
-                  <text bg={bg} fg={isActive ? t.brandAlt : t.textMuted}>
-                    {lpad(String(session.messageCount), COL_MSGS)}
-                  </text>
-                  <text bg={bg} fg={isActive ? t.textMuted : t.textMuted}>
-                    {lpad(formatSize(session.sizeBytes), COL_SIZE)}
-                  </text>
-                  <text bg={bg} fg={isActive ? t.textMuted : t.textDim}>
-                    {lpad(timeAgo(session.updatedAt), COL_TIME)}
+                  <text bg={bg}>
+                    <span fg={isActive ? t.brand : t.textFaint}>{isActive ? "> " : "  "}</span>
+                    <span fg={isActive ? t.textPrimary : t.textSecondary}>
+                      {rpad(title, titleColW)}
+                    </span>
+                    <span fg={isActive ? t.brandAlt : t.textMuted}>
+                      {lpad(String(session.messageCount), COL_MSGS)}
+                    </span>
+                    <span fg={isActive ? t.textMuted : t.textMuted}>
+                      {lpad(formatSize(session.sizeBytes), COL_SIZE)}
+                    </span>
+                    <span fg={isActive ? t.textMuted : t.textDim}>
+                      {lpad(timeAgo(session.updatedAt), COL_TIME)}
+                    </span>
                   </text>
                 </PopupRow>
               );

@@ -28,8 +28,8 @@ function opacityToIndex(opacity: number): number {
 // Chrome rows within the wizard popup that aren't part of the theme list:
 // border(2) + progress(1) + hr(1) + gap(1) + header(1) + tip(1) + gap(1)
 // + transparent(1) + msgBg(1) + diffBg(1) + borders(1) + hr(1) + gap(1)
-// + gap(1) + help(1) + hr(1) + footer(1) = 18
-const CHROME_ROWS = 18;
+// + scroll(1) + gap(1) + help(1) + hr(1) + footer(1) = 19
+const CHROME_ROWS = 19;
 
 export function ThemeStep({ iw, setActive }: ThemeStepProps) {
   const t = useTheme();
@@ -218,6 +218,17 @@ export function ThemeStep({ iw, setActive }: ThemeStepProps) {
           </PopupRow>
         );
       })}
+
+      {themes.length > maxVisible && (
+        <PopupRow w={iw}>
+          <text fg={t.textMuted} bg={popupBg}>
+            {"  "}
+            {scrollOffset > 0 ? "↑ " : "  "}
+            {String(cursor + 1)}/{String(themes.length)}
+            {scrollOffset + maxVisible < themes.length ? " ↓" : ""}
+          </text>
+        </PopupRow>
+      )}
 
       <Gap iw={iw} />
       <PopupRow w={iw}>

@@ -23,7 +23,7 @@ export const FooterNav = memo(function FooterNav({
       <text fg={t.textMuted} bg={bg}>
         {isFirst ? "" : "← back │ "}
         {actionLabel}
-        <span fg={t.textDim}>{" │ esc skip"}</span>
+        <span fg={t.textDim}>{" │ esc close"}</span>
       </text>
     </PopupRow>
   );

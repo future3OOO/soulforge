@@ -560,8 +560,10 @@ ctx = createWorkerHandler(
       repoMap.maxFiles = config.maxFiles;
     }
 
-    let lastStats = { files: 0, symbols: 0, edges: 0, summaries: 0, calls: 0 };
-    let lastDbSize = 0;
+    // Seed from DB so stats are correct immediately (e.g. after worker restart
+    // where the DB has data but no files need re-indexing).
+    let lastStats = repoMap.getStats();
+    let lastDbSize = repoMap.dbSizeBytes();
 
     repoMap.onProgress = (indexed, total) => {
       const rm = repoMap;

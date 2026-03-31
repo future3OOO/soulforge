@@ -84,6 +84,7 @@ interface SetupStepProps {
 }
 
 export function SetupStep({ iw, hasModel, activeModel, onSelectModel, setActive }: SetupStepProps) {
+  const anyKeySet = PROVIDERS.some((p) => hasKey(p.id));
   const t = useTheme();
   const { bg: popupBg, hl: popupHl } = usePopupColors();
   const renderer = useRenderer();
@@ -325,6 +326,17 @@ export function SetupStep({ iw, hasModel, activeModel, onSelectModel, setActive 
         </>
       )}
 
+      {anyKeySet && (
+        <>
+          <Gap iw={iw} />
+          <PopupRow w={iw}>
+            <text fg={t.brandSecondary} attributes={BOLD} bg={popupBg}>
+              {"  → press right arrow to continue"}
+            </text>
+          </PopupRow>
+        </>
+      )}
+
       {flash && (
         <PopupRow w={iw}>
           <text fg={t.success} attributes={BOLD} bg={popupBg}>
@@ -337,7 +349,7 @@ export function SetupStep({ iw, hasModel, activeModel, onSelectModel, setActive 
       <Gap iw={iw} />
       <PopupRow w={iw}>
         <text fg={t.textFaint} bg={popupBg}>
-          {"  ↑↓ select · ⏎ set key · → next step"}
+          {"  ↑↓ select · ⏎ set key · → next step · esc close"}
         </text>
       </PopupRow>
     </>

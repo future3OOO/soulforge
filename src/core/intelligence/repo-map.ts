@@ -486,12 +486,20 @@ export class RepoMap {
       }
 
       const stale = [...existingFiles.keys()].filter((p) => !currentPaths.has(p));
-      if (stale.length > 0) {
+      // Safety: if >80% of files would be deleted, something went wrong with
+      // file collection (git hiccup, timeout, etc.) — skip deletion to avoid
+      // nuking a good index. A full clear can be done explicitly via /repo-map.
+      const staleRatio = existingFiles.size > 0 ? stale.length / existingFiles.size : 0;
+      if (stale.length > 0 && staleRatio < 0.8) {
         const deleteFile = this.db.prepare("DELETE FROM files WHERE path = ?");
         const tx = this.db.transaction(() => {
           for (const p of stale) deleteFile.run(p);
         });
         tx();
+      } else if (stale.length > 0) {
+        this.onError?.(
+          `Skipped removing ${String(stale.length)} files — looks like a file listing error (${String(Math.round(staleRatio * 100))}% stale). Use /repo-map → [X] clear to force.`,
+        );
       }
 
       if (toIndex.length > 0) {
@@ -522,7 +530,10 @@ export class RepoMap {
       // Re-run post-indexing if previous scan failed mid-way (files exist but 0 edges)
       const edgeCount =
         this.db.query<{ c: number }, []>("SELECT COUNT(*) as c FROM edges").get()?.c ?? 0;
-      const needsPostIndexing = toIndex.length > 0 || stale.length > 0 || edgeCount === 0;
+      const fileCount =
+        this.db.query<{ c: number }, []>("SELECT COUNT(*) as c FROM files").get()?.c ?? 0;
+      const needsPostIndexing =
+        toIndex.length > 0 || stale.length > 0 || (fileCount > 0 && edgeCount === 0);
 
       if (needsPostIndexing) {
         this.onProgress?.(-1, -1); // resolving refs
