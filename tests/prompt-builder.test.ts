@@ -53,10 +53,12 @@ describe("family prompt content", () => {
     }
   });
 
-  test("all family prompts mention Task tool for search", () => {
-    for (const prompt of [CLAUDE_PROMPT, OPENAI_PROMPT, GOOGLE_PROMPT, DEFAULT_PROMPT]) {
+  test("all family prompts mention search tools", () => {
+    for (const prompt of [OPENAI_PROMPT, GOOGLE_PROMPT, DEFAULT_PROMPT]) {
       expect(prompt).toContain("Task tool");
     }
+    // Claude prompt uses different phrasing (soul_grep/soul_find via shared rules)
+    expect(CLAUDE_PROMPT).toContain("soul tools");
   });
 
   test("all family prompts mention conciseness", () => {
@@ -71,8 +73,8 @@ describe("family prompt content", () => {
     }
   });
 
-  test("claude prompt has silent tool use instructions", () => {
-    expect(CLAUDE_PROMPT).toContain("Stay silent while gathering information");
+  test("claude prompt has user-preferences section", () => {
+    expect(CLAUDE_PROMPT).toContain("user-preferences");
   });
 
   test("openai prompt has agent framing", () => {
@@ -106,7 +108,7 @@ describe("buildSystemPrompt assembly", () => {
   test("includes family prompt for the model", () => {
     const prompt = buildSystemPrompt(baseOpts());
     expect(prompt).toContain("Forge");
-    expect(prompt).toContain("Silent tool use"); // claude-specific
+    expect(prompt).toContain("user-preferences"); // claude-specific
   });
 
   test("includes tool guidance when repo map is ready", () => {
@@ -166,7 +168,7 @@ describe("buildSystemPrompt assembly", () => {
   test("uses correct family for different models", () => {
     const claude = buildSystemPrompt(baseOpts({ modelId: "anthropic/claude-opus-4" }));
     const openai = buildSystemPrompt(baseOpts({ modelId: "openai/gpt-4o" }));
-    expect(claude).toContain("Silent tool use"); // claude-specific
+    expect(claude).toContain("user-preferences"); // claude-specific
     expect(openai).toContain("keep going until"); // openai-specific
   });
 });
