@@ -8,7 +8,7 @@ import type { LiveToolCall } from "../components/chat/ToolCallDisplay.js";
 import { normalizePath } from "../core/agents/agent-bus.js";
 import { createForgeAgent } from "../core/agents/index.js";
 
-import { onAgentStats, onMultiAgentEvent } from "../core/agents/subagent-events.js";
+import { onAgentStats, onMultiAgentEvent, onSubagentStep } from "../core/agents/subagent-events.js";
 import type { SharedCacheRef } from "../core/agents/subagent-tools.js";
 import {
   buildV2Summary,
@@ -681,6 +681,10 @@ export function useChat({
   const syncV2Slots = syncV2SlotsRef.current;
 
   const handleSubmitRef = useRef<(input: string) => void>(() => {});
+  // Stream stall watchdog state — persists across handleSubmit calls so
+  // auto-retry "Continue." inherits the count from the previous attempt.
+  const stallRetryCountRef = useRef(0);
+  const stallRetryPendingRef = useRef(false);
   const summarizeConversationRef = useRef<(opts?: { skipQueueDrain?: boolean }) => Promise<void>>(
     async () => {},
   );
@@ -1367,7 +1371,20 @@ export function useChat({
 
       const currentCoreMessages = coreMessagesRef.current;
       const userCoreMsg: ModelMessage = { role: "user" as const, content: input };
-      const newCoreMessages: ModelMessage[] = [...currentCoreMessages, userCoreMsg];
+      // Sanitize: strip empty assistant text blocks that would cause Anthropic to reject.
+      // These can persist from prior sessions or aborted streams.
+      const sanitized = currentCoreMessages.filter((m, i, arr) => {
+        if (m.role !== "assistant") return true;
+        if (typeof m.content === "string" && m.content.length === 0) {
+          // Keep if next message is a tool message (assistant→tool pairing required)
+          return arr[i + 1]?.role === "tool";
+        }
+        if (Array.isArray(m.content) && m.content.length === 0) {
+          return arr[i + 1]?.role === "tool";
+        }
+        return true;
+      });
+      const newCoreMessages: ModelMessage[] = [...sanitized, userCoreMsg];
       setCoreMessages(newCoreMessages);
 
       if (workingStateRef.current) {
@@ -1492,6 +1509,21 @@ export function useChat({
 
       // Steering messages are now flushed immediately in drainSteering —
       // no longer accumulated and appended at the end.
+
+      // Stream stall watchdog — hoisted so catch/finally can access.
+      // Initialized after stream starts; no-ops if stream never starts.
+      const STALL_MAX_RETRIES = 2;
+      let stallWatchdog: ReturnType<typeof setInterval> | null = null;
+      let unsubStallWatch1: (() => void) | null = null;
+      let unsubStallWatch2: (() => void) | null = null;
+      let unsubStallWatch3: (() => void) | null = null;
+      let userAborted = false;
+      let stallTriggered = false; // only true when the watchdog itself fires
+      // Reset retry count on real user messages (not auto-retry "Continue.")
+      if (input !== "Continue." || !stallRetryPendingRef.current) {
+        stallRetryCountRef.current = 0;
+      }
+      stallRetryPendingRef.current = false;
 
       try {
         setIsLoading(true);
@@ -1868,9 +1900,94 @@ export function useChat({
           throw new Error("Stream aborted before result was assigned");
         }
 
+        // ── Stream stall watchdog ──────────────────────────────────
+        // Detects hung API connections and auto-retries transparently.
+        //
+        // How it works:
+        //   - Every stream event + subagent event resets a timer
+        //   - Tool execution pauses the timer (tools have their own timeouts)
+        //   - On stall: abort + auto-retry with backoff (up to 2 retries)
+        //   - User Ctrl+X always wins — sets userAborted flag
+        //   - After max retries, surfaces error to user
+        //
+        // Stall threshold: 120s between chunks, 300s for first chunk
+        // (thinking models can take 2-3min before first token).
+        // Paused entirely while tools execute (they have their own timeouts).
+        const STALL_CHUNK_MS = 120_000;
+        const STALL_FIRST_CHUNK_MS = 300_000;
+        const STALL_TOOL_MAX_MS = 900_000; // 15min — dispatch worst case
+        let lastActivityTs = Date.now();
+        let lastToolActivityTs = Date.now();
+        let toolsInFlight = 0;
+        let gotFirstChunk = false;
+        const markActivity = () => {
+          gotFirstChunk = true;
+          lastActivityTs = Date.now();
+        };
+        const markToolStart = () => {
+          toolsInFlight++;
+          lastToolActivityTs = Date.now();
+        };
+        const markToolEnd = () => {
+          toolsInFlight = Math.max(0, toolsInFlight - 1);
+          lastActivityTs = Date.now();
+          lastToolActivityTs = Date.now();
+        };
+        const onUserAbort = () => {
+          userAborted = true;
+        };
+        abortController.signal.addEventListener("abort", onUserAbort, { once: true });
+        // Filter subagent events to this tab's own dispatches only —
+        // global event bus is shared across tabs, so unfiltered events from
+        // other tabs would keep our watchdog alive during a genuine stall.
+        const isOurEvent = (parentToolCallId: string) =>
+          liveToolCallsBuffer.current.some((c) => c.id === parentToolCallId);
+        unsubStallWatch1 = onMultiAgentEvent((evt) => {
+          if (!isOurEvent(evt.parentToolCallId)) return;
+          markActivity();
+          lastToolActivityTs = Date.now();
+        });
+        unsubStallWatch2 = onSubagentStep((evt) => {
+          if (!isOurEvent(evt.parentToolCallId)) return;
+          markActivity();
+          lastToolActivityTs = Date.now();
+        });
+        unsubStallWatch3 = onAgentStats((evt) => {
+          if (!isOurEvent(evt.parentToolCallId)) return;
+          markActivity();
+          lastToolActivityTs = Date.now();
+        });
+        stallWatchdog = setInterval(() => {
+          if (abortController.signal.aborted) return;
+          // While tools run, only fire if tool itself is stuck (15min max)
+          if (toolsInFlight > 0) {
+            if (Date.now() - lastToolActivityTs <= STALL_TOOL_MAX_MS) return;
+          } else {
+            const threshold = gotFirstChunk ? STALL_CHUNK_MS : STALL_FIRST_CHUNK_MS;
+            if (Date.now() - lastActivityTs <= threshold) return;
+          }
+          stallTriggered = true;
+          stallRetryCountRef.current++;
+          const count = stallRetryCountRef.current;
+          if (count <= STALL_MAX_RETRIES) {
+            logBackgroundError(
+              "stream-stall",
+              `No stream activity — auto-retrying (${String(count)}/${String(STALL_MAX_RETRIES)})`,
+            );
+            abortController.abort();
+          } else {
+            logBackgroundError(
+              "stream-stall",
+              `Stream stalled ${String(STALL_MAX_RETRIES)} times — giving up`,
+            );
+            abortController.abort();
+          }
+        }, 10_000);
+
         let streamEventCount = 0;
         let yieldBeforeNext = false;
         for await (const part of result.fullStream) {
+          markActivity();
           if (yieldBeforeNext || ++streamEventCount % 5 === 0) {
             yieldBeforeNext = false;
             await new Promise<void>((r) => setTimeout(r, 0));
@@ -1929,6 +2046,7 @@ export function useChat({
               break;
             }
             case "tool-input-start": {
+              markToolStart();
               segmentsDirty.current = true;
               toolCallsDirty.current = true;
               const lastToolSeg = finalSegments[finalSegments.length - 1];
@@ -1973,6 +2091,7 @@ export function useChat({
               break;
             }
             case "tool-result": {
+              markToolEnd();
               toolCallsDirty.current = true;
               const resultStr =
                 typeof part.output === "string" ? part.output : JSON.stringify(part.output);
@@ -2060,6 +2179,7 @@ export function useChat({
               break;
             }
             case "tool-error": {
+              markToolEnd();
               toolCallsDirty.current = true;
               const tc = tcBuf.find((c) => c.id === part.toolCallId);
               if (tc) {
@@ -2200,6 +2320,19 @@ export function useChat({
           }
         }
 
+        // Clean up stream stall watchdog
+        if (stallWatchdog) clearInterval(stallWatchdog);
+        unsubStallWatch1?.();
+        unsubStallWatch2?.();
+        unsubStallWatch3?.();
+
+        // If the watchdog fired but the stream ended gracefully (some providers
+        // close the stream instead of throwing on abort), re-throw so the catch
+        // block's auto-retry logic kicks in.
+        if (stallTriggered && abortController.signal.aborted && !userAborted) {
+          throw new Error("Stream stall — abort did not throw");
+        }
+
         // Log agent stop reason for debugging (visible via /errors)
         try {
           const resp = await Promise.race([
@@ -2264,14 +2397,18 @@ export function useChat({
           syncV2Slots();
         }
 
-        const assistantMsg: ChatMessage = {
-          id: crypto.randomUUID(),
-          role: "assistant",
-          content: fullText,
-          timestamp: Date.now(),
-          toolCalls: completedCalls.length > 0 ? completedCalls : undefined,
-          segments: finalSegments.length > 0 ? finalSegments : undefined,
-        };
+        const hasAssistantContent =
+          fullText.trim().length > 0 || completedCalls.length > 0 || finalSegments.length > 0;
+        const assistantMsg: ChatMessage | null = hasAssistantContent
+          ? {
+              id: crypto.randomUUID(),
+              role: "assistant",
+              content: fullText,
+              timestamp: Date.now(),
+              toolCalls: completedCalls.length > 0 ? completedCalls : undefined,
+              segments: finalSegments.length > 0 ? finalSegments : undefined,
+            }
+          : null;
 
         const errorMsgs: ChatMessage[] = streamErrors.map((errContent) => ({
           id: crypto.randomUUID(),
@@ -2281,7 +2418,7 @@ export function useChat({
         }));
 
         setMessages((prev) => {
-          const allMsgs = [...prev, assistantMsg, ...errorMsgs];
+          const allMsgs = [...prev, ...(assistantMsg ? [assistantMsg] : []), ...errorMsgs];
           queueMicrotask(() => {
             const snapshot = getWorkspaceSnapshot?.();
             if (snapshot) {
@@ -2298,8 +2435,40 @@ export function useChat({
           return allMsgs;
         });
 
+        // Sanitize empty assistant content — Anthropic rejects empty text blocks.
+        // Instead of filtering (which could orphan tool messages), patch empty content.
+        const filteredResponseMessages = responseMessages
+          .map((m) => {
+            if (m.role !== "assistant") return m;
+            if (typeof m.content === "string" && m.content.length === 0) {
+              // Completely empty string content — drop the message only if the
+              // next message is NOT a tool message (which would be orphaned).
+              return null;
+            }
+            if (Array.isArray(m.content)) {
+              // Strip empty text parts from arrays — keep tool-call parts intact
+              const cleaned = m.content.filter(
+                (p: { type: string; text?: string }) =>
+                  p.type !== "text" || (typeof p.text === "string" && p.text.length > 0),
+              );
+              if (cleaned.length === 0) return null;
+              if (cleaned.length !== m.content.length) return { ...m, content: cleaned };
+            }
+            return m;
+          })
+          .filter((m, i, arr) => {
+            if (m !== null) return true;
+            // Keep null (empty assistant) if next message is a tool message — replace with placeholder
+            const next = arr[i + 1];
+            return next?.role === "tool";
+          })
+          .map(
+            (m) =>
+              // Replace nulls kept for tool pairing with minimal valid content
+              m ?? { role: "assistant" as const, content: "(continued)" },
+          );
         setCoreMessages((prev) => {
-          const updated = [...prev, ...responseMessages];
+          const updated = [...prev, ...filteredResponseMessages];
           const target = effectiveConfig.contextManagement?.pruningTarget ?? "subagents";
           return ["main", "both"].includes(target) ? pruneOldToolResults(updated) : updated;
         });
@@ -2320,6 +2489,98 @@ export function useChat({
           flushTimerRef.current = null;
         }
         const isAbort = abortController.signal.aborted;
+        const isStallRetry =
+          isAbort &&
+          stallTriggered &&
+          !userAborted &&
+          stallRetryCountRef.current <= STALL_MAX_RETRIES;
+
+        // Auto-retry on stall: clean up, show a subtle system message, then
+        // re-submit "Continue." so the agent picks up where it left off.
+        // We preserve partial work (completedCalls, fullText, coreMessages)
+        // so the agent has full context on the retry.
+        if (isStallRetry) {
+          if (flushTimerRef.current) {
+            clearInterval(flushTimerRef.current);
+            flushTimerRef.current = null;
+          }
+          // Commit any partial assistant output so the retry has context
+          if (fullText.trim().length > 0 || completedCalls.length > 0) {
+            const partialMsg: ChatMessage = {
+              id: crypto.randomUUID(),
+              role: "assistant",
+              content: fullText,
+              timestamp: Date.now(),
+              toolCalls: completedCalls.length > 0 ? completedCalls : undefined,
+              segments: finalSegments.length > 0 ? finalSegments : undefined,
+            };
+            setMessages((prev) => [...prev, partialMsg]);
+            if (completedCalls.length > 0) {
+              const assistantContent: Array<TextPart | ToolCallPart> = [];
+              if (fullText.length > 0) {
+                assistantContent.push({ type: "text", text: fullText });
+              }
+              for (const call of completedCalls) {
+                const args = call.args;
+                assistantContent.push({
+                  type: "tool-call",
+                  toolCallId: call.id,
+                  toolName: call.name,
+                  input:
+                    typeof args === "object" && args !== null && !Array.isArray(args) ? args : {},
+                });
+              }
+              const toolContent = completedCalls.map((call) => ({
+                type: "tool-result" as const,
+                toolCallId: call.id,
+                toolName: call.name,
+                output: { type: "text" as const, value: call.result?.output ?? "" },
+              }));
+              setCoreMessages((prev) => [
+                ...prev,
+                { role: "assistant" as const, content: assistantContent },
+                { role: "tool" as const, content: toolContent },
+              ]);
+            } else if (fullText.length > 0) {
+              setCoreMessages((prev) => [
+                ...prev,
+                { role: "assistant" as const, content: fullText },
+              ]);
+            }
+          }
+          const count = stallRetryCountRef.current;
+          setMessages((prev) => [
+            ...prev,
+            {
+              id: crypto.randomUUID(),
+              role: "system",
+              content: `Connection stalled — auto-retrying (${String(count)}/${String(STALL_MAX_RETRIES)})…`,
+              timestamp: Date.now(),
+              showInChat: true,
+            },
+          ]);
+          // Clean up stream state
+          streamSegmentsBuffer.current = [];
+          liveToolCallsBuffer.current = [];
+          lastFlushedSegments.current = [];
+          lastFlushedToolCalls.current = [];
+          lastFlushedStreamingChars.current = 0;
+          streamingCharsRef.current = 0;
+          toolCharsRef.current = 0;
+          setStreamingChars(0);
+          setStreamSegments([]);
+          setLiveToolCalls([]);
+          // Signal that a stall retry is pending so:
+          // 1. finally block doesn't fire competing handleSubmit (messageQueue/compact)
+          // 2. next handleSubmit("Continue.") preserves the retry count
+          stallRetryPendingRef.current = true;
+          // Backoff: 2s first, 5s second
+          const backoffMs = count === 1 ? 2_000 : 5_000;
+          setTimeout(() => handleSubmitRef.current("Continue."), backoffMs);
+          // Skip the rest of the catch — finally block will clean up
+          return;
+        }
+
         const rawMsg = err instanceof Error ? err.message : String(err);
         const isTransientStream = /overloaded|529|429|rate.?limit|too many requests|503|502/i.test(
           rawMsg,
@@ -2435,11 +2696,15 @@ export function useChat({
         setLiveToolCalls([]);
         resetInProgressTasks(tabId);
       } finally {
+        if (stallWatchdog) clearInterval(stallWatchdog);
+        unsubStallWatch1?.();
+        unsubStallWatch2?.();
+        unsubStallWatch3?.();
         unsubAgentStats();
         unsubMultiAgent();
         if (visibleRef.current) useStatusBarStore.getState().setSubagentChars(0);
         if (abortController.signal.aborted) getWorkspaceCoordinator().releaseAll(tabId);
-        setIsLoading(false);
+        if (!stallRetryPendingRef.current) setIsLoading(false);
         abortRef.current = null;
         planExecutionRef.current = false;
         setPendingQuestion(null);
@@ -2566,7 +2831,7 @@ export function useChat({
             });
         }
 
-        if (!willContinue) {
+        if (!willContinue && !stallRetryPendingRef.current) {
           setActivePlan(null);
           setSidebarPlan(null);
           clearTasks(tabId);
