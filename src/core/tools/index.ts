@@ -1445,7 +1445,7 @@ export function buildTools(
           .optional()
           .transform(nullToUndef)
           .describe(
-            "Extra flags passed to the git command (e.g. ['--interactive', '--onto', 'main'])",
+            "Extra flags appended to the git command (e.g. ['--stat', 'main..HEAD'] for diff, ['--graph', '--all'] for log, ['--force-with-lease'] for push, ['-p'] for show). Works with: diff, log, show, push, pull, branch, cherry_pick, rebase.",
           ),
       }),
       execute: deferExecute(async (args) => {

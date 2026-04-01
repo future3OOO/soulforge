@@ -100,7 +100,7 @@ interface GitArgs {
 export const gitTool = {
   name: "git" as const,
   description:
-    "Git operations: status, diff, log, commit (with amend), push, pull, stash, branch, show (view commit), unstage, restore, stage, tag, cherry_pick, rebase, reset, blame.",
+    "Git operations: status, diff, log, commit (with amend), push, pull, stash, branch, show (view commit), unstage, restore, stage, tag, cherry_pick, rebase, reset, blame. Use flags for extra git args (e.g. diff with ['main..HEAD', '--stat'], log with ['--graph', '--all']).",
   execute: async (args: GitArgs, tabId?: string): Promise<ToolResult> => {
     const destructive =
       args.action === "commit" ||
@@ -132,28 +132,28 @@ export const gitTool = {
         result = await execStatus();
         break;
       case "diff":
-        result = await execDiff(args.staged);
+        result = await execDiff(args.staged, args.flags);
         break;
       case "log":
-        result = await execLog(args.count);
+        result = await execLog(args.count, args.flags);
         break;
       case "commit":
         result = await execCommit(args.message ?? "", args.files, args.amend);
         break;
       case "push":
-        result = await execPush();
+        result = await execPush(args.flags);
         break;
       case "pull":
-        result = await execPull();
+        result = await execPull(args.flags);
         break;
       case "stash":
         result = await execStash(args.sub_action, args.message, args.index);
         break;
       case "branch":
-        result = await execBranch(args.sub_action, args.name);
+        result = await execBranch(args.sub_action, args.name, args.flags);
         break;
       case "show":
-        result = await execShow(args.ref);
+        result = await execShow(args.ref, args.flags);
         break;
       case "unstage":
         result = await execUnstage(args.files);
@@ -239,14 +239,19 @@ async function execStatus(): Promise<ToolResult> {
 let lastDiffOutput: string | null = null;
 let lastDiffStaged: boolean | undefined;
 
-async function execDiff(staged?: boolean): Promise<ToolResult> {
-  const diff = await getGitDiff(cwd, staged);
-  const output = diff || "No changes.";
-  if (output === lastDiffOutput && staged === lastDiffStaged) {
+async function execDiff(staged?: boolean, flags?: string[]): Promise<ToolResult> {
+  const args = staged ? ["diff", "--cached"] : ["diff"];
+  if (flags) args.push(...flags);
+  const { stdout } = await run(args, cwd);
+  const output = stdout || "No changes.";
+  // Skip dedup cache when custom flags are used
+  if (!flags && output === lastDiffOutput && staged === lastDiffStaged) {
     return { success: true, output: "No changes since last diff." };
   }
-  lastDiffOutput = output;
-  lastDiffStaged = staged;
+  if (!flags) {
+    lastDiffOutput = output;
+    lastDiffStaged = staged;
+  }
   return { success: true, output: await capGitOutput(output, "diff") };
 }
 
@@ -255,7 +260,14 @@ export function resetDiffCache(): void {
   lastDiffStaged = undefined;
 }
 
-async function execLog(count?: number): Promise<ToolResult> {
+async function execLog(count?: number, flags?: string[]): Promise<ToolResult> {
+  if (flags) {
+    // Custom flags bypass structured parsing — run raw
+    const args = ["log", `-n`, String(count ?? 10), ...flags];
+    const { ok, stdout } = await run(args, cwd);
+    if (!ok) return { success: false, output: stdout || "Log failed", error: "log failed" };
+    return { success: true, output: await capGitOutput(stdout || "No commits found.", "log") };
+  }
   const entries = await getGitLog(cwd, count ?? 10);
   if (entries.length === 0) return { success: true, output: "No commits found." };
   return {
@@ -293,13 +305,13 @@ async function execCommit(message: string, files?: string[], amend?: boolean): P
   };
 }
 
-async function execPush(): Promise<ToolResult> {
-  const result = await gitPush(cwd);
+async function execPush(flags?: string[]): Promise<ToolResult> {
+  const result = await gitPush(cwd, flags);
   return { success: result.ok, output: result.output };
 }
 
-async function execPull(): Promise<ToolResult> {
-  const result = await gitPull(cwd);
+async function execPull(flags?: string[]): Promise<ToolResult> {
+  const result = await gitPull(cwd, flags);
   return { success: result.ok, output: result.output };
 }
 
@@ -335,11 +347,16 @@ async function execStash(
   }
 }
 
-async function execBranch(subAction?: string, name?: string): Promise<ToolResult> {
+async function execBranch(
+  subAction?: string,
+  name?: string,
+  flags?: string[],
+): Promise<ToolResult> {
   const action = subAction ?? "list";
   switch (action) {
     case "list": {
-      const { ok, stdout } = await run(["branch", "-vv"], cwd);
+      const args = ["branch", "-vv", ...(flags ?? [])];
+      const { ok, stdout } = await run(args, cwd);
       return { success: ok, output: stdout || "No branches." };
     }
     case "create": {
@@ -362,7 +379,12 @@ async function execBranch(subAction?: string, name?: string): Promise<ToolResult
   }
 }
 
-async function execShow(ref?: string): Promise<ToolResult> {
+async function execShow(ref?: string, flags?: string[]): Promise<ToolResult> {
+  if (flags) {
+    const args = ["show", ...(flags ?? []), ref ?? "HEAD"];
+    const { ok, stdout } = await run(args, cwd);
+    return { success: ok, output: await capGitOutput(stdout, "show") };
+  }
   const result = await gitShow(cwd, ref ?? "HEAD");
   return { success: result.ok, output: await capGitOutput(result.output, "show") };
 }
