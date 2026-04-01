@@ -2,6 +2,12 @@
 
 All notable changes to SoulForge are documented here.
 
+## [1.7.4] — 2026-04-01
+
+### Features
+
+- **agents**: share forge tool definitions with miniforges for cache prefix hits
+- Anthropic native tools, tool streaming toggle, prompt refinements, and UI polish
 ## [1.3.2] — 2026-03-30
 
 ### Bug Fixes
