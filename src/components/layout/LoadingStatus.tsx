@@ -3,6 +3,7 @@ import { useTerminalDimensions } from "@opentui/react";
 import { useEffect, useRef } from "react";
 import { icon } from "../../core/icons.js";
 import { getThemeTokens } from "../../core/theme/index.js";
+import { formatElapsed } from "../../hooks/useElapsed.js";
 import { useStatusBarStore } from "../../stores/statusbar.js";
 
 const SCAN_SPEED = 120;
@@ -41,15 +42,6 @@ const FORGE_STATUSES = [
 
 const ghostIcon = () => icon("ghost");
 const GHOST_SPEED = 400;
-
-function formatElapsed(sec: number): string {
-  const h = Math.floor(sec / 3600);
-  const m = Math.floor((sec % 3600) / 60);
-  const s = sec % 60;
-  if (h > 0) return `${String(h)}h ${String(m).padStart(2, "0")}m ${String(s).padStart(2, "0")}s`;
-  if (m > 0) return `${String(m)}m ${String(s).padStart(2, "0")}s`;
-  return `${String(s)}s`;
-}
 
 function buildGhostContent(ghostVisible: boolean, isCompacting: boolean): StyledText {
   const tk = getThemeTokens();

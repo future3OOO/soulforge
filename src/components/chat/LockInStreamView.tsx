@@ -4,6 +4,7 @@ import { icon } from "../../core/icons.js";
 import { useTheme } from "../../core/theme/index.js";
 import { resolveToolDisplay } from "../../core/tool-display.js";
 import { garble } from "../../core/utils/splash.js";
+import { useElapsed } from "../../hooks/useElapsed.js";
 import { SPINNER_FRAMES, useSpinnerFrame } from "../layout/shared.js";
 
 export const LOCKIN_EDIT_TOOLS = new Set([
@@ -149,6 +150,7 @@ export const LockInWrapper = memo(function LockInWrapper({
   const frame = useSpinnerFrame();
 
   const effectiveDone = done;
+  const elapsed = useElapsed(!effectiveDone);
 
   const pairs = hasDispatch ? DISPATCH_PAIRS : hasEdits ? EDIT_PAIRS : EXPLORE_PAIRS;
   const statusMsg = useRotatingMessage(pairs, effectiveDone);
@@ -174,12 +176,13 @@ export const LockInWrapper = memo(function LockInWrapper({
             </span>
           )}
           <span
-            fg={effectiveDone ? t.textSecondary : statusColor}
+            fg={effectiveDone ? t.textSecondary : t.textPrimary}
             attributes={effectiveDone ? undefined : TextAttributes.BOLD}
           >
             {statusMsg}
             {effectiveDone ? "" : DOTS_CYCLE[Math.floor(frame / 3) % DOTS_CYCLE.length]}
           </span>
+          {!effectiveDone && elapsed > 0 ? <span fg={t.textFaint}> {String(elapsed)}s</span> : null}
         </text>
       </box>
 
@@ -188,7 +191,7 @@ export const LockInWrapper = memo(function LockInWrapper({
         <box
           flexDirection="column"
           border={["left"]}
-          borderColor={effectiveDone ? t.textFaint : statusColor}
+          borderColor={effectiveDone ? t.textFaint : t.textMuted}
           paddingLeft={1}
           opacity={effectiveDone ? 0.6 : 1}
         >

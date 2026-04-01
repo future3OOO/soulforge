@@ -1,6 +1,6 @@
 import { unlink } from "node:fs/promises";
 import { join } from "node:path";
-import type { ScrollBoxRenderable } from "@opentui/core";
+import { type ScrollBoxRenderable, TextAttributes } from "@opentui/core";
 import { memo, useCallback, useEffect, useMemo, useRef } from "react";
 import { useShallow } from "zustand/react/shallow";
 import { ContextManager, type SharedContextResources } from "../../core/context/manager.js";
@@ -572,11 +572,21 @@ export const TabInstance = memo(function TabInstance({
                   )}
                 </ReasoningExpandedProvider>
               </CodeExpandedProvider>
-              <LoadingStatus
-                isLoading={chat.isLoading}
-                isCompacting={chat.isCompacting}
-                queueCount={chat.messageQueue.length}
-              />
+              {lockIn ? (
+                chat.isLoading ? (
+                  <box paddingX={1} height={1} flexShrink={0}>
+                    <text fg={t.error} attributes={TextAttributes.BOLD}>
+                      {icon("stop")} ^X to stop
+                    </text>
+                  </box>
+                ) : null
+              ) : (
+                <LoadingStatus
+                  isLoading={chat.isLoading}
+                  isCompacting={chat.isCompacting}
+                  queueCount={chat.messageQueue.length}
+                />
+              )}
             </scrollbox>
           </AnimatedBorder>
         )}
