@@ -23,8 +23,9 @@ import type { ContextManager } from "../core/context/manager.js";
 import { getWorkspaceCoordinator } from "../core/coordination/WorkspaceCoordinator.js";
 import { setCoAuthorEnabled } from "../core/git/status.js";
 import {
+  getModelContextInfo,
+  getModelContextInfoSync,
   getModelContextWindow,
-  getModelContextWindowSync,
   getShortModelLabel,
 } from "../core/llm/models.js";
 import { resolveModel } from "../core/llm/provider.js";
@@ -466,29 +467,32 @@ export function useChat({
   contextManagerRef.current = contextManager;
   const pinnedContextWindow = useRef(new Map<string, number>());
 
-  // Sync context window on mount + model change.
-  // Uses sync cache for instant render, then async fetch to correct if needed.
+  // Context window: show sync fallback immediately, then correct from async API data.
+  // The sync fallback comes from hardcoded patterns (per-provider, never cross-provider).
+  // The async fetch gets the real value from the provider API or OpenRouter metadata.
   const prevSyncedModel = useRef("");
   if (activeModel !== prevSyncedModel.current && activeModel !== "none") {
     prevSyncedModel.current = activeModel;
     const cached = pinnedContextWindow.current.get(activeModel);
-    const fresh = getModelContextWindowSync(activeModel);
-    const windowTokens = cached ? Math.max(cached, fresh) : fresh;
-    pinnedContextWindow.current.set(activeModel, windowTokens);
-    contextManagerRef.current.setContextWindow(windowTokens);
-    if (visible) useStatusBarStore.getState().setContextWindow(windowTokens);
+    const sync = cached || getModelContextInfoSync(activeModel).tokens;
+    pinnedContextWindow.current.set(activeModel, sync);
+    contextManagerRef.current.setContextWindow(sync);
+    if (visible) useStatusBarStore.getState().setContextWindow(sync);
   }
 
-  // Async fetch to get accurate context window — updates pinned value when resolved
+  // Async fetch — resolves the authoritative context window from provider API.
+  // Replaces the sync fallback with real data when available.
   const activeModelForEffect = activeModel;
   useEffect(() => {
     if (activeModelForEffect === "none") return;
     let cancelled = false;
-    getModelContextWindow(activeModelForEffect).then((accurate) => {
+    getModelContextInfo(activeModelForEffect).then(({ tokens: accurate, source }) => {
       if (cancelled) return;
       const prev = pinnedContextWindow.current.get(activeModelForEffect) ?? 0;
-      const best = Math.max(prev, accurate);
-      if (best > prev) {
+      // API/OpenRouter data is authoritative — replace even if lower than fallback estimate.
+      // Fallback data only upgrades (never downgrades) since it's a guess.
+      const best = source !== "fallback" ? accurate : Math.max(prev, accurate);
+      if (best !== prev) {
         pinnedContextWindow.current.set(activeModelForEffect, best);
         contextManagerRef.current.setContextWindow(best);
         if (visibleRef.current) useStatusBarStore.getState().setContextWindow(best);
@@ -600,11 +604,13 @@ export function useChat({
     if (visible) useStatusBarStore.getState().setContext(contextTokens, chatChars);
   }, [contextTokens, chatChars, visible]);
 
-  // Sync tokenUsage to statusbar store when this tab becomes visible (tab switch)
+  // Sync tokenUsage + contextWindow to statusbar store when this tab becomes visible
   useEffect(() => {
     if (visible) {
       useStatusBarStore.getState().setTokenUsage(tokenUsageRef.current, activeModel);
       useStatusBarStore.getState().setCompacting(isCompactingRef.current);
+      const ctxWindow = pinnedContextWindow.current.get(activeModel);
+      if (ctxWindow) useStatusBarStore.getState().setContextWindow(ctxWindow);
     }
   }, [visible, activeModel]);
 
@@ -1146,9 +1152,10 @@ export function useChat({
     if (effectiveConfig.compaction?.strategy === "disabled") return;
     if (activeModelRef.current === "none") return;
     if (contextTokens <= 0) return;
-    const ctxWindow =
-      pinnedContextWindow.current.get(activeModelRef.current) ??
-      getModelContextWindowSync(activeModelRef.current);
+    // Only use pinned value (set by async fetch). If async hasn't resolved yet,
+    // skip this check — better to delay compaction than trigger on a wrong fallback.
+    const ctxWindow = pinnedContextWindow.current.get(activeModelRef.current);
+    if (!ctxWindow) return;
     const pct = contextTokens / ctxWindow;
     const triggerAt =
       effectiveConfig.compaction?.triggerThreshold ??
@@ -1572,14 +1579,13 @@ export function useChat({
           headers,
           contextWindow: fetchedCtxWindow,
         } = await buildProviderOptions(modelId, effectiveConfig);
-        // Propagate accurate context window from provider metadata
+        // Propagate accurate context window from provider metadata (authoritative)
         if (fetchedCtxWindow > 0) {
           const prev = pinnedContextWindow.current.get(modelId) ?? 0;
-          const best = Math.max(prev, fetchedCtxWindow);
-          if (best > prev) {
-            pinnedContextWindow.current.set(modelId, best);
-            contextManagerRef.current.setContextWindow(best);
-            if (visibleRef.current) useStatusBarStore.getState().setContextWindow(best);
+          if (fetchedCtxWindow !== prev) {
+            pinnedContextWindow.current.set(modelId, fetchedCtxWindow);
+            contextManagerRef.current.setContextWindow(fetchedCtxWindow);
+            if (visibleRef.current) useStatusBarStore.getState().setContextWindow(fetchedCtxWindow);
           }
         }
 
