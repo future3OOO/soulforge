@@ -16,7 +16,7 @@ async function readSafe(path: string): Promise<string> {
   }
 }
 
-type ProjectAction = "test" | "build" | "lint" | "format" | "typecheck" | "run" | "list";
+type ProjectAction = "test" | "build" | "lint" | "format" | "typecheck" | "run" | "list" | "check";
 
 interface ProjectArgs {
   action: ProjectAction;
@@ -774,8 +774,8 @@ export const projectTool = {
   name: "project",
   description:
     "[TIER-1] Verify after every edit — auto-detected toolchain. " +
-    "Actions: test, build, lint, format, typecheck, run, list. Optionally target a specific file. " +
-    "TIPS: Call typecheck after edits to catch errors early. Default timeout 30s, max 120s.",
+    "Actions: check (typecheck+lint+test in parallel), test, build, lint, format, typecheck, run, list. " +
+    "Use check after edits for full verification in one call. Fix only the failed step, then re-run just that action.",
   execute: async (args: ProjectArgs): Promise<ToolResult> => {
     const cwd = args.cwd ? join(process.cwd(), args.cwd) : process.cwd();
 
@@ -835,24 +835,6 @@ export const projectTool = {
       command = `${command} ${shellQuote(args.flags)}`;
     }
 
-    if (!command) {
-      return {
-        success: false,
-        output: `No ${args.action} command detected for this project. Use shell to run manually.`,
-        error: "no command",
-      };
-    }
-
-    // Legacy fallback: if fix command fails with unknown-flag error, retry with older syntax
-    const LEGACY_FIX: Record<string, string> = {
-      "--write": "--apply", // biome pre-1.8
-      "--apply": "--apply-unsafe", // biome/rome aggressive
-      "--fix --allow-dirty": "--fix --allow-dirty --allow-staged", // cargo clippy
-      " --fix": " autocorrect", // rubocop legacy
-      "-a": "--auto-correct", // rubocop pre-1.30
-      "--format": "-F", // ktlint pre-1.0
-    };
-
     const runCommand = async (cmd: string) => {
       const proc = Bun.spawn(["sh", "-c", cmd], {
         cwd,
@@ -869,6 +851,54 @@ export const projectTool = {
       const exitCode = await proc.exited;
       clearTimeout(timer);
       return { stdout, stderr, exitCode };
+    };
+
+    // "check" runs typecheck + lint + test in parallel, reports all results
+    if (args.action === "check") {
+      const steps = [
+        { name: "typecheck", cmd: profile.typecheck },
+        { name: "lint", cmd: profile.lint },
+        { name: "test", cmd: profile.test },
+      ].filter((s): s is { name: string; cmd: string } => s.cmd != null);
+
+      if (steps.length === 0) {
+        return { success: false, output: "No typecheck, lint, or test commands detected." };
+      }
+
+      const results = await Promise.all(
+        steps.map(async (step) => {
+          const { stdout, stderr, exitCode } = await runCommand(step.cmd);
+          const pass = exitCode === 0;
+          const output = [stdout, stderr].filter(Boolean).join("\n").trim();
+          return { name: step.name, pass, output };
+        }),
+      );
+
+      const allPass = results.every((r) => r.pass);
+      const lines = results.map((r) => {
+        if (r.pass) return `✓ ${r.name}`;
+        const preview = r.output.split("\n").slice(0, 10).join("\n");
+        return `✗ ${r.name}\n${preview}`;
+      });
+      return { success: allPass, output: lines.join("\n\n") };
+    }
+
+    if (!command) {
+      return {
+        success: false,
+        output: `No ${args.action} command detected for this project. Use shell to run manually.`,
+        error: "no command",
+      };
+    }
+
+    // Legacy fallback: if fix command fails with unknown-flag error, retry with older syntax
+    const LEGACY_FIX: Record<string, string> = {
+      "--write": "--apply", // biome pre-1.8
+      "--apply": "--apply-unsafe", // biome/rome aggressive
+      "--fix --allow-dirty": "--fix --allow-dirty --allow-staged", // cargo clippy
+      " --fix": " autocorrect", // rubocop legacy
+      "-a": "--auto-correct", // rubocop pre-1.30
+      "--format": "-F", // ktlint pre-1.0
     };
 
     try {
