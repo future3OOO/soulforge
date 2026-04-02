@@ -80,10 +80,20 @@ export function getModelContextInfoSync(modelId: string): ContextWindowResult {
   const orMatch = findOpenRouterModel(model);
   if (orMatch?.context_length) return { tokens: orMatch.context_length, source: "openrouter" };
 
-  // 3. Hardcoded fallback patterns
-  for (const provider of getAllProviders()) {
-    for (const [pattern, tokens] of provider.contextWindows) {
+  // 3. Hardcoded fallback patterns — own provider only for grouped providers
+  //    (e.g. Ollama's "qwen" pattern must not match OpenRouter's qwen models)
+  const ownProvider = providerId ? getProvider(providerId) : null;
+  if (ownProvider) {
+    for (const [pattern, tokens] of ownProvider.contextWindows) {
       if (model.includes(pattern)) return { tokens, source: "fallback" };
+    }
+  }
+  if (!ownProvider?.grouped) {
+    for (const provider of getAllProviders()) {
+      if (provider === ownProvider) continue;
+      for (const [pattern, tokens] of provider.contextWindows) {
+        if (model.includes(pattern)) return { tokens, source: "fallback" };
+      }
     }
   }
   return { tokens: DEFAULT_CONTEXT_TOKENS, source: "fallback" };
@@ -110,7 +120,7 @@ export function getModelContextWindowSync(modelId: string): number {
 export async function getModelContextInfo(modelId: string): Promise<ContextWindowResult> {
   // Fast path: check caches first (no async needed)
   const cached = getModelContextInfoSync(modelId);
-  if (cached.source !== "fallback" || cached.tokens !== DEFAULT_CONTEXT_TOKENS) {
+  if (cached.source !== "fallback") {
     return cached;
   }
 
@@ -165,31 +175,26 @@ interface OpenRouterModel {
 }
 
 let openRouterCache: OpenRouterModel[] | null = null;
-let openRouterPromise: Promise<void> | null = null;
 
+/**
+ * Ensure the OpenRouter model catalog is cached. Delegates to the grouped fetch
+ * which works with or without an API key and populates both openRouterCache
+ * (flat, for context-window lookups) and groupedCache (for model picker).
+ */
 export async function fetchOpenRouterMetadata(): Promise<void> {
   if (openRouterCache) return;
-  if (openRouterPromise) return openRouterPromise;
-  openRouterPromise = (async () => {
-    try {
-      const res = await fetch("https://openrouter.ai/api/v1/models");
-      if (!res.ok) return;
-      const data = (await res.json()) as { data: OpenRouterModel[] };
-      openRouterCache = data.data;
-    } catch {
-      // silently fail — fallback patterns still work
-    } finally {
-      openRouterPromise = null;
-    }
-  })();
-  return openRouterPromise;
+  await fetchGroupedModels("openrouter");
 }
 
 function findOpenRouterModel(model: string): OpenRouterModel | undefined {
   if (!openRouterCache) return undefined;
   const lower = model.toLowerCase();
 
-  // Exact suffix match (case-insensitive)
+  // Exact full-ID match (handles "qwen/qwen3.6-plus-preview:free" style)
+  const fullMatch = openRouterCache.find((m) => m.id.toLowerCase() === lower);
+  if (fullMatch) return fullMatch;
+
+  // Exact suffix match (case-insensitive) — handles bare model names like "claude-opus-4-6"
   const exact =
     openRouterCache.find((m) => m.id.endsWith(`/${lower}`)) ??
     openRouterCache.find((m) => m.id.endsWith(`/${model}`));
@@ -199,19 +204,25 @@ function findOpenRouterModel(model: string): OpenRouterModel | undefined {
   // OpenRouter uses "claude-opus-4.6") and try exact match again
   const dotNormalized = lower.replace(/-(\d+)-(\d)/g, "-$1.$2");
   if (dotNormalized !== lower) {
-    const dotMatch = openRouterCache.find((m) => m.id.endsWith(`/${dotNormalized}`));
+    const dotMatch =
+      openRouterCache.find((m) => m.id.toLowerCase() === dotNormalized) ??
+      openRouterCache.find((m) => m.id.endsWith(`/${dotNormalized}`));
     if (dotMatch) return dotMatch;
   }
 
-  // Fuzzy prefix match — pick the longest (most specific) match
+  // Fuzzy match — compare bare model names (after last slash).
+  // Prefer exact bare match, then closest-length prefix match.
+  const lowerBare = lower.includes("/") ? (lower.split("/").pop() ?? lower) : lower;
   let best: OpenRouterModel | undefined;
-  let bestLen = 0;
+  let bestDist = Infinity;
   for (const m of openRouterCache) {
     const orModel = (m.id.split("/").pop() ?? "").toLowerCase();
-    if (lower.startsWith(orModel) || orModel.startsWith(lower)) {
-      if (orModel.length > bestLen) {
+    if (orModel === lowerBare) return m;
+    if (lowerBare.startsWith(orModel) || orModel.startsWith(lowerBare)) {
+      const dist = Math.abs(orModel.length - lowerBare.length);
+      if (dist < bestDist) {
         best = m;
-        bestLen = orModel.length;
+        bestDist = dist;
       }
     }
   }
@@ -477,18 +488,11 @@ async function fetchVercelGatewayGrouped(): Promise<GroupedModelsResult> {
 
 async function fetchLLMGatewayGrouped(): Promise<GroupedModelsResult> {
   const apiKey = getProviderApiKey("LLM_GATEWAY_API_KEY");
-  if (!apiKey) {
-    return {
-      subProviders: [],
-      modelsByProvider: {},
-      error: "LLM_GATEWAY_API_KEY not set",
-    };
-  }
 
   try {
-    const res = await fetch("https://api.llmgateway.io/v1/models", {
-      headers: { Authorization: `Bearer ${apiKey}` },
-    });
+    const headers: Record<string, string> = {};
+    if (apiKey) headers.Authorization = `Bearer ${apiKey}`;
+    const res = await fetch("https://api.llmgateway.io/v1/models", { headers });
     if (!res.ok) {
       return {
         subProviders: [],
@@ -535,14 +539,21 @@ async function fetchLLMGatewayGrouped(): Promise<GroupedModelsResult> {
 
 async function fetchOpenRouterGrouped(): Promise<GroupedModelsResult> {
   const apiKey = getProviderApiKey("OPENROUTER_API_KEY");
-  if (!apiKey) {
-    return { subProviders: [], modelsByProvider: {}, error: "OPENROUTER_API_KEY not set" };
+
+  // Try with API key first, fall back to unauthenticated if it fails.
+  // Both hit the same endpoint — key gives user-specific models, no key gives public catalog.
+  async function doFetch(key: string | undefined): Promise<Response> {
+    const headers: Record<string, string> = {};
+    if (key) headers.Authorization = `Bearer ${key}`;
+    return fetch("https://openrouter.ai/api/v1/models", { headers });
   }
 
   try {
-    const res = await fetch("https://openrouter.ai/api/v1/models", {
-      headers: { Authorization: `Bearer ${apiKey}` },
-    });
+    let res = await doFetch(apiKey);
+    if (!res.ok && apiKey) {
+      // Key might be invalid — retry without it
+      res = await doFetch(undefined);
+    }
     if (!res.ok) {
       return {
         subProviders: [],
@@ -552,7 +563,7 @@ async function fetchOpenRouterGrouped(): Promise<GroupedModelsResult> {
     }
 
     const data = (await res.json()) as { data: OpenRouterModel[] };
-    // Cache for context-window lookups
+    // Populate flat cache for context-window lookups (tier 2)
     openRouterCache = data.data;
 
     const grouped: Record<string, ProviderModelInfo[]> = {};
