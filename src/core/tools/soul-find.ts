@@ -154,10 +154,106 @@ async function searchIntelligenceClient(
     }
   }
 
-  return [...fileMap.values()]
-    .filter((f: RankedFile) => isForbidden(f.relPath) === null && isForbidden(f.path) === null)
-    .sort((a: RankedFile, b: RankedFile) => b.score - a.score)
-    .slice(0, limit);
+  const results = [...fileMap.values()].filter(
+    (f: RankedFile) => isForbidden(f.relPath) === null && isForbidden(f.path) === null,
+  );
+
+  for (const f of results) {
+    f.score *= fileTypePenalty(f.relPath);
+  }
+
+  return results.sort((a: RankedFile, b: RankedFile) => b.score - a.score).slice(0, limit);
+}
+
+const TEST_RE = new RegExp(
+  [
+    // Test directories (all languages)
+    /(?:^|\/)(?:tests?|__tests__|specs?|__mocks__|__snapshots__|__fixtures__|fixtures|test_helpers?|test_support)\//.source,
+    // JS/TS/Python/Ruby/Rust/Java/Kotlin/Scala/C#/Lua: .test.ext, .spec.ext
+    /\.(test|spec|cy|stories)\.(ts|tsx|js|jsx|mjs|cjs|py|rb|rs|java|kt|scala|cs|lua)$/.source,
+    // Go/Python/Ruby/Elixir/Erlang/C/C++/Dart/Clojure/Haskell/ML/Gleam/V/Zig/Nim: _test.ext
+    /[_-](test|spec|tests|SUITE)\.(go|py|rb|exs|erl|cpp|c|dart|clj|hs|ml|gleam|v|zig|nim)$/.source,
+    // Python: test_*.py, conftest.py; C/C++: test_*.c; Lua/Nim/ML/Zig: test_*.ext
+    /(?:^|\/)(?:test_[^/]+\.(py|cpp|c|lua|nim|ml|zig)|conftest\.py)$/.source,
+    // Java/Kotlin/Scala/C#/Swift/PHP: ClassTest.java, ClassSpec.scala
+    /(?:Test|Tests|IT|Spec|Suite)\.(java|kt|scala|cs|swift|php)$/.source,
+    // E2E & integration: cypress, playwright, e2e
+    /(?:^|\/)(?:cypress|playwright|e2e)\//.source,
+    // Android: src/androidTest/, src/test/java/
+    /(?:^|\/)src\/(?:androidTest|test\/java)\//.source,
+    // iOS/Swift: *Tests/, *UITests/ directories
+    /(?:^\/|\/)[A-Z][^/]*(?:UI)?Tests\//.source,
+    // Flutter/Dart: test_driver/, integration_test/
+    /(?:^|\/)(?:test_driver|integration_test)\//.source,
+    // Go benchmarks
+    /_bench_test\.go$/.source,
+  ].join("|"),
+  "i",
+);
+
+const DOCS_RE = new RegExp(
+  [
+    /\.(?:md|mdx|txt|rst|adoc)$/.source,
+    /(?:^|\/)(?:docs?|documentation|javadoc|man|examples?|demos?|samples?)\//.source,
+    /(?:^|\/)(?:README|CHANGELOG|CHANGES|CONTRIBUTING|COPYING|INSTALL|LICEN[CS]E|CITATION|CODE_OF_CONDUCT|SECURITY)(?:\.|$)/.source,
+  ].join("|"),
+  "i",
+);
+
+const CONFIG_RE = /\.(?:json|ya?ml|toml|ini|cfg|conf|properties|xml)$|(?:^|\/)\.(?!\.)/i;
+
+const JUNK_RE = new RegExp(
+  [
+    // OS metadata
+    /(?:^|\/)(?:\.DS_Store|Thumbs\.db|desktop\.ini|\._[^/]+)$/.source,
+    // AI tool config (tracked but not source code)
+    /(?:^|\/)(?:\.claude|\.copilot|\.cursor|\.windsurf|\.aider|\.cline|\.codeium|\.tabnine|\.codex)\//.source,
+    // Git internals & hooks
+    /(?:^|\/)\.git\//.source,
+    /(?:^|\/)(?:\.husky|\.changeset)\//.source,
+    // Editor state (sometimes tracked)
+    /(?:^|\/)\.vscode\/(?!extensions\.json|settings\.json|tasks\.json|launch\.json)/.source,
+  ].join("|"),
+  "i",
+);
+
+const GENERATED_RE = new RegExp(
+  [
+    // Build output (universal)
+    /(?:^|\/)(?:dist|build|out|target|obj|_build|ebin|coverage|htmlcov|\.nyc_output|TestResults)\//.source,
+    // JS/TS frameworks & compilers
+    /(?:^|\/)(?:\.next|\.nuxt|\.svelte-kit|\.turbo|\.cache|\.output|\.parcel-cache|\.vite|\.bun|\.swc)\//.source,
+    // TS build info
+    /\.tsbuildinfo$/.source,
+    // Mobile: Expo, iOS, Android, Flutter
+    /(?:^|\/)(?:\.expo|DerivedData|Pods|Carthage\/Build|xcuserdata|\.dart_tool)\//.source,
+    /(?:^|\/)(?:android\/build|ios\/build|\.flutter-plugins)/.source,
+    // Python
+    /(?:^|\/)(?:__pycache__|\.mypy_cache|\.pytest_cache|\.ruff_cache|\.tox|\.eggs?)\//.source,
+    // PHP: Laravel, Symfony cache dirs
+    /(?:^|\/)(?:storage\/framework\/cache|var\/cache|bootstrap\/cache)\//.source,
+    // Java/Kotlin: Gradle, Eclipse, IntelliJ
+    /(?:^|\/)(?:\.gradle|\.kotlin|\.settings|\.vs|\.idea)\//.source,
+    // C/C++/Zig
+    /(?:^|\/)(?:cmake-build-[^/]+|CMakeFiles|zig-cache|zig-out)\//.source,
+    // Haskell/Elixir
+    /(?:^|\/)(?:\.stack-work|dist-newstyle)\//.source,
+    // Minified files & sourcemaps
+    /[.-]min\.(js|css)$|\.(?:js|css)\.map$/.source,
+  ].join("|"),
+  "i",
+);
+
+const LOCK_RE = /(?:^|\/)(?:package-lock\.json|pnpm-lock\.ya?ml|bun\.lockb?|bun\.lock|yarn\.lock|composer\.lock|Cargo\.lock|Gemfile\.lock|poetry\.lock|pdm\.lock|uv\.lock|Gopkg\.lock|Package\.resolved|deno\.lock|gradle\.lockfile|npm-shrinkwrap\.json|flake\.lock|pixi\.lock|\.terraform\.lock\.hcl)$/;
+
+function fileTypePenalty(relPath: string): number {
+  if (GENERATED_RE.test(relPath)) return 0.05;
+  if (LOCK_RE.test(relPath)) return 0.05;
+  if (JUNK_RE.test(relPath)) return 0.1;
+  if (DOCS_RE.test(relPath)) return 0.15;
+  if (TEST_RE.test(relPath)) return 0.3;
+  if (CONFIG_RE.test(relPath)) return 0.4;
+  return 1;
 }
 
 function upsertFile(

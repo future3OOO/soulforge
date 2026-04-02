@@ -9,29 +9,55 @@ import { enrichWithSymbolContext } from "./grep.js";
 const ENRICHMENT_TIMEOUT_MS = 2000;
 const MAX_SEARCH_OUTPUT_BYTES = 32_000;
 
-const DEP_DIRS = [
-  "node_modules",
-  "vendor",
-  ".venv/lib",
-  "venv/lib",
-  "__pypackages__",
-  "site-packages",
-  ".cargo/registry",
-  "Packages",
-  "pkg/mod",
-  "bower_components",
-];
+interface DepResolution {
+  searchPath: string;
+  extraArgs: string[];
+  resolved: boolean;
+  dep: string;
+}
 
-function resolveDepPath(dep: string, explicitPath?: string): string {
-  if (explicitPath) return explicitPath;
-  if (typeof dep === "string" && dep.length > 0 && dep !== "true") {
-    for (const dir of DEP_DIRS) {
-      const candidate = `${dir}/${dep}`;
-      if (existsSync(candidate)) return candidate;
-    }
-    return `node_modules/${dep}`;
+function resolveDepSearch(dep: string, explicitPath?: string): DepResolution {
+  const noIgnoreFollow = ["--no-ignore", "--follow"];
+
+  if (explicitPath) {
+    return { searchPath: explicitPath, extraArgs: noIgnoreFollow, resolved: true, dep };
   }
-  return ".";
+
+  if (!dep || dep === "true") {
+    return { searchPath: ".", extraArgs: noIgnoreFollow, resolved: true, dep };
+  }
+
+  const FLAT_ROOTS = ["node_modules", "vendor", "bower_components"];
+  for (const root of FLAT_ROOTS) {
+    const candidate = `${root}/${dep}`;
+    if (existsSync(candidate)) {
+      return { searchPath: candidate, extraArgs: noIgnoreFollow, resolved: true, dep };
+    }
+  }
+
+  return {
+    searchPath: ".",
+    extraArgs: [...noIgnoreFollow, `--glob=**/${dep}/**`],
+    resolved: false,
+    dep,
+  };
+}
+
+function annotateDepNoMatch(result: ToolResult, depRes: DepResolution): ToolResult {
+  const noMatch = result.output === "No matches found." || result.output === "0 matches.";
+  if (!noMatch) return result;
+
+  if (depRes.resolved) {
+    return {
+      success: true,
+      output: `No matches for pattern in ${depRes.searchPath}. The dependency "${depRes.dep}" is installed but does not contain this pattern. Try a different pattern or check the dep name spelling.`,
+    };
+  }
+
+  return {
+    success: true,
+    output: `No matches found. Dependency "${depRes.dep}" was not found in any vendor directory (node_modules, vendor, .venv, etc). It may not be installed — try running the package manager install command first, or use dep='true' to search all ignored files.`,
+  };
 }
 
 interface SoulGrepArgs {
@@ -47,16 +73,18 @@ interface SoulGrepArgs {
 export const soulGrepTool = {
   name: "soul_grep",
   description:
-    "[TIER-1] Token-efficient search — prefer over grep. Count mode returns per-file counts instantly from repo map. Non-count mode includes symbol context. Use for all code search.",
+    "[TIER-1] Token-efficient search — prefer over grep. Count mode returns per-file counts instantly from repo map. Non-count mode includes symbol context. Use for all code search. Use dep param to search inside dependency/vendor directories (e.g. dep='react' searches node_modules/react, dep='true' searches all with --no-ignore).",
   createExecute: (repoMap?: IntelligenceClient) => {
     return async (args: SoulGrepArgs): Promise<ToolResult> => {
       const { pattern, count, wordBoundary, dep } = args;
-      const searchPath = dep ? resolveDepPath(dep, args.path) : (args.path ?? ".");
 
       if (!dep && count && wordBoundary && repoMap?.isReady && !args.path && !args.glob) {
         const intercept = await tryIntelligenceClientCount(repoMap, pattern);
         if (intercept) return intercept;
       }
+
+      const depRes = dep ? resolveDepSearch(dep, args.path) : null;
+      const searchPath = depRes?.searchPath ?? args.path ?? ".";
 
       const rgBin = getVendoredPath("rg") ?? "rg";
       const rgArgs: string[] = [
@@ -67,21 +95,23 @@ export const soulGrepTool = {
         "--glob=!*.css.map",
       ];
 
-      if (dep) rgArgs.push("--no-ignore");
+      if (depRes) rgArgs.push(...depRes.extraArgs);
       if (wordBoundary) rgArgs.push("--word-regexp");
 
       if (count) {
         rgArgs.push("--count", "--with-filename");
         if (args.glob) rgArgs.push("--glob", args.glob);
         rgArgs.push(pattern, searchPath);
-        return runCount(rgBin, rgArgs);
+        const result = await runCount(rgBin, rgArgs);
+        return depRes ? annotateDepNoMatch(result, depRes) : result;
       }
 
       rgArgs.push("--line-number", "--with-filename");
       rgArgs.push(`--max-count=${String(args.maxCount ?? 50)}`);
       if (args.glob) rgArgs.push("--glob", args.glob);
       rgArgs.push(pattern, searchPath);
-      return runSearch(rgBin, rgArgs);
+      const result = await runSearch(rgBin, rgArgs);
+      return depRes ? annotateDepNoMatch(result, depRes) : result;
     };
   },
 };
