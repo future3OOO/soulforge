@@ -2819,7 +2819,7 @@ export class RepoMap {
     for (const syms of symbolsByFile.values()) {
       for (const s of syms) allSymbolNames.push(s.name);
     }
-    const callerCounts = this.getCallerCounts(allSymbolNames);
+    const callerDetails = this.getCallerDetails(allSymbolNames);
 
     // [NEW] marks files modified within the last 48h — recency signal, not session memory
     const recentCutoff = Date.now() - 48 * 60 * 60 * 1000;
@@ -2932,8 +2932,13 @@ export class RepoMap {
             display = rawSig ?? `${kindTag(sym.kind as SymbolKind)}${sym.name}`;
           }
 
-          const callers = callerCounts.get(sym.name);
-          const callerBadge = callers && callers >= 10 ? ` [${String(callers)}↑]` : "";
+          const callerInfo = callerDetails.get(sym.name);
+          let callerBadge = "";
+          if (callerInfo) {
+            const names = callerInfo.topCallers.join(", ");
+            const remaining = callerInfo.count - callerInfo.topCallers.length;
+            callerBadge = remaining > 0 ? ` [${names}, +${String(remaining)}↑]` : ` [${names}]`;
+          }
           symbolLines += `  ${exported}${display} :${String(sym.line)}${callerBadge}\n`;
         }
         if (overflow > 0) {
@@ -4263,6 +4268,41 @@ export class RepoMap {
       .all(...symbolNames);
     const result = new Map<string, number>();
     for (const r of rows) result.set(r.callee_name, r.cnt);
+    return result;
+  }
+
+  /** Get caller counts + top 3 caller names for symbols with ≥5 callers */
+  getCallerDetails(symbolNames: string[]): Map<string, { count: number; topCallers: string[] }> {
+    if (symbolNames.length === 0) return new Map();
+    const placeholders = symbolNames.map(() => "?").join(",");
+    const rows = this.db
+      .query<{ callee_name: string; caller_name: string; cnt: number }, string[]>(
+        `SELECT c.callee_name, s.name as caller_name, COUNT(*) as cnt
+         FROM calls c
+         JOIN symbols s ON s.id = c.caller_symbol_id
+         WHERE c.callee_name IN (${placeholders})
+         GROUP BY c.callee_name, s.name
+         ORDER BY c.callee_name, cnt DESC`,
+      )
+      .all(...symbolNames);
+
+    const grouped = new Map<string, { count: number; callers: string[] }>();
+    for (const r of rows) {
+      let entry = grouped.get(r.callee_name);
+      if (!entry) {
+        entry = { count: 0, callers: [] };
+        grouped.set(r.callee_name, entry);
+      }
+      entry.count += r.cnt;
+      if (entry.callers.length < 3) entry.callers.push(r.caller_name);
+    }
+
+    const result = new Map<string, { count: number; topCallers: string[] }>();
+    for (const [name, entry] of grouped) {
+      if (entry.count >= 5) {
+        result.set(name, { count: entry.count, topCallers: entry.callers });
+      }
+    }
     return result;
   }
 
