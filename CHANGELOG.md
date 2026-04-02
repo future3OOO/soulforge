@@ -2,6 +2,11 @@
 
 All notable changes to SoulForge are documented here.
 
+## [1.8.2] — 2026-04-02
+
+### Bug Fixes
+
+- compaction model context window uses authoritative API value
 ## [1.8.1] — 2026-04-02
 
 ### Bug Fixes
