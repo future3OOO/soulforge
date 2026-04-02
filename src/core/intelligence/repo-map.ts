@@ -3792,10 +3792,22 @@ export class RepoMap {
     if (!this.ready) return [];
 
     const rows = this.db
-      .query<{ name: string; path: string; line: number; end_line: number; minhash: Buffer }, []>(
-        `SELECT ts.name, f.path, ts.line, ts.end_line, ts.minhash
+      .query<
+        {
+          name: string;
+          kind: string;
+          sig: string | null;
+          path: string;
+          line: number;
+          end_line: number;
+          minhash: Buffer;
+        },
+        []
+      >(
+        `SELECT ts.name, COALESCE(s.kind, '') as kind, s.signature as sig, f.path, ts.line, ts.end_line, ts.minhash
          FROM token_signatures ts
          JOIN files f ON f.id = ts.file_id
+         LEFT JOIN symbols s ON s.file_id = ts.file_id AND s.name = ts.name AND s.line = ts.line
          ORDER BY f.pagerank DESC
          LIMIT 500`,
       )
@@ -3816,6 +3828,8 @@ export class RepoMap {
       return copy;
     };
 
+    const TYPE_KINDS = new Set(["interface", "type", "enum"]);
+
     for (let i = 0; i < rows.length; i++) {
       const a = rows[i] as (typeof rows)[0];
       const sigA = toSig(a.minhash);
@@ -3824,10 +3838,49 @@ export class RepoMap {
         const b = rows[j] as (typeof rows)[0];
         if (a.path === b.path && a.line === b.line) continue;
 
+        // Filter: skip parent-contains-child (intra-function matching)
+        if (a.path === b.path) {
+          if (a.line <= b.line && a.end_line >= b.end_line) continue;
+          if (b.line <= a.line && b.end_line >= a.end_line) continue;
+        }
+
+        // Filter: skip pairs where both are type declarations (similar AST shape ≠ duplication)
+        if (TYPE_KINDS.has(a.kind) && TYPE_KINDS.has(b.kind)) continue;
+
+        // Filter: skip pairs where both are short variables (<10 lines) — config/literal duplication is noise
+        if (
+          a.kind === "variable" &&
+          b.kind === "variable" &&
+          a.end_line - a.line < 10 &&
+          b.end_line - b.line < 10
+        )
+          continue;
+
         const sigB = toSig(b.minhash);
         const sim = jaccardSimilarity(sigA, sigB);
 
         if (sim >= threshold && sim < 1.0) {
+          // For sub-95% matches: if both have signatures, check they're similar
+          // Different signatures = different intent despite similar structure
+          if (sim < 0.95 && a.sig && b.sig) {
+            const tokA = new Set(
+              a.sig
+                .toLowerCase()
+                .split(/[\s,(){}:;|&=<>]+/)
+                .filter(Boolean),
+            );
+            const tokB = new Set(
+              b.sig
+                .toLowerCase()
+                .split(/[\s,(){}:;|&=<>]+/)
+                .filter(Boolean),
+            );
+            let shared = 0;
+            for (const t of tokA) if (tokB.has(t)) shared++;
+            const sigSim = shared / Math.max(tokA.size, tokB.size);
+            if (sigSim < 0.3) continue; // signatures too different — skip
+          }
+
           pairs.push({
             similarity: sim,
             a: { name: a.name, path: a.path, line: a.line, endLine: a.end_line },
