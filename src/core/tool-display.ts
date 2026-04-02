@@ -19,7 +19,7 @@ export type ToolCategory =
 
 const TOOL_CATEGORIES: Record<string, ToolCategory> = {
   // File tools
-  read_file: "file",
+  read: "file",
   edit_file: "file",
   multi_edit: "file",
   undo_edit: "file",
@@ -126,7 +126,7 @@ export function getBackendLabel(tag: string): string {
 import { icon } from "./icons.js";
 
 const TOOL_ICON_MAP: Record<string, string> = {
-  read_file: "file",
+  read: "file",
   edit_file: "pencil",
   multi_edit: "pencil",
   undo_edit: "pencil",
@@ -176,7 +176,7 @@ export const TOOL_ICONS = new Proxy({} as Record<string, string>, {
 });
 
 export const TOOL_LABELS: Record<string, string> = {
-  read_file: "Reading",
+  read: "Reading",
   edit_file: "Editing",
   multi_edit: "Editing",
   undo_edit: "Undoing",
@@ -215,7 +215,7 @@ export const TOOL_LABELS: Record<string, string> = {
 
 /** Past-tense labels for completed tool calls */
 export const TOOL_LABELS_DONE: Record<string, string> = {
-  read_file: "Read",
+  read: "Read",
   edit_file: "Edited",
   multi_edit: "Edited",
   undo_edit: "Undid",
@@ -266,7 +266,7 @@ export function resolveToolDisplay(toolName: string, defaultColor?: string) {
 function getToolIconColors(): Record<string, string> {
   const t = getThemeTokens();
   return {
-    read_file: t.info,
+    read: t.info,
     edit_file: t.amber,
     multi_edit: t.amber,
     undo_edit: t.amber,

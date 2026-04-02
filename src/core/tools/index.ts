@@ -82,10 +82,10 @@ function deferExecute<T, R>(fn: (args: T) => Promise<R>): (args: T) => Promise<R
 const coerceInt = (v: unknown) => (typeof v === "string" ? Number(v) : v);
 
 const nullToUndef = <T>(v: T | null): T | undefined => (v === null ? undefined : v);
-const lineNum = () =>
-  z.preprocess(coerceInt, z.number().nullable().optional().transform(nullToUndef));
 const optStr = () => z.string().nullable().optional().transform(nullToUndef);
 const optBool = () => z.boolean().nullable().optional().transform(nullToUndef);
+const optArray = <T extends z.ZodTypeAny>(schema: T) =>
+  z.array(schema).nullable().optional().transform(nullToUndef);
 const freshField = () => optBool().describe("Set true to bypass cache and re-execute");
 
 /** Send tool results as plain text to the model instead of JSON.stringify'd objects.
@@ -108,13 +108,24 @@ const forceField = () =>
     "Skip soul map fast-path. Only use after confirming the soul map result was incomplete or stale.",
   );
 
+const readFileSpec = z.object({
+  path: z.string().describe("File path"),
+  ranges: optArray(
+    z.object({
+      start: z.number().describe("Start line (1-indexed)"),
+      end: z.number().describe("End line (1-indexed)"),
+    }),
+  ).describe("Line ranges to read. Omit for full file."),
+  target: optStr().describe("Symbol type to extract (AST-based). Omit for raw read."),
+  name: optStr().describe("Symbol name (required when target is set, except scope)"),
+});
+
 export const SCHEMAS = {
   readFile: z.object({
-    path: z.string().describe("File path to read"),
-    startLine: lineNum().describe("Start line (1-indexed)"),
-    endLine: lineNum().describe("End line (1-indexed)"),
-    target: optStr().describe("Symbol type to extract (AST-based). Omit for raw file read."),
-    name: optStr().describe("Symbol name (required when target is set, except scope)"),
+    files: z
+      .union([z.array(readFileSpec), readFileSpec])
+      .describe("Files to read. Array of {path, ranges?, target?, name?}. One item or many."),
+    fresh: optBool().describe("Set true to bypass cache and re-execute"),
   }),
   grep: z.object({
     pattern: z.string().describe("Regex search pattern"),
@@ -350,61 +361,112 @@ export function buildTools(
   }
 
   return {
-    read_file: tool({
+    read: tool({
       ...TEXT_OUTPUT,
       providerOptions: progProviderOpts,
       description: readFileTool.description,
-      inputSchema: SCHEMAS.readFile.extend({ fresh: freshField() }),
+      inputSchema: SCHEMAS.readFile,
       execute: deferExecute(async (args) => {
-        const normPath = resolve(args.path);
-        const isFullRead = args.startLine == null && args.endLine == null && !args.target;
+        // Normalize input: detect old format, single object, or proper array
+        let warn = "";
+        type FileSpec = {
+          path: string;
+          ranges?: Array<{ start: number; end: number }>;
+          target?: string;
+          name?: string;
+        };
+        let fileSpecs: FileSpec[];
 
-        if (!args.fresh && fullReadCache.has(normPath)) {
-          if (isFullRead) {
-            return {
-              success: true,
-              output: `[Already read — "${args.path}" content is in your context above. Pass fresh=true to re-read if the file has changed.]`,
-            };
+        if (Array.isArray(args.files)) {
+          fileSpecs = args.files;
+        } else if (args.files) {
+          warn = "[⚠ files should be an array — wrap in [] next time]\n\n";
+          fileSpecs = [args.files];
+        } else {
+          return {
+            success: false,
+            output: "Missing files parameter. Use files=[{path:'file.ts'}].",
+          };
+        }
+
+        const outputs: string[] = [];
+        if (warn) outputs.push(warn.trim());
+
+        const batchResults = await Promise.all(
+          fileSpecs.map(async (spec) => {
+            const fp = spec.path;
+            const normPath = resolve(fp);
+            const hasRanges = spec.ranges && spec.ranges.length > 0;
+            const isFullRead = !hasRanges && !spec.target;
+
+            // Cache: skip re-reads
+            if (!args.fresh && fullReadCache.has(normPath)) {
+              if (isFullRead) {
+                return {
+                  path: fp,
+                  results: [
+                    {
+                      success: true as const,
+                      output: `[Already read — "${fp}" content is in your context above. Pass fresh=true to re-read.]`,
+                    },
+                  ],
+                };
+              }
+            }
+
+            // Excessive read protection
+            if (!args.fresh && !isFullRead) {
+              const count = readCountPerFile.get(normPath) ?? 0;
+              if (count >= MAX_READS_PER_FILE) {
+                return {
+                  path: fp,
+                  results: [
+                    {
+                      success: true as const,
+                      output: `[Read ${String(count)} times — "${fp}" is already in your context.]`,
+                    },
+                  ],
+                };
+              }
+            }
+
+            if (hasRanges) {
+              const rangeResults = await Promise.all(
+                spec.ranges!.map((r) =>
+                  readFileTool.execute({ path: fp, startLine: r.start, endLine: r.end }),
+                ),
+              );
+              readCountPerFile.set(
+                normPath,
+                (readCountPerFile.get(normPath) ?? 0) + rangeResults.length,
+              );
+              return { path: fp, results: rangeResults };
+            }
+
+            if (isFullRead && !args.fresh) fullReadCache.add(normPath);
+            const result = await readFileTool.execute({
+              path: fp,
+              ...(spec.target ? { target: spec.target, name: spec.name } : {}),
+            });
+            if (!result.success && isFullRead) fullReadCache.delete(normPath);
+            if (result.success && !isFullRead) {
+              readCountPerFile.set(normPath, (readCountPerFile.get(normPath) ?? 0) + 1);
+            }
+            return { path: fp, results: [result] };
+          }),
+        );
+
+        const multiFile = batchResults.length > 1;
+        for (const { path: fp, results } of batchResults) {
+          sequentialReadFiles.add(resolve(fp));
+          if (multiFile) outputs.push(`── ${fp} ──`);
+          for (const r of results) {
+            outputs.push(r.output);
           }
-          if (args.startLine != null && !args.target) {
-            return {
-              success: true,
-              output: `[Already read in full — "${args.path}" content is in your context above. Use the full content instead of reading ranges.]`,
-            };
-          }
         }
 
-        // Block excessive reads of the same file (chunking pattern)
-        if (!args.fresh) {
-          const count = readCountPerFile.get(normPath) ?? 0;
-          if (count >= MAX_READS_PER_FILE) {
-            return {
-              success: true,
-              output: `[Read ${String(count)} times — "${args.path}" is already in your context. If you need the full file, use read_file without startLine/endLine. Pass fresh=true only if the file changed.]`,
-            };
-          }
-        }
-
-        // Mark as pending BEFORE the async read so parallel calls for the same file
-        // see the cache immediately instead of both executing the read.
-        if (isFullRead && !args.fresh) fullReadCache.add(normPath);
-
-        const result = await readFileTool.execute(args);
-
-        if (result.success) {
-          if (!isFullRead)
-            readCountPerFile.set(normPath, (readCountPerFile.get(normPath) ?? 0) + 1);
-        } else if (isFullRead) {
-          fullReadCache.delete(normPath);
-        }
-
-        _sequentialReads++;
-        const isReread = sequentialReadFiles.has(normPath);
-        sequentialReadFiles.add(normPath);
-        if (result.success) {
-          void isReread;
-        }
-        return result;
+        _sequentialReads += fileSpecs.length;
+        return { success: true, output: outputs.join("\n\n") };
       }),
     }),
 
@@ -421,7 +483,7 @@ export function buildTools(
           .optional()
           .transform(nullToUndef)
           .describe(
-            "1-indexed start line from your last read_file output. " +
+            "1-indexed start line from your last read output. " +
               "The range is derived from oldString line count — lineStart anchors where to look.",
           ),
       }),
@@ -499,7 +561,7 @@ export function buildTools(
                 .optional()
                 .transform(nullToUndef)
                 .describe(
-                  "1-indexed start line from read_file output. Range derived from oldString line count.",
+                  "1-indexed start line from read output. Range derived from oldString line count.",
                 ),
             }),
           )
@@ -1640,7 +1702,7 @@ export function buildReadOnlyTools(
 ) {
   const all = buildTools(undefined, editorSettings, onApproveWebSearch, opts);
   return {
-    read_file: all.read_file,
+    read: all.read,
     grep: all.grep,
     glob: all.glob,
     web_search: all.web_search,
@@ -1668,15 +1730,42 @@ export function buildSubagentExploreTools(opts?: {
 }) {
   const subagentCwd = process.cwd();
   return {
-    read_file: tool({
+    read: tool({
       ...TEXT_OUTPUT,
       description: `${readFileTool.description} Output capped at 750 lines.`,
       inputSchema: SCHEMAS.readFile,
       execute: deferExecute(async (args) => {
-        const result = await readFileTool.execute(args);
-        if (!result.success) return result;
-        if (args.target || result.outlineOnly) return result;
-        return { ...result, output: truncateLines(result.output) };
+        const specs = Array.isArray(args.files) ? args.files : [args.files];
+        const outputs: string[] = [];
+        const multiFile = specs.length > 1;
+        for (const spec of specs) {
+          if (multiFile) outputs.push(`── ${spec.path} ──`);
+          if (spec.ranges && spec.ranges.length > 0) {
+            for (const r of spec.ranges) {
+              const result = await readFileTool.execute({
+                path: spec.path,
+                startLine: r.start,
+                endLine: r.end,
+              });
+              outputs.push(result.success ? truncateLines(result.output) : result.output);
+            }
+          } else {
+            const result = await readFileTool.execute({
+              path: spec.path,
+              ...(spec.target ? { target: spec.target, name: spec.name } : {}),
+            });
+            if (!result.success) {
+              outputs.push(result.output);
+              continue;
+            }
+            outputs.push(
+              spec.target || (result as { outlineOnly?: boolean }).outlineOnly
+                ? result.output
+                : truncateLines(result.output),
+            );
+          }
+        }
+        return { success: true, output: outputs.join("\n\n") };
       }),
     }),
 
@@ -2078,7 +2167,7 @@ export function buildSubagentCodeTools(opts?: {
           .optional()
           .transform(nullToUndef)
           .describe(
-            "1-indexed start line from your last read_file output. " +
+            "1-indexed start line from your last read output. " +
               "The range is derived from oldString line count — lineStart anchors where to look.",
           ),
       }),
@@ -2112,7 +2201,7 @@ export function buildSubagentCodeTools(opts?: {
                 .optional()
                 .transform(nullToUndef)
                 .describe(
-                  "1-indexed start line from read_file output. Range derived from oldString line count.",
+                  "1-indexed start line from read output. Range derived from oldString line count.",
                 ),
             }),
           )

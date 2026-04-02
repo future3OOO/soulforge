@@ -11,7 +11,33 @@ export function formatArgs(toolName: string, args?: string): string {
   if (!args) return "";
   try {
     const parsed = JSON.parse(args);
-    if (toolName === "read_file" && parsed.path) return parsed.path;
+    if (toolName === "read") {
+      const files = Array.isArray(parsed.files) ? parsed.files : parsed.files ? [parsed.files] : [];
+      if (files.length === 0 && parsed.path) return parsed.path; // legacy
+      if (files.length === 1) {
+        const f = files[0];
+        const hasRanges = f.ranges && f.ranges.length > 0;
+        const label =
+          f.target && f.name ? `${String(f.name)} in ${String(f.path)}` : String(f.path);
+        const suffix = hasRanges
+          ? ` (${String(f.ranges.length)} range${f.ranges.length > 1 ? "s" : ""})`
+          : "";
+        const trimmed = label.length > 50 ? `${label.slice(0, 47)}...` : label;
+        return `${trimmed}${suffix}`;
+      }
+      if (files.length > 1) {
+        const rangeCount = files.reduce(
+          (s: number, f: { ranges?: unknown[] }) => s + (f.ranges?.length ?? 0),
+          0,
+        );
+        const fullCount = files.filter((f: { ranges?: unknown[] }) => !f.ranges?.length).length;
+        const parts: string[] = [`${String(files.length)} files`];
+        if (rangeCount > 0) parts.push(`${String(rangeCount)} ranges`);
+        if (fullCount > 0) parts.push(`${String(fullCount)} full`);
+        return parts.join(", ");
+      }
+      return "";
+    }
     if (toolName === "edit_file" && parsed.path) return parsed.path;
     if (toolName === "multi_edit" && parsed.path) return parsed.path;
     if (toolName === "undo_edit" && parsed.path) return parsed.path;
@@ -84,12 +110,7 @@ export function formatArgs(toolName: string, args?: string): string {
       const q = String(parsed.question);
       return q.length > 50 ? `${q.slice(0, 47)}...` : q;
     }
-    if (toolName === "read_file" && parsed.target && parsed.path) {
-      const label = parsed.name
-        ? `${String(parsed.name)} in ${String(parsed.path)}`
-        : String(parsed.path);
-      return label.length > 50 ? `${label.slice(0, 47)}...` : label;
-    }
+    // read target/path handled above in the files array handler
     if (toolName === "navigate") {
       const parts = [parsed.action, parsed.symbol, parsed.file].filter(Boolean).map(String);
       const label = parts.join(" ");

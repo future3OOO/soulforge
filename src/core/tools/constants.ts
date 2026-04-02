@@ -1,7 +1,7 @@
 /** Core tools — always exposed to the model (schemas sent on every API call).
  *  Keep this minimal — every extra schema adds ~300 tokens per API roundtrip. */
 export const CORE_TOOL_NAMES: string[] = [
-  "read_file",
+  "read",
   "edit_file",
   "multi_edit",
   "grep",
@@ -15,7 +15,7 @@ export const TOOL_CATALOG: Record<string, string> = {
   request_tools: "Let the agent load tools on demand (saves ~300 tokens/tool/call)",
   release_tools: "Let the agent unload tools it no longer needs",
   skills: "Let the agent search, install, and load skills from skills.sh",
-  read_file: "Read file contents with optional line range or symbol target",
+  read: "Read file contents with optional line range or symbol target",
   edit_file: "Edit, create, or write files with line-anchored matching",
   multi_edit: "Apply multiple edits to one or more files atomically",
   undo_edit: "Undo recent edits to a file",
@@ -52,7 +52,7 @@ export const TOOL_CATALOG: Record<string, string> = {
  *  Read/analysis + memory + editor read — NO edit/shell/git/refactor.
  *  Used with activeTools to restrict without rebuilding the tool set. */
 export const RESTRICTED_TOOL_NAMES: string[] = [
-  "read_file",
+  "read",
   "grep",
   "glob",
   "soul_grep",
@@ -74,10 +74,10 @@ export const RESTRICTED_TOOL_NAMES: string[] = [
 ];
 
 /** Tools available during plan execution.
- *  Executor gets edit/shell/project + read_file (fallback if edit fails) + update_plan_step.
+ *  Executor gets edit/shell/project + read (fallback if edit fails) + update_plan_step.
  *  No dispatch, explore, discover_pattern, web_search, test_scaffold — the plan already contains everything. */
 export const PLAN_EXECUTION_TOOL_NAMES: string[] = [
-  "read_file",
+  "read",
   "edit_file",
   "undo_edit",
   "multi_edit",

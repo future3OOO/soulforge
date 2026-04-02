@@ -28,7 +28,7 @@ export interface ToolResult {
   error?: string;
   /** Which intelligence backend handled this (ts-morph, lsp, tree-sitter, regex) */
   backend?: string;
-  /** True when read_file returned only an outline (large file) — tracker should not cache this as a full read */
+  /** True when read returned only an outline (large file) — tracker should not cache this as a full read */
   outlineOnly?: boolean;
   /** Files edited by dispatch tool — used by /changes panel to track per-tab edits */
   filesEdited?: string[];

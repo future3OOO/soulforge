@@ -23,6 +23,37 @@ interface ReadFileArgs {
 const MAX_READ_LINES = 2000;
 const MAX_LINE_LENGTH = 2000;
 const MAX_READ_SIZE = 250 * 1024;
+const SMART_TRUNCATE_LINES = 200;
+
+/**
+ * Build an outline of symbols beyond the truncation point.
+ * Uses repo map symbol data (cached in SQLite, zero I/O).
+ */
+async function buildSymbolOutline(
+  filePath: string,
+  cutoffLine: number,
+  totalLines: number,
+): Promise<string> {
+  try {
+    const client = getIntelligenceClient();
+    if (!client) return "";
+    const cwd = process.cwd();
+    const rel = filePath.startsWith(cwd) ? filePath.slice(cwd.length + 1) : filePath;
+    const symbols = await client.getFileSymbolRanges(rel);
+    if (!symbols || symbols.length === 0) return "";
+
+    const beyond = symbols.filter((s) => s.line > cutoffLine);
+    if (beyond.length === 0) return "";
+
+    const lines = beyond.map((s) => {
+      const range = s.endLine ? `:${String(s.line)}-${String(s.endLine)}` : `:${String(s.line)}`;
+      return `  ${range} ${s.kind} ${s.name}`;
+    });
+    return `\n... ${String(totalLines - cutoffLine)} more lines. Symbols below:\n${lines.join("\n")}\nUse ranges:[{start:N, end:M}] to read specific sections.`;
+  } catch {
+    return `\n... ${String(totalLines - cutoffLine)} more lines. Use ranges to read specific sections.`;
+  }
+}
 
 /**
  * Offload the heavy read path (stat, binary check, read, line-number) to the
@@ -49,7 +80,7 @@ async function readViaWorker(filePath: string, args: ReadFileArgs): Promise<Tool
         return { success: false, output: msg, error: "binary" };
       }
       case "too_large": {
-        const msg = `File too large (${result.sizeStr}). Maximum is ${String(MAX_READ_SIZE / 1024)}KB. Use startLine/endLine to read a specific range.`;
+        const msg = `File too large (${result.sizeStr}). Maximum is ${String(MAX_READ_SIZE / 1024)}KB. Use ranges:[{start:N, end:M}] to read a specific section.`;
         return { success: false, output: msg, error: "file too large" };
       }
       case "not_found": {
@@ -60,9 +91,30 @@ async function readViaWorker(filePath: string, args: ReadFileArgs): Promise<Tool
 
   emitFileRead(filePath);
 
+  const lineCount = result.numbered.split("\n").length;
+  const isRangeRead = args.startLine != null || args.endLine != null;
+
+  if (!isRangeRead && lineCount > SMART_TRUNCATE_LINES) {
+    const cutoffLine = result.start + SMART_TRUNCATE_LINES;
+    const outline = await buildSymbolOutline(filePath, cutoffLine, result.totalLines);
+    if (outline) {
+      const truncatedLines = result.numbered.split("\n").slice(0, SMART_TRUNCATE_LINES);
+      return {
+        success: true,
+        output: `${truncatedLines.join("\n")}${outline}`,
+      };
+    }
+  }
+
   let output = result.numbered;
   if (result.truncated) {
-    output += `\n\n(File has ${String(result.totalLines)} lines. Showing first ${String(MAX_READ_LINES)}. Use startLine/endLine to read beyond line ${String(result.start + MAX_READ_LINES)})`;
+    const outline = await buildSymbolOutline(
+      filePath,
+      result.start + MAX_READ_LINES,
+      result.totalLines,
+    );
+    output +=
+      outline || `\n... ${String(result.totalLines - result.start - MAX_READ_LINES)} more lines.`;
   }
   return { success: true, output };
 }
@@ -110,7 +162,7 @@ async function readOnMainThread(filePath: string, args: ReadFileArgs): Promise<T
         : `${String(Math.round(fileStat.size / 1024))}KB`;
     return {
       success: false,
-      output: `File too large (${sizeStr}). Maximum is ${String(MAX_READ_SIZE / 1024)}KB. Use startLine/endLine to read a specific range.`,
+      output: `File too large (${sizeStr}). Maximum is ${String(MAX_READ_SIZE / 1024)}KB. Use ranges:[{start:N, end:M}] to read a specific section.`,
       error: "file too large",
     };
   }
@@ -137,18 +189,20 @@ async function readOnMainThread(filePath: string, args: ReadFileArgs): Promise<T
 
   let output = numbered;
   if (truncated) {
-    output += `\n\n(File has ${String(totalLines)} lines. Showing first ${String(MAX_READ_LINES)}. Use startLine/endLine to read beyond line ${String(start + MAX_READ_LINES)})`;
+    output += `\n\n(File has ${String(totalLines)} lines. Showing first ${String(MAX_READ_LINES)}. Use ranges:[{start:${String(start + MAX_READ_LINES)}, end:N}] to continue.)`;
   }
 
   return { success: true, output };
 }
 
 export const readFileTool = {
-  name: "read_file",
+  name: "read",
   description:
-    "[TIER-1] Read file contents with line numbers. Use Soul Map :line numbers to jump directly to symbols. " +
-    "Supports startLine/endLine ranges, or target + name for AST-based symbol extraction. " +
-    "Read ALL needed files in a single parallel call. Use content you already have — skip re-reads.",
+    "[TIER-1] Read files. Pass files array: files=[{path:'a.ts'}, {path:'b.ts', ranges:[{start:10,end:50}]}]. " +
+    "Ranges go INSIDE each file object. Omit ranges for full file. " +
+    "AST extraction: {path:'c.ts', target:'function', name:'foo'}. All reads run in parallel. " +
+    "For context around a range, widen start/end (e.g. start-10, end+10). " +
+    "To find call sites, use navigate(references) instead. Skip re-reads.",
   execute: async (args: ReadFileArgs): Promise<ToolResult> => {
     try {
       const filePath = resolve(args.path);
@@ -274,6 +328,26 @@ async function readSymbolFromFile(filePath: string, args: ReadFileArgs): Promise
     : String(block.location.line);
   const header = block.symbolKind ? `${block.symbolKind} ${block.symbolName ?? name}` : name;
   emitFileRead(filePath);
+
+  const contentLines = block.content.split("\n");
+  if (contentLines.length > SMART_TRUNCATE_LINES) {
+    const truncated = contentLines.slice(0, SMART_TRUNCATE_LINES).join("\n");
+    const symbolStart = block.location.line;
+    const cutoffLine = symbolStart + SMART_TRUNCATE_LINES;
+    const totalSymbolLines = contentLines.length;
+    const remaining = totalSymbolLines - SMART_TRUNCATE_LINES;
+    // Try file-level outline first (works for top-level symbols)
+    const outline = await buildSymbolOutline(filePath, cutoffLine, block.location.endLine ?? symbolStart + totalSymbolLines);
+    // If no outline (symbol is a large function with nested locals), suggest analyze(outline)
+    const suffix = outline
+      || `\n... ${String(remaining)} more lines. Use analyze(action:'outline', file:'${filePath}') for nested symbols, or ranges:[{start:N, end:M}] for specific sections.`;
+    return {
+      success: true,
+      output: `${header} — ${filePath}:${range} (${String(totalSymbolLines)} lines, showing first ${String(SMART_TRUNCATE_LINES)})\n\n${truncated}${suffix}`,
+      backend: tracked.backend,
+    };
+  }
+
   return {
     success: true,
     output: `${header} — ${filePath}:${range}\n\n${block.content}`,
