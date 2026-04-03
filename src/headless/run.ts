@@ -71,14 +71,11 @@ async function setupAgent(
   );
   // Set accurate context window from provider metadata (avoids 200k default for 1M+ models)
   contextManager.setContextWindow(providerOpts.contextWindow);
-  if (!repoMapDisabled) {
-    const REPO_MAP_TIMEOUT = 15_000;
-    if (!contextManager.isRepoMapReady()) {
-      const start = Date.now();
-      while (Date.now() - start < REPO_MAP_TIMEOUT) {
-        await new Promise((r) => setTimeout(r, 200));
-        if (contextManager.isRepoMapReady()) break;
-      }
+  if (!repoMapDisabled && !contextManager.isRepoMapReady()) {
+    if (showProgress) stderrDim("Waiting for Soul Map…");
+    const ready = await contextManager.waitForRepoMap(30_000);
+    if (!ready && showProgress) {
+      stderrDim("⚠ Soul Map not ready — proceeding without soul tools.");
     }
   }
 
