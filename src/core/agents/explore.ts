@@ -68,13 +68,15 @@ interface ExploreAgentOptions {
   forgeInstructions?: string;
   /** Forge tool definitions with role guards — spark cache prefix hits. */
   forgeTools?: Record<string, unknown>;
+  /** Skip bus coordination tools (report_finding, check_findings) — for solo agents like verifier. */
+  skipBusTools?: boolean;
 }
 
 export function createExploreAgent(model: LanguageModel, options?: ExploreAgentOptions) {
   const bus = options?.bus;
   const agentId = options?.agentId;
   const hasBus = !!(bus && agentId);
-  const busTools = hasBus ? buildBusTools(bus, agentId, "explore") : {};
+  const busTools = hasBus && !options?.skipBusTools ? buildBusTools(bus, agentId, "explore") : {};
 
   // Spark: forge's tool definitions (with role guards) for cache prefix hits.
   // Ember: 7 read-only intelligence tools (different model, no cache sharing).
@@ -113,9 +115,8 @@ export function createExploreAgent(model: LanguageModel, options?: ExploreAgentO
         ? options.forgeInstructions
         : (() => {
             const base = exploreBase();
-            return hasBus
-              ? `${base}\nCoordination: report_finding after discoveries — especially shared symbols/configs with peer targets. check_findings for peer detail.`
-              : base;
+            if (!hasBus || options?.skipBusTools) return base;
+            return `${base}\nCoordination: report_finding after discoveries — especially shared symbols/configs with peer targets. check_findings for peer detail.`;
           })(),
       providerOptions: EPHEMERAL_CACHE,
     },

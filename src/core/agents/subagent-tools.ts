@@ -281,6 +281,7 @@ export async function createAgent(
       ? guardForgeTools(models.forgeTools as Record<string, unknown>, agentRole, stripProgrammatic)
       : undefined;
 
+  const isSoloAgent = task.agentId === "desloppify" || task.agentId === "verifier";
   const opts = {
     bus,
     agentId: task.agentId,
@@ -296,6 +297,7 @@ export async function createAgent(
     tabId: models.tabId,
     forgeInstructions,
     forgeTools: forgeToolsGuarded,
+    skipBusTools: isSoloAgent,
   };
   const agent = useExplore ? createExploreAgent(model, opts) : createCodeAgent(model, opts);
 

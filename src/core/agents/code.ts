@@ -52,13 +52,15 @@ interface CodeAgentOptions {
   forgeInstructions?: string;
   /** Forge tool definitions with role guards — use instead of buildSubagentCodeTools for spark cache prefix hits. */
   forgeTools?: Record<string, unknown>;
+  /** Skip bus coordination tools — for solo agents like desloppify. */
+  skipBusTools?: boolean;
 }
 
 export function createCodeAgent(model: LanguageModel, options?: CodeAgentOptions) {
   const bus = options?.bus;
   const agentId = options?.agentId;
   const hasBus = !!(bus && agentId);
-  const busTools = hasBus ? buildBusTools(bus, agentId, "code") : {};
+  const busTools = hasBus && !options?.skipBusTools ? buildBusTools(bus, agentId, "code") : {};
 
   // Spark mode: use forge's tool definitions (with role guards) for cache prefix hits.
   // Regular mode: build code-specific tools.
@@ -102,9 +104,8 @@ export function createCodeAgent(model: LanguageModel, options?: CodeAgentOptions
         ? options.forgeInstructions
         : (() => {
             const base = codeBase();
-            return hasBus
-              ? `${base}\nOwnership: you own files you edit first. check_edit_conflicts before touching another agent's file.\nIf another agent owns the file: report_finding with the exact edit instead.\nCoordination: report_finding after significant changes (paths, what changed, new exports). Peer findings appear in tool results.`
-              : base;
+            if (!hasBus || options?.skipBusTools) return base;
+            return `${base}\nOwnership: you own files you edit first. check_edit_conflicts before touching another agent's file.\nIf another agent owns the file: report_finding with the exact edit instead.\nCoordination: report_finding after significant changes (paths, what changed, new exports). Peer findings appear in tool results.`;
           })(),
       providerOptions: EPHEMERAL_CACHE,
     },

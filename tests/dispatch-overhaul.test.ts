@@ -164,7 +164,7 @@ describe("applyMultiAgentEvent", () => {
       parentToolCallId: "tc1", type: "agent-done", agentId: "a1",
       role: "code", task: "edit", toolUses: 5,
       tokenUsage: { input: 10000, output: 2000, total: 12000 },
-      cacheHits: 8000, calledDone: true,
+      cacheHits: 8000, succeeded: true,
     };
     state = applyMultiAgentEvent(state, agentDone, 1);
     const info = state.agents.get("a1");
@@ -172,7 +172,7 @@ describe("applyMultiAgentEvent", () => {
     expect(info!.toolUses).toBe(5);
     expect(info!.tokenUsage!.input).toBe(10000);
     expect(info!.cacheHits).toBe(8000);
-    expect(info!.calledDone).toBe(true);
+    expect(info!.succeeded).toBe(true);
   });
 
   test("full lifecycle: start → agents → done", () => {
