@@ -126,8 +126,8 @@ function hintPlainText(hint: Hint): string {
 function shuffle<T>(arr: T[]): T[] {
   for (let i = arr.length - 1; i > 0; i--) {
     const j = Math.floor(Math.random() * (i + 1));
-    const tmp = arr[i]!;
-    arr[i] = arr[j]!;
+    const tmp = arr[i] as T;
+    arr[i] = arr[j] as T;
     arr[j] = tmp;
   }
   return arr;
@@ -142,7 +142,7 @@ function createHintBag(): { next: () => number } {
         remaining = HINTS.map((_, i) => i);
         shuffle(remaining);
       }
-      return remaining.pop()!;
+      return remaining.pop() as number;
     },
   };
 }
@@ -160,7 +160,7 @@ type HintPhase = "shortcuts" | "glitch-out" | "hint" | "glitch-in";
 function useFooterHint(): { phase: HintPhase; hint: Hint; glitchText: string } {
   const [phase, setPhase] = useState<HintPhase>("shortcuts");
   const [glitchTick, setGlitchTick] = useState(-1);
-  const hintRef = useRef(HINTS[0]!);
+  const hintRef = useRef(HINTS[0] as Hint);
   const bagRef = useRef(createHintBag());
 
   // Cycle: shortcuts → glitch-out → hint → glitch-in → shortcuts
@@ -169,7 +169,7 @@ function useFooterHint(): { phase: HintPhase; hint: Hint; glitchText: string } {
   useEffect(() => {
     if (phase !== "shortcuts") return;
     const timer = setTimeout(() => {
-      hintRef.current = HINTS[bagRef.current.next()]!;
+      hintRef.current = HINTS[bagRef.current.next()] as Hint;
       setGlitchTick(0);
       setPhase("glitch-out");
     }, HINT_INTERVAL);

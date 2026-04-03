@@ -2,7 +2,7 @@ import { existsSync } from "node:fs";
 import { join } from "node:path";
 import { TextAttributes } from "@opentui/core";
 import { useKeyboard, useTerminalDimensions } from "@opentui/react";
-import { useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import type { ContextManager } from "../../core/context/manager.js";
 import {
   type InstalledSkill,
@@ -234,13 +234,13 @@ export function SkillSearch({ visible, contextManager, onClose, onSystemMessage 
     return filteredActive.length;
   })();
 
-  const refreshInstalled = () => {
+  const refreshInstalled = useCallback(() => {
     setInstalled(listInstalledSkills());
-  };
+  }, []);
 
-  const refreshActive = () => {
+  const refreshActive = useCallback(() => {
     setActiveSkills(contextManager.getActiveSkills());
-  };
+  }, [contextManager]);
 
   useEffect(() => {
     if (visible) {

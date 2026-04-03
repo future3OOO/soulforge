@@ -338,7 +338,7 @@ export async function runAgentTask(
         const generateArgs = isDoppelganger
           ? {
               messages: [
-                ...models.parentMessagesRef!.current!,
+                ...(models.parentMessagesRef?.current ?? []),
                 {
                   role: "user" as const,
                   content: [{ type: "text" as const, text: enrichedPrompt }],

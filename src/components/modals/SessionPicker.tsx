@@ -1,6 +1,6 @@
 import { TextAttributes } from "@opentui/core";
 import { useKeyboard, useTerminalDimensions } from "@opentui/react";
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import { icon } from "../../core/icons.js";
 import { type SessionListEntry, SessionManager } from "../../core/sessions/manager.js";
 import { useTheme } from "../../core/theme/index.js";
@@ -95,9 +95,9 @@ export function SessionPicker({ visible, cwd, onClose, onRestore, onSystemMessag
 
   const manager = new SessionManager(cwd);
 
-  const refresh = () => {
-    setSessions(manager.listSessions());
-  };
+  const refresh = useCallback(() => {
+    setSessions(new SessionManager(cwd).listSessions());
+  }, [cwd]);
 
   useEffect(() => {
     if (visible) {

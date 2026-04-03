@@ -1,6 +1,6 @@
 import { TextAttributes } from "@opentui/core";
 import { useKeyboard, useTerminalDimensions } from "@opentui/react";
-import { useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { fuzzyMatch } from "../../core/history/fuzzy.js";
 import { icon, providerIcon } from "../../core/icons.js";
 import { PROVIDER_CONFIGS } from "../../core/llm/models.js";
@@ -288,7 +288,7 @@ export function LlmSelector({ visible, activeModel, onSelect, onClose }: Props) 
         return !collapsed[e.providerId];
       });
 
-  const eH = (e: Entry): number => (e.kind === "model" && e.hasDesc ? 2 : 1);
+  const eH = useCallback((e: Entry): number => (e.kind === "model" && e.hasDesc ? 2 : 1), []);
 
   const visualRowCount = (() => {
     let count = 0;
@@ -307,31 +307,34 @@ export function LlmSelector({ visible, activeModel, onSelect, onClose }: Props) 
   const collapsedRef = useRef(collapsed);
   collapsedRef.current = collapsed;
 
-  const ensureVisible = (idx: number) => {
-    const ents = displayRef.current;
-    const so = scrollRef.current;
-    if (idx < so) {
-      setScrollOff(idx);
-      scrollRef.current = idx;
-    } else {
-      let rowsNeeded = 0;
-      for (let i = so; i <= idx && i < ents.length; i++) {
-        const e = ents[i];
-        if (e) rowsNeeded += eH(e);
-      }
-      if (rowsNeeded > maxVis) {
-        let newOff = so;
-        while (newOff < idx) {
-          const e = ents[newOff];
-          if (e) rowsNeeded -= eH(e);
-          newOff++;
-          if (rowsNeeded <= maxVis) break;
+  const ensureVisible = useCallback(
+    (idx: number) => {
+      const ents = displayRef.current;
+      const so = scrollRef.current;
+      if (idx < so) {
+        setScrollOff(idx);
+        scrollRef.current = idx;
+      } else {
+        let rowsNeeded = 0;
+        for (let i = so; i <= idx && i < ents.length; i++) {
+          const e = ents[i];
+          if (e) rowsNeeded += eH(e);
         }
-        setScrollOff(newOff);
-        scrollRef.current = newOff;
+        if (rowsNeeded > maxVis) {
+          let newOff = so;
+          while (newOff < idx) {
+            const e = ents[newOff];
+            if (e) rowsNeeded -= eH(e);
+            newOff++;
+            if (rowsNeeded <= maxVis) break;
+          }
+          setScrollOff(newOff);
+          scrollRef.current = newOff;
+        }
       }
-    }
-  };
+    },
+    [maxVis, eH],
+  );
 
   useEffect(() => {
     if (displayEntries !== prevDisplayRef.current) {

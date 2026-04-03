@@ -132,7 +132,7 @@ function ensureConfig(): void {
       if (start !== -1) {
         // Remove from marker to next blank line or EOF
         let end = start + 1;
-        while (end < lines.length && lines[end]!.trim() !== "") end++;
+        while (end < lines.length && lines[end]?.trim() !== "") end++;
         lines.splice(start, end - start);
         cleaned = lines.join("\n");
       }

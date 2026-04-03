@@ -2,7 +2,7 @@ import { existsSync } from "node:fs";
 import { join } from "node:path";
 import { TextAttributes } from "@opentui/core";
 import { useKeyboard, useTerminalDimensions } from "@opentui/react";
-import { useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import {
   clearPathCache,
   downloadRegistry,
@@ -188,7 +188,7 @@ export function LspInstallSearch({
   const innerW = popupWidth - 2;
   const { cursor, setCursor, scrollOffset, adjustScroll, resetScroll } = usePopupScroll(maxVisible);
 
-  const refreshAll = async () => {
+  const refreshAll = useCallback(async () => {
     setRegistryLoading(true);
     await new Promise((r) => setTimeout(r, 16));
     const statuses = getAllPackageStatus();
@@ -196,7 +196,7 @@ export function LspInstallSearch({
     setRegistryLoaded(statuses.length > 0);
     setRecommended(getRecommendedPackages(cwd));
     setRegistryLoading(false);
-  };
+  }, [cwd]);
 
   useEffect(() => {
     if (!visible) return;
