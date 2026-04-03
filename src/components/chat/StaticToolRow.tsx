@@ -380,7 +380,6 @@ export function buildFinalToolRowProps(tc: {
     output: string;
     error?: string;
     backend?: string;
-    miniForge?: boolean;
   };
   imageArt?: Array<{ name: string; lines: string[] }>;
 }): StaticToolRowProps {
@@ -435,17 +434,13 @@ export function buildFinalToolRowProps(tc: {
     isEdit && tc.result?.success && resultJson ? formatResult(tc.name, resultJson) : undefined;
 
   // Suffix
-  let { suffix, suffixColor } = computeSuffix(
+  const { suffix, suffixColor } = computeSuffix(
     tc.name,
     resultJson,
     tc.result ?? null,
     isEdit,
     !!editResultText,
   );
-  // Dispatch: rewrite "agents" → "mini-forges" when miniForge path was used
-  if (tc.name === "dispatch" && tc.result?.miniForge && suffix) {
-    suffix = suffix.replace(/\bagents?\b/g, (m) => (m === "agent" ? "mini-forge" : "mini-forges"));
-  }
 
   // Diff
   const diff = tc.result ? extractEditDiff(tc.name, tc.args, tc.result) : null;

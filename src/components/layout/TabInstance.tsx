@@ -547,7 +547,6 @@ export const TabInstance = memo(function TabInstance({
                                     SUBAGENT_NAMES.has(tc.toolName),
                                   )}
                                   diffStyle="compact"
-                                  compact
                                 />
                               ) : null}
                             </LockInWrapper>

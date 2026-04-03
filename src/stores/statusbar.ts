@@ -58,28 +58,33 @@ const MODEL_PRICING: Record<string, ModelPricing> = {
   "claude-3-haiku": { input: 0.25, cacheWrite: 0.3, cacheRead: 0.03, output: 1.25 },
 
   // ── OpenAI ────────────────────────────────────────────────────────
-  // cached = 50% of input for most; GPT-4.1 cached = 75% off
+  // Source: https://platform.openai.com/docs/pricing (2026-04-02)
+  // cacheWrite = same as input (OpenAI doesn't charge extra for cache writes)
+  // cacheRead = 10% of input for GPT-5.4 family, 25% for GPT-4.1/o3/o4-mini, 50% for GPT-4o
   "gpt-5.4": { input: 2.5, cacheWrite: 2.5, cacheRead: 0.25, output: 15 },
   "gpt-5.4-mini": { input: 0.75, cacheWrite: 0.75, cacheRead: 0.075, output: 4.5 },
   "gpt-5.4-nano": { input: 0.2, cacheWrite: 0.2, cacheRead: 0.02, output: 1.25 },
+  "gpt-5.4-pro": { input: 30, cacheWrite: 30, cacheRead: 3, output: 180 },
   "gpt-4.1": { input: 2, cacheWrite: 2, cacheRead: 0.5, output: 8 },
   "gpt-4.1-mini": { input: 0.4, cacheWrite: 0.4, cacheRead: 0.1, output: 1.6 },
   "gpt-4.1-nano": { input: 0.1, cacheWrite: 0.1, cacheRead: 0.025, output: 0.4 },
   "gpt-4o": { input: 2.5, cacheWrite: 2.5, cacheRead: 1.25, output: 10 },
   "gpt-4o-mini": { input: 0.15, cacheWrite: 0.15, cacheRead: 0.075, output: 0.6 },
-  o3: { input: 2, cacheWrite: 2, cacheRead: 0.5, output: 8 },
+  o3: { input: 10, cacheWrite: 10, cacheRead: 2, output: 40 },
   "o3-mini": { input: 1.1, cacheWrite: 1.1, cacheRead: 0.275, output: 4.4 },
   "o4-mini": { input: 1.1, cacheWrite: 1.1, cacheRead: 0.275, output: 4.4 },
 
   // ── Google Gemini ─────────────────────────────────────────────────
-  // cacheRead = 0.1× input for Gemini models
+  // Source: https://ai.google.dev/gemini-api/docs/pricing (2026-04-02)
+  // cacheRead = 0.1× input for Gemini models (context caching)
   "gemini-2.5-pro": { input: 1.25, cacheWrite: 1.25, cacheRead: 0.125, output: 10 },
   "gemini-2.5-flash": { input: 0.3, cacheWrite: 0.3, cacheRead: 0.03, output: 2.5 },
-  "gemini-2.5-flash-lite": { input: 0.125, cacheWrite: 0.125, cacheRead: 0.0125, output: 0.5 },
+  "gemini-2.5-flash-lite": { input: 0.1, cacheWrite: 0.1, cacheRead: 0.01, output: 0.4 },
   "gemini-2.0-flash": { input: 0.1, cacheWrite: 0.1, cacheRead: 0.025, output: 0.4 },
   "gemini-2.0-flash-lite": { input: 0.075, cacheWrite: 0.075, cacheRead: 0.019, output: 0.3 },
-  "gemini-3-flash": { input: 0.25, cacheWrite: 0.25, cacheRead: 0.025, output: 1.5 },
+  "gemini-3-flash": { input: 0.5, cacheWrite: 0.5, cacheRead: 0.05, output: 3 },
   "gemini-3.1-pro": { input: 2, cacheWrite: 2, cacheRead: 0.2, output: 12 },
+  "gemini-3.1-flash-lite": { input: 0.25, cacheWrite: 0.25, cacheRead: 0.025, output: 1.5 },
 
   // ── DeepSeek ──────────────────────────────────────────────────────
   "deepseek-chat": { input: 0.28, cacheWrite: 0.28, cacheRead: 0.028, output: 0.42 },

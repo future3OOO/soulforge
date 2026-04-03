@@ -762,23 +762,13 @@ export function useChat({
           (sum, s) => sum + s.chars,
           0,
         );
-        const beforeChars =
-          systemChars +
-          currentCore.reduce((s, m) => {
-            if (typeof m.content === "string") return s + m.content.length;
-            if (Array.isArray(m.content))
-              return (
-                s +
-                m.content.reduce((a: number, p: unknown) => {
-                  if (typeof p === "object" && p !== null && "text" in p)
-                    return a + String((p as { text: string }).text).length;
-                  if (typeof p === "string") return a + p.length;
-                  return a + 100;
-                }, 0)
-              );
-            return s;
-          }, 0);
-        const beforePct = Math.round((beforeChars / charsPerToken / contextWindow) * 100);
+        // Use the exact token counts already displayed in the context bar / topbar.
+        // These come from the API's inputTokens — no char-based estimation needed.
+        const barState = useStatusBarStore.getState();
+        const beforePct =
+          barState.contextTokens > 0 && contextWindow > 0
+            ? Math.round((barState.contextTokens / contextWindow) * 100)
+            : contextManager.getContextPercent();
 
         const compactionCfg = effectiveConfig.compaction;
         const isV2 = compactionCfg?.strategy === "v2";
@@ -1078,6 +1068,10 @@ export function useChat({
             ...ZERO_USAGE,
             prompt: estimatedTokens,
             total: estimatedTokens,
+            cacheRead: prev.cacheRead,
+            cacheWrite: prev.cacheWrite,
+            subagentInput: prev.subagentInput,
+            subagentOutput: prev.subagentOutput,
             modelBreakdown: bd,
           };
         });
@@ -1446,7 +1440,11 @@ export function useChat({
         if (visibleRef.current) useStatusBarStore.getState().setSubagentChars(total);
       };
 
+      const isOurDispatch = (parentToolCallId: string) =>
+        liveToolCallsBuffer.current.some((c) => c.id === parentToolCallId);
+
       const unsubAgentStats = onAgentStats((event) => {
+        if (!isOurDispatch(event.parentToolCallId)) return;
         const prev = subagentCumulative.get(event.agentId) ?? {
           input: 0,
           output: 0,
@@ -1497,6 +1495,7 @@ export function useChat({
       });
 
       const unsubMultiAgent = onMultiAgentEvent((event) => {
+        if (!isOurDispatch(event.parentToolCallId)) return;
         if (event.type === "agent-done" && event.agentId) {
           completedResultChars.set(event.agentId, event.resultChars ?? 0);
           updateSubagentChars();
@@ -1538,24 +1537,19 @@ export function useChat({
         const model = resolveModel(modelId);
 
         // Resolve subagent models from task router
+        // spark/ember are primary; coding/exploration/trivial are legacy config fallbacks
         const tr = effectiveConfig.taskRouter;
-        const explorationModelId = tr?.exploration ?? undefined;
-        const codingModelId = tr?.coding ?? undefined;
+        const sparkModelId = tr?.spark ?? tr?.exploration ?? tr?.trivial ?? undefined;
+        const emberModelId = tr?.ember ?? tr?.coding ?? undefined;
         const webSearchModelId = tr?.webSearch ?? undefined;
-        const trivialModelId = tr?.trivial ?? undefined;
         const desloppifyModelId = tr?.desloppify ?? undefined;
         const verifyModelId = tr?.verify ?? undefined;
         const hasSubagentModels =
-          explorationModelId ||
-          codingModelId ||
-          trivialModelId ||
-          desloppifyModelId ||
-          verifyModelId;
+          sparkModelId || emberModelId || desloppifyModelId || verifyModelId;
         const subagentModels = hasSubagentModels
           ? {
-              exploration: explorationModelId ? resolveModel(explorationModelId) : undefined,
-              coding: codingModelId ? resolveModel(codingModelId) : undefined,
-              trivial: trivialModelId ? resolveModel(trivialModelId) : undefined,
+              spark: sparkModelId ? resolveModel(sparkModelId) : undefined,
+              ember: emberModelId ? resolveModel(emberModelId) : undefined,
               desloppify: desloppifyModelId ? resolveModel(desloppifyModelId) : undefined,
               verify: verifyModelId ? resolveModel(verifyModelId) : undefined,
             }
@@ -2156,7 +2150,6 @@ export function useChat({
                   backend?: string;
                   outlineOnly?: boolean;
                   filesEdited?: string[];
-                  miniForge?: boolean;
                 };
                 toolResult = {
                   success: r.success,
@@ -2165,20 +2158,18 @@ export function useChat({
                   backend: r.backend,
                   outlineOnly: r.outlineOnly,
                   filesEdited: r.filesEdited,
-                  miniForge: r.miniForge,
                 };
               } else {
                 toolResult = { success: true, output: resultStr };
               }
-              // Dispatch tool returns DispatchOutput (no `success` field) — extract miniForge/filesEdited
+              // Dispatch tool returns DispatchOutput (no `success` field) — extract filesEdited
               if (
                 typeof part.output === "object" &&
                 part.output !== null &&
                 "filesEdited" in part.output
               ) {
-                const d = part.output as { filesEdited?: string[]; miniForge?: boolean };
+                const d = part.output as { filesEdited?: string[] };
                 if (d.filesEdited) toolResult.filesEdited = d.filesEdited;
-                if (d.miniForge) toolResult.miniForge = true;
               }
               // Preserve imageArt from the streaming LiveToolCall for the final ToolCall
               const streamingTc = tcBuf.find((c) => c.id === part.toolCallId);

@@ -15,6 +15,7 @@ import { useRepoMapStore } from "../../stores/repomap.js";
 import {
   computeModelCost,
   computeTotalCostFromBreakdown,
+  type TokenUsage,
   useStatusBarStore,
 } from "../../stores/statusbar.js";
 import { useWorkerStore } from "../../stores/workers.js";
@@ -22,6 +23,19 @@ import { Overlay, POPUP_BG, PopupRow } from "../layout/shared.js";
 
 const CHROME_ROWS = 6;
 const TABS = ["Context", "System"] as const;
+const ZERO_TU: TokenUsage = {
+  prompt: 0,
+  completion: 0,
+  total: 0,
+  cacheRead: 0,
+  cacheWrite: 0,
+  subagentInput: 0,
+  subagentOutput: 0,
+  lastStepInput: 0,
+  lastStepOutput: 0,
+  lastStepCacheRead: 0,
+  modelBreakdown: {},
+};
 type Tab = (typeof TABS)[number];
 
 function fmtTokens(n: number): string {
@@ -48,6 +62,7 @@ function BarRow({
   descColor,
   innerW,
   labelW = 18,
+  descW = 0,
 }: {
   label: string;
   pct: number;
@@ -56,11 +71,15 @@ function BarRow({
   descColor: string;
   innerW: number;
   labelW?: number;
+  descW?: number;
 }) {
   const t = useTheme();
+  const pad = 2;
   const truncLabel = label.length > labelW ? `${label.slice(0, labelW - 1)}…` : label;
-  const barW = Math.max(6, innerW - labelW - desc.length - 6);
+  const effectiveDescW = descW > 0 ? descW : desc.length + 2;
+  const barW = Math.max(6, innerW - labelW - effectiveDescW - pad);
   const filled = Math.round((pct / 100) * barW);
+  const descStr = descW > 0 ? ` ${desc}`.padStart(effectiveDescW) : ` ${desc}`;
   return (
     <PopupRow w={innerW}>
       <text fg={t.textSecondary} bg={POPUP_BG}>
@@ -73,8 +92,7 @@ function BarRow({
         {"▱".repeat(barW - filled)}
       </text>
       <text fg={descColor} bg={POPUP_BG}>
-        {" "}
-        {desc}
+        {descStr}
       </text>
     </PopupRow>
   );
@@ -98,7 +116,8 @@ function EntryRow({
   rightAlign?: boolean;
 }) {
   const t = useTheme();
-  const valueW = innerW - labelW - 2;
+  const pad = 2;
+  const valueW = innerW - labelW - pad;
   const displayValue = rightAlign ? value.padStart(valueW) : value;
   return (
     <PopupRow w={innerW}>
@@ -168,6 +187,7 @@ export function StatusDashboard({
   const [tab, setTab] = useState<Tab>(initialTab ?? "Context");
   const TAB_COLORS: Record<Tab, string> = { Context: t.info, System: t.brand };
   const [scrollOffset, setScrollOffset] = useState(0);
+  const [scopeTabId, setScopeTabId] = useState<string | "all">(tabMgr.activeTabId);
 
   const sb = useStatusBarStore();
   const rm = useRepoMapStore();
@@ -177,8 +197,9 @@ export function StatusDashboard({
     if (visible) {
       setTab(initialTab ?? "Context");
       setScrollOffset(0);
+      setScopeTabId(tabMgr.activeTabId);
     }
-  }, [visible, initialTab]);
+  }, [visible, initialTab, tabMgr.activeTabId]);
 
   const pollWorkerMemory = useCallback(async () => {
     const store = useWorkerStore.getState();
@@ -219,114 +240,213 @@ export function StatusDashboard({
   const modelId = activeModelProp;
   const tu = sb.tokenUsage;
 
-  const contextLines = useMemo(() => {
-    const breakdown = contextManager.getContextBreakdown();
-    const systemChars = breakdown.reduce((sum, s) => sum + s.chars, 0);
-    const ctxWindow =
-      sb.contextWindow > 0 ? sb.contextWindow : getModelContextInfoSync(modelId).tokens;
-    const isApi = sb.contextTokens > 0;
-    const charEstimate = (systemChars + sb.chatChars + sb.subagentChars) / 4;
-    const chatCharsDelta = Math.max(0, sb.chatChars - (sb.chatCharsAtSnapshot ?? 0));
-    const usedTokens = Math.round(
-      isApi ? sb.contextTokens + (chatCharsDelta + sb.subagentChars) / 4 : charEstimate,
-    );
-    const fillPct =
-      usedTokens > 0 ? Math.min(100, Math.max(1, Math.round((usedTokens / ctxWindow) * 100))) : 0;
-    const activeSections = breakdown.filter((s) => s.active && s.chars > 0);
-    const totalSysChars = activeSections.reduce((sum, s) => sum + s.chars, 0);
+  const allTabs = tabMgr.tabs;
+  const isMultiTab = allTabs.length > 1;
+  const isAllScope = scopeTabId === "all";
 
+  const getTabUsage = useCallback(
+    (tabId: string): TokenUsage => {
+      if (tabId === tabMgr.activeTabId) return tu;
+      return tabMgr.getChat(tabId)?.tokenUsage ?? ZERO_TU;
+    },
+    [tu, tabMgr],
+  );
+
+  const scopedUsage = useMemo((): TokenUsage => {
+    if (!isAllScope) return getTabUsage(scopeTabId);
+    const agg = { ...ZERO_TU, modelBreakdown: {} as TokenUsage["modelBreakdown"] };
+    for (const tabEntry of allTabs) {
+      const u = getTabUsage(tabEntry.id);
+      agg.prompt += u.prompt;
+      agg.completion += u.completion;
+      agg.total += u.total;
+      agg.cacheRead += u.cacheRead;
+      agg.cacheWrite += u.cacheWrite;
+      agg.subagentInput += u.subagentInput;
+      agg.subagentOutput += u.subagentOutput;
+      for (const [mid, usage] of Object.entries(u.modelBreakdown ?? {})) {
+        const prev = agg.modelBreakdown[mid] ?? {
+          input: 0,
+          output: 0,
+          cacheRead: 0,
+          cacheWrite: 0,
+        };
+        agg.modelBreakdown[mid] = {
+          input: prev.input + usage.input,
+          output: prev.output + usage.output,
+          cacheRead: prev.cacheRead + usage.cacheRead,
+          cacheWrite: prev.cacheWrite + usage.cacheWrite,
+        };
+      }
+    }
+    return agg;
+  }, [isAllScope, scopeTabId, getTabUsage, allTabs]);
+
+  const contextLines = useMemo(() => {
     const lines: React.ReactNode[] = [];
 
-    const pctLabel = isApi ? `${String(fillPct)}%` : `~${String(fillPct)}%`;
-    lines.push(
-      <BarRow
-        key="ctx-bar"
-        label="Context Window"
-        pct={fillPct}
-        desc={`${fmtTokens(usedTokens)} / ${fmtTokens(ctxWindow)} (${pctLabel})`}
-        barColor={fillPct > 75 ? t.brandSecondary : fillPct > 50 ? t.warning : t.success}
-        descColor={fillPct > 75 ? t.brandSecondary : fillPct > 50 ? t.warning : t.textSecondary}
-        innerW={innerW}
-      />,
-    );
-    lines.push(
-      <EntryRow key="model" label="Model" value={getShortModelLabel(modelId)} innerW={innerW} />,
-    );
-
-    // ── Compaction thresholds ──
-    const isAnthropic = isAnthropicNative(modelId);
-    const clientTriggerPct = 70;
-    const clientTrigger = Math.floor(ctxWindow * (clientTriggerPct / 100));
-    lines.push(<Spacer key="s-thresh-pre" innerW={innerW} />);
-    lines.push(<SectionHeader key="h-thresh" label="Compaction Thresholds" innerW={innerW} />);
-    if (isAnthropic) {
-      const clearPct = 30;
-      const clearTrigger = Math.max(80_000, Math.floor(ctxWindow * (clearPct / 100)));
-      const serverPct = 80;
-      const serverTrigger = Math.max(160_000, Math.floor(ctxWindow * (serverPct / 100)));
+    // ── Scope selector (multi-tab only) ──
+    if (isMultiTab) {
+      const scopeIds = [...allTabs.map((tb) => tb.id), "all" as const];
       lines.push(
-        <EntryRow
-          key="th-clear"
-          label="  Tool clearing"
-          value={`${String(clearPct)}% — ${fmtTokens(clearTrigger)}`}
-          valueColor={t.textMuted}
-          innerW={innerW}
-        />,
+        <PopupRow key="scope" w={innerW}>
+          {scopeIds.map((sid, i) => {
+            const isSelected = sid === scopeTabId;
+            const label =
+              sid === "all" ? "All" : `Tab ${String(allTabs.findIndex((tb) => tb.id === sid) + 1)}`;
+            return (
+              <text
+                key={sid}
+                fg={isSelected ? t.info : t.textMuted}
+                bg={POPUP_BG}
+                attributes={isSelected ? TextAttributes.BOLD : undefined}
+              >
+                {i > 0 ? " │ " : " "}
+                {isSelected ? `▸ ${label}` : `  ${label}`}
+              </text>
+            );
+          })}
+        </PopupRow>,
       );
       lines.push(
-        <EntryRow
-          key="th-server"
-          label="  Server compact"
-          value={`${String(serverPct)}% — ${fmtTokens(serverTrigger)}`}
-          valueColor={t.textMuted}
-          innerW={innerW}
-        />,
+        <PopupRow key="scope-sep" w={innerW}>
+          <text fg={t.textSubtle} bg={POPUP_BG}>
+            {"─".repeat(innerW - 4)}
+          </text>
+        </PopupRow>,
       );
     }
-    lines.push(
-      <EntryRow
-        key="th-client"
-        label="  Client compact"
-        value={`${String(clientTriggerPct)}% — ${fmtTokens(clientTrigger)}`}
-        valueColor={t.textMuted}
-        innerW={innerW}
-      />,
-    );
-    lines.push(<Spacer key="s1" innerW={innerW} />);
 
-    if (activeSections.length > 0) {
-      const sysLabelW = Math.min(
-        22,
-        Math.max(18, ...activeSections.map((s) => s.section.length + 4)),
+    // ── Context Window / Model / Compaction / System Prompt ──
+    // Shown for any individual tab scope (hidden in "All" aggregate view)
+    if (!isAllScope) {
+      const breakdown = contextManager.getContextBreakdown();
+      const systemChars = breakdown.reduce((sum, s) => sum + s.chars, 0);
+      const ctxWindow =
+        sb.contextWindow > 0 ? sb.contextWindow : getModelContextInfoSync(modelId).tokens;
+      const isApi = sb.contextTokens > 0;
+      const charEstimate = (systemChars + sb.chatChars + sb.subagentChars) / 4;
+      const chatCharsDelta = Math.max(0, sb.chatChars - (sb.chatCharsAtSnapshot ?? 0));
+      const usedTokens = Math.round(
+        isApi ? sb.contextTokens + (chatCharsDelta + sb.subagentChars) / 4 : charEstimate,
       );
-      lines.push(<SectionHeader key="h-sys" label="System Prompt" innerW={innerW} />);
-      for (const s of activeSections) {
-        const sTokens = Math.ceil(s.chars / 4);
-        const sPct = totalSysChars > 0 ? Math.round((s.chars / totalSysChars) * 100) : 0;
+      const fillPct =
+        usedTokens > 0 ? Math.min(100, Math.max(1, Math.round((usedTokens / ctxWindow) * 100))) : 0;
+      const activeSections = breakdown.filter((s) => s.active && s.chars > 0);
+      const totalSysChars = activeSections.reduce((sum, s) => sum + s.chars, 0);
+
+      const pctLabel = isApi ? `${String(fillPct)}%` : `~${String(fillPct)}%`;
+      lines.push(
+        <BarRow
+          key="ctx-bar"
+          label="Context Window"
+          pct={fillPct}
+          desc={`${fmtTokens(usedTokens)} / ${fmtTokens(ctxWindow)} (${pctLabel})`}
+          barColor={fillPct > 75 ? t.brandSecondary : fillPct > 50 ? t.warning : t.success}
+          descColor={fillPct > 75 ? t.brandSecondary : fillPct > 50 ? t.warning : t.textSecondary}
+          innerW={innerW}
+        />,
+      );
+      lines.push(
+        <EntryRow
+          key="model"
+          label="Model"
+          value={getShortModelLabel(modelId)}
+          labelW={18}
+          innerW={innerW}
+        />,
+      );
+
+      const isAnthropic = isAnthropicNative(modelId);
+      const clientTriggerPct = 70;
+      const clientTrigger = Math.floor(ctxWindow * (clientTriggerPct / 100));
+      lines.push(<Spacer key="s-thresh-pre" innerW={innerW} />);
+      lines.push(<SectionHeader key="h-thresh" label="Compaction Thresholds" innerW={innerW} />);
+      if (isAnthropic) {
+        const clearPct = 30;
+        const clearTrigger = Math.max(80_000, Math.floor(ctxWindow * (clearPct / 100)));
+        const serverPct = 80;
+        const serverTrigger = Math.max(160_000, Math.floor(ctxWindow * (serverPct / 100)));
         lines.push(
-          <BarRow
-            key={`sp-${s.section}`}
-            label={`  ${s.section}`}
-            pct={sPct}
-            desc={`~${fmtTokens(sTokens)}`}
-            barColor={sPct > 40 ? t.warning : t.textMuted}
-            descColor={t.textMuted}
+          <EntryRow
+            key="th-clear"
+            label="  Tool clearing"
+            value={`${String(clearPct)}% — ${fmtTokens(clearTrigger)}`}
+            valueColor={t.textMuted}
+            labelW={18}
             innerW={innerW}
-            labelW={sysLabelW}
+          />,
+        );
+        lines.push(
+          <EntryRow
+            key="th-server"
+            label="  Server compact"
+            value={`${String(serverPct)}% — ${fmtTokens(serverTrigger)}`}
+            valueColor={t.textMuted}
+            labelW={18}
+            innerW={innerW}
           />,
         );
       }
-      lines.push(<Spacer key="s2" innerW={innerW} />);
+      lines.push(
+        <EntryRow
+          key="th-client"
+          label="  Client compact"
+          value={`${String(clientTriggerPct)}% — ${fmtTokens(clientTrigger)}`}
+          valueColor={t.textMuted}
+          labelW={18}
+          innerW={innerW}
+        />,
+      );
+      lines.push(<Spacer key="s1" innerW={innerW} />);
+
+      if (activeSections.length > 0) {
+        const sysLabelW = Math.min(
+          22,
+          Math.max(18, ...activeSections.map((s) => s.section.length + 4)),
+        );
+        const maxDescLen = Math.max(
+          ...activeSections.map((s) => `~${fmtTokens(Math.ceil(s.chars / 4))}`.length + 2),
+        );
+        lines.push(<SectionHeader key="h-sys" label="System Prompt" innerW={innerW} />);
+        for (const s of activeSections) {
+          const sTokens = Math.ceil(s.chars / 4);
+          const sPct = totalSysChars > 0 ? Math.round((s.chars / totalSysChars) * 100) : 0;
+          lines.push(
+            <BarRow
+              key={`sp-${s.section}`}
+              label={`  ${s.section}`}
+              pct={sPct}
+              desc={`~${fmtTokens(sTokens)}`}
+              barColor={sPct > 40 ? t.warning : t.textMuted}
+              descColor={t.textMuted}
+              innerW={innerW}
+              labelW={sysLabelW}
+              descW={maxDescLen}
+            />,
+          );
+        }
+        lines.push(<Spacer key="s2" innerW={innerW} />);
+      }
     }
 
-    lines.push(<SectionHeader key="h-tok" label="Token Usage (session)" innerW={innerW} />);
+    // ── Token Usage section header ──
+    const tokHeader = isAllScope
+      ? `Token Usage — All Tabs (${String(allTabs.length)})`
+      : isMultiTab
+        ? `Token Usage — Tab ${String(allTabs.findIndex((tb) => tb.id === scopeTabId) + 1)}`
+        : "Token Usage (session)";
+    lines.push(<SectionHeader key="h-tok" label={tokHeader} innerW={innerW} />);
+
+    // ── Token breakdown (same for any scope, uses scopedUsage) ──
     {
-      const uncachedInput = tu.prompt + tu.subagentInput;
-      const allInput = uncachedInput + tu.cacheRead + tu.cacheWrite;
-      const totalOutput = tu.completion + tu.subagentOutput;
-      const hasSub = tu.subagentInput > 0 || tu.subagentOutput > 0;
+      const su = scopedUsage;
+      const uncachedInput = su.prompt + su.subagentInput;
+      const allInput = uncachedInput + su.cacheRead + su.cacheWrite;
+      const totalOutput = su.completion + su.subagentOutput;
+      const hasSub = su.subagentInput > 0 || su.subagentOutput > 0;
       const cachePct =
-        allInput > 0 ? Math.min(100, Math.round((tu.cacheRead / allInput) * 100)) : 0;
+        allInput > 0 ? Math.min(100, Math.round((su.cacheRead / allInput) * 100)) : 0;
 
       const tokLabelW = 18;
       lines.push(
@@ -345,7 +465,7 @@ export function StatusDashboard({
           <EntryRow
             key="t-in-main"
             label="    Main"
-            value={fmtTokens(tu.prompt)}
+            value={fmtTokens(su.prompt)}
             valueColor={t.info}
             labelW={tokLabelW}
             rightAlign
@@ -356,7 +476,7 @@ export function StatusDashboard({
           <EntryRow
             key="t-in-sub"
             label="    Dispatch"
-            value={fmtTokens(tu.subagentInput)}
+            value={fmtTokens(su.subagentInput)}
             valueColor={t.brand}
             labelW={tokLabelW}
             rightAlign
@@ -381,7 +501,7 @@ export function StatusDashboard({
           <EntryRow
             key="t-out-main"
             label="    Main"
-            value={fmtTokens(tu.completion)}
+            value={fmtTokens(su.completion)}
             valueColor={t.warning}
             labelW={tokLabelW}
             rightAlign
@@ -392,7 +512,7 @@ export function StatusDashboard({
           <EntryRow
             key="t-out-sub"
             label="    Dispatch"
-            value={fmtTokens(tu.subagentOutput)}
+            value={fmtTokens(su.subagentOutput)}
             valueColor={t.brand}
             labelW={tokLabelW}
             rightAlign
@@ -406,18 +526,18 @@ export function StatusDashboard({
           key="t-cache"
           label="  Cache Read"
           pct={cachePct}
-          desc={tu.cacheRead > 0 ? `${fmtTokens(tu.cacheRead)} (${String(cachePct)}%)` : "—"}
-          barColor={tu.cacheRead > 0 ? t.success : t.textFaint}
-          descColor={tu.cacheRead > 0 ? t.success : t.textDim}
+          desc={su.cacheRead > 0 ? `${fmtTokens(su.cacheRead)} (${String(cachePct)}%)` : "—"}
+          barColor={su.cacheRead > 0 ? t.success : t.textFaint}
+          descColor={su.cacheRead > 0 ? t.success : t.textDim}
           innerW={innerW}
         />,
       );
-      if (tu.cacheWrite > 0) {
+      if (su.cacheWrite > 0) {
         lines.push(
           <EntryRow
             key="t-cache-write"
             label="  Cache Write"
-            value={fmtTokens(tu.cacheWrite)}
+            value={fmtTokens(su.cacheWrite)}
             valueColor={t.warning}
             labelW={tokLabelW}
             rightAlign
@@ -425,7 +545,7 @@ export function StatusDashboard({
           />,
         );
       }
-      if (tu.cacheRead > 0) {
+      if (su.cacheRead > 0) {
         lines.push(
           <EntryRow
             key="t-uncached"
@@ -443,24 +563,26 @@ export function StatusDashboard({
         <EntryRow
           key="t-total"
           label="  Total"
-          value={fmtTokens(tu.total)}
+          value={fmtTokens(su.total)}
           labelW={tokLabelW}
           rightAlign
           innerW={innerW}
         />,
       );
 
-      const breakdown = tu.modelBreakdown ?? {};
-      const breakdownEntries = Object.entries(breakdown).sort(
+      // ── Cost Breakdown ──
+      const sortedBd = Object.entries(su.modelBreakdown ?? {}).sort(
         ([midA, a], [midB, b]) => computeModelCost(midB, b) - computeModelCost(midA, a),
       );
-      const totalCost = breakdownEntries.length > 0 ? computeTotalCostFromBreakdown(breakdown) : 0;
+      const totalCost =
+        sortedBd.length > 0 ? computeTotalCostFromBreakdown(su.modelBreakdown ?? {}) : 0;
       if (totalCost > 0) {
         const fmtCost = (c: number) => (c < 0.01 ? `${c.toFixed(3)}` : `${c.toFixed(2)}`);
         lines.push(<Spacer key="s-cost" innerW={innerW} />);
-        lines.push(<SectionHeader key="h-cost" label="Cost Breakdown" innerW={innerW} />);
+        const costHeader = isAllScope ? "Cost Breakdown — All Tabs" : "Cost Breakdown";
+        lines.push(<SectionHeader key="h-cost" label={costHeader} innerW={innerW} />);
         const costLabelW = Math.min(30, innerW - 20);
-        for (const [mid, usage] of breakdownEntries) {
+        for (const [mid, usage] of sortedBd) {
           const c = computeModelCost(mid, usage);
           if (c <= 0) continue;
           const pct = Math.round((c / totalCost) * 100);
@@ -492,52 +614,59 @@ export function StatusDashboard({
       }
     }
 
-    const allTabs = tabMgr.tabs;
-    if (allTabs.length > 1) {
-      lines.push(<Spacer key="s3" innerW={innerW} />);
+    // ── Per-Tab summary table (only in "All" scope) ──
+    if (isAllScope && isMultiTab) {
+      lines.push(<Spacer key="s-tabs" innerW={innerW} />);
+      lines.push(<SectionHeader key="h-tabs" label="Per Tab" innerW={innerW} />);
+
+      const fmtCost = (c: number) =>
+        c <= 0 ? "—" : c < 0.01 ? `$${c.toFixed(3)}` : `$${c.toFixed(2)}`;
+
+      // Column header
+      const colLabelW = Math.min(24, Math.floor(innerW * 0.35));
+      const colW = innerW - colLabelW - 2;
+      const colStr = (s: string, w: number) => s.padStart(w);
+      const cw = Math.floor(colW / 4);
       lines.push(
-        <SectionHeader
-          key="h-tabs"
-          label={`All Tabs (${String(allTabs.length)})`}
-          innerW={innerW}
-        />,
+        <PopupRow key="tab-hdr" w={innerW}>
+          <text fg={t.textDim} bg={POPUP_BG}>
+            {"".padEnd(colLabelW)}
+            {colStr("Input", cw)}
+            {colStr("Output", cw)}
+            {colStr("Cache%", cw)}
+            {colStr("Cost", cw)}
+          </text>
+        </PopupRow>,
       );
-      let grandTotal = 0;
+
       for (let i = 0; i < allTabs.length; i++) {
         const tabEntry = allTabs[i];
         if (!tabEntry) continue;
-        const c = tabMgr.getChat(tabEntry.id);
-        const u = c?.tokenUsage ?? {
-          prompt: 0,
-          completion: 0,
-          total: 0,
-          cacheRead: 0,
-          subagentInput: 0,
-          subagentOutput: 0,
-          lastStepInput: 0,
-          lastStepOutput: 0,
-          lastStepCacheRead: 0,
-        };
-        grandTotal += u.total;
+        const u = getTabUsage(tabEntry.id);
         const isActive = tabEntry.id === tabMgr.activeTabId;
+        const uncached = u.prompt + u.subagentInput;
+        const allIn = uncached + u.cacheRead + u.cacheWrite;
+        const cachePct = allIn > 0 ? Math.round((u.cacheRead / allIn) * 100) : 0;
+        const cost = computeTotalCostFromBreakdown(u.modelBreakdown ?? {});
+        const totalOut = u.completion + u.subagentOutput;
+
+        const prefix = isActive ? " ▸ " : "   ";
+        const label = `${prefix}Tab ${String(i + 1)}`;
+
         lines.push(
-          <EntryRow
-            key={`tab-${tabEntry.id}`}
-            label={`  ${isActive ? "▸" : " "} Tab ${String(i + 1)}`}
-            value={
-              u.total > 0
-                ? `${fmtTokens(u.prompt)}↑ ${fmtTokens(u.completion)}↓ = ${fmtTokens(u.total)}`
-                : "—"
-            }
-            labelColor={isActive ? t.info : t.textSecondary}
-            valueColor={isActive ? t.textPrimary : t.textMuted}
-            innerW={innerW}
-          />,
+          <PopupRow key={`tab-${tabEntry.id}`} w={innerW}>
+            <text fg={isActive ? t.info : t.textSecondary} bg={POPUP_BG}>
+              {label.padEnd(colLabelW)}
+            </text>
+            <text fg={t.textPrimary} bg={POPUP_BG}>
+              {colStr(fmtTokens(uncached), cw)}
+              {colStr(fmtTokens(totalOut), cw)}
+              {colStr(cachePct > 0 ? `${String(cachePct)}%` : "—", cw)}
+              {colStr(fmtCost(cost), cw)}
+            </text>
+          </PopupRow>,
         );
       }
-      lines.push(
-        <EntryRow key="tab-total" label="  Total" value={fmtTokens(grandTotal)} innerW={innerW} />,
-      );
     }
 
     return lines;
@@ -545,7 +674,12 @@ export function StatusDashboard({
     contextManager,
     sb.contextWindow,
     modelId,
-    tu,
+    scopedUsage,
+    scopeTabId,
+    isMultiTab,
+    isAllScope,
+    allTabs,
+    getTabUsage,
     tabMgr,
     innerW,
     sb.chatChars,
@@ -813,6 +947,19 @@ export function StatusDashboard({
       setScrollOffset(0);
       return;
     }
+    if (isMultiTab && tab === "Context" && (evt.name === "left" || evt.name === "right")) {
+      const scopeIds = [...allTabs.map((tb) => tb.id), "all" as const];
+      setScopeTabId((prev) => {
+        const idx = scopeIds.indexOf(prev as string);
+        const next =
+          evt.name === "right"
+            ? (idx + 1) % scopeIds.length
+            : (idx - 1 + scopeIds.length) % scopeIds.length;
+        return scopeIds[next] ?? prev;
+      });
+      setScrollOffset(0);
+      return;
+    }
     if (evt.name === "up") {
       setScrollOffset((prev) => Math.max(0, prev - 1));
       return;
@@ -888,7 +1035,9 @@ export function StatusDashboard({
         {/* Footer */}
         <PopupRow w={innerW}>
           <text fg={t.textDim} bg={POPUP_BG}>
-            ⇥ switch tab | ↑↓ scroll | esc close
+            {isMultiTab && tab === "Context"
+              ? "<⇥> panel | <←→> scope | <↑↓> scroll | <esc> close"
+              : "<⇥> panel | <↑↓> scroll | <esc> close"}
           </text>
         </PopupRow>
       </box>
