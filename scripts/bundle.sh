@@ -100,43 +100,43 @@ mkdir -p "$CACHE_DIR"
 
 # Neovim
 NVIM_URL="https://github.com/neovim/neovim/releases/download/v${NVIM_VERSION}/${NVIM_ASSET}"
-download "$NVIM_URL" "${CACHE_DIR}/nvim-${PLATFORM}-${ARCH}.tar.gz" "neovim ${NVIM_VERSION}"
+download "$NVIM_URL" "${CACHE_DIR}/nvim-${PLATFORM}-${BASE_ARCH}.tar.gz" "neovim ${NVIM_VERSION}"
 mkdir -p "${DEPS_DIR}/nvim"
-tar xzf "${CACHE_DIR}/nvim-${PLATFORM}-${ARCH}.tar.gz" -C "${DEPS_DIR}/nvim" --strip-components=1
+tar xzf "${CACHE_DIR}/nvim-${PLATFORM}-${BASE_ARCH}.tar.gz" -C "${DEPS_DIR}/nvim" --strip-components=1
 
 # ripgrep
 RG_ASSET="ripgrep-${RG_VERSION}-${RG_TRIPLET}.tar.gz"
 RG_URL="https://github.com/BurntSushi/ripgrep/releases/download/${RG_VERSION}/${RG_ASSET}"
-download "$RG_URL" "${CACHE_DIR}/rg-${PLATFORM}-${ARCH}.tar.gz" "ripgrep ${RG_VERSION}"
+download "$RG_URL" "${CACHE_DIR}/rg-${PLATFORM}-${BASE_ARCH}.tar.gz" "ripgrep ${RG_VERSION}"
 mkdir -p "${DEPS_DIR}/rg-tmp"
-tar xzf "${CACHE_DIR}/rg-${PLATFORM}-${ARCH}.tar.gz" -C "${DEPS_DIR}/rg-tmp" --strip-components=1
+tar xzf "${CACHE_DIR}/rg-${PLATFORM}-${BASE_ARCH}.tar.gz" -C "${DEPS_DIR}/rg-tmp" --strip-components=1
 cp "${DEPS_DIR}/rg-tmp/rg" "${DEPS_DIR}/rg"
 rm -rf "${DEPS_DIR}/rg-tmp"
 
 # fd
 FD_ASSET="fd-v${FD_VERSION}-${FD_TRIPLET}.tar.gz"
 FD_URL="https://github.com/sharkdp/fd/releases/download/v${FD_VERSION}/${FD_ASSET}"
-download "$FD_URL" "${CACHE_DIR}/fd-${PLATFORM}-${ARCH}.tar.gz" "fd ${FD_VERSION}"
+download "$FD_URL" "${CACHE_DIR}/fd-${PLATFORM}-${BASE_ARCH}.tar.gz" "fd ${FD_VERSION}"
 mkdir -p "${DEPS_DIR}/fd-tmp"
-tar xzf "${CACHE_DIR}/fd-${PLATFORM}-${ARCH}.tar.gz" -C "${DEPS_DIR}/fd-tmp" --strip-components=1
+tar xzf "${CACHE_DIR}/fd-${PLATFORM}-${BASE_ARCH}.tar.gz" -C "${DEPS_DIR}/fd-tmp" --strip-components=1
 cp "${DEPS_DIR}/fd-tmp/fd" "${DEPS_DIR}/fd"
 rm -rf "${DEPS_DIR}/fd-tmp"
 
 # lazygit
 LAZYGIT_ASSET="lazygit_${LAZYGIT_VERSION}_${LAZYGIT_SUFFIX}.tar.gz"
 LAZYGIT_URL="https://github.com/jesseduffield/lazygit/releases/download/v${LAZYGIT_VERSION}/${LAZYGIT_ASSET}"
-download "$LAZYGIT_URL" "${CACHE_DIR}/lazygit-${PLATFORM}-${ARCH}.tar.gz" "lazygit ${LAZYGIT_VERSION}"
+download "$LAZYGIT_URL" "${CACHE_DIR}/lazygit-${PLATFORM}-${BASE_ARCH}.tar.gz" "lazygit ${LAZYGIT_VERSION}"
 mkdir -p "${DEPS_DIR}/lazygit-tmp"
-tar xzf "${CACHE_DIR}/lazygit-${PLATFORM}-${ARCH}.tar.gz" -C "${DEPS_DIR}/lazygit-tmp"
+tar xzf "${CACHE_DIR}/lazygit-${PLATFORM}-${BASE_ARCH}.tar.gz" -C "${DEPS_DIR}/lazygit-tmp"
 cp "${DEPS_DIR}/lazygit-tmp/lazygit" "${DEPS_DIR}/lazygit"
 rm -rf "${DEPS_DIR}/lazygit-tmp"
 
 # cli-proxy-api
 PROXY_ASSET="CLIProxyAPI_${PROXY_VERSION}_${PROXY_SUFFIX}.tar.gz"
 PROXY_URL="https://github.com/router-for-me/CLIProxyAPI/releases/download/v${PROXY_VERSION}/${PROXY_ASSET}"
-download "$PROXY_URL" "${CACHE_DIR}/proxy-${PLATFORM}-${ARCH}.tar.gz" "cli-proxy-api ${PROXY_VERSION}"
+download "$PROXY_URL" "${CACHE_DIR}/proxy-${PLATFORM}-${BASE_ARCH}.tar.gz" "cli-proxy-api ${PROXY_VERSION}"
 mkdir -p "${DEPS_DIR}/proxy-tmp"
-tar xzf "${CACHE_DIR}/proxy-${PLATFORM}-${ARCH}.tar.gz" -C "${DEPS_DIR}/proxy-tmp"
+tar xzf "${CACHE_DIR}/proxy-${PLATFORM}-${BASE_ARCH}.tar.gz" -C "${DEPS_DIR}/proxy-tmp"
 cp "${DEPS_DIR}/proxy-tmp/cli-proxy-api" "${DEPS_DIR}/cli-proxy-api"
 rm -rf "${DEPS_DIR}/proxy-tmp"
 
@@ -144,14 +144,14 @@ chmod +x "${DEPS_DIR}/nvim/bin/nvim" "${DEPS_DIR}/rg" "${DEPS_DIR}/fd" "${DEPS_D
 
 # Native addons — can't be embedded in compiled binaries
 echo "    Bundling native addons..."
-NATIVE_DIR="${DEPS_DIR}/native/${PLATFORM}-${ARCH}"
+NATIVE_DIR="${DEPS_DIR}/native/${PLATFORM}-${BASE_ARCH}"
 mkdir -p "${NATIVE_DIR}"
 if [[ "$PLATFORM" == "darwin" ]]; then
   NATIVE_PLATFORM="darwin"
 else
   NATIVE_PLATFORM="linux"
 fi
-GHOSTTY_NODE="node_modules/ghostty-opentui/dist/${NATIVE_PLATFORM}-${ARCH}/ghostty-opentui.node"
+GHOSTTY_NODE="node_modules/ghostty-opentui/dist/${NATIVE_PLATFORM}-${BASE_ARCH}/ghostty-opentui.node"
 if [[ -f "$GHOSTTY_NODE" ]]; then
   cp "$GHOSTTY_NODE" "${NATIVE_DIR}/ghostty-opentui.node"
   echo "    ✓ ghostty-opentui.node"
@@ -161,9 +161,9 @@ fi
 
 # OpenTUI native lib
 if [[ "$PLATFORM" == "darwin" ]]; then
-  OPENTUI_LIB="node_modules/@opentui/core-${NATIVE_PLATFORM}-${ARCH}/libopentui.dylib"
+  OPENTUI_LIB="node_modules/@opentui/core-${NATIVE_PLATFORM}-${BASE_ARCH}/libopentui.dylib"
 else
-  OPENTUI_LIB="node_modules/@opentui/core-${NATIVE_PLATFORM}-${ARCH}/libopentui.so"
+  OPENTUI_LIB="node_modules/@opentui/core-${NATIVE_PLATFORM}-${BASE_ARCH}/libopentui.so"
 fi
 if [[ -f "$OPENTUI_LIB" ]]; then
   cp "$OPENTUI_LIB" "${NATIVE_DIR}/"
