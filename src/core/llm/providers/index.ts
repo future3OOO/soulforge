@@ -4,6 +4,7 @@ export { buildCustomProvider } from "./custom.js";
 export { githubModels } from "./github-models.js";
 export { google } from "./google.js";
 export { llmgateway } from "./llmgateway.js";
+export { minimax } from "./minimax.js";
 export { ollama } from "./ollama.js";
 export { openai } from "./openai.js";
 export { openrouter } from "./openrouter.js";
@@ -18,6 +19,7 @@ import { buildCustomProvider } from "./custom.js";
 import { githubModels } from "./github-models.js";
 import { google } from "./google.js";
 import { llmgateway } from "./llmgateway.js";
+import { minimax } from "./minimax.js";
 import { ollama } from "./ollama.js";
 import { openai } from "./openai.js";
 import { openrouter } from "./openrouter.js";
@@ -34,6 +36,7 @@ const BUILTIN_PROVIDERS: ProviderDefinition[] = [
   openai,
   xai,
   google,
+  minimax,
   copilot,
   githubModels,
   openrouter,

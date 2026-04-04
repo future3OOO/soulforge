@@ -10,6 +10,7 @@ export const vercelGatewayProvider: ProviderDefinition = {
   secretKey: "vercel-gateway-api-key",
   keyUrl: "vercel.com/ai-gateway",
   asciiIcon: "☁",
+  description: "Vercel AI Gateway",
   grouped: true,
 
   createModel(modelId: string) {

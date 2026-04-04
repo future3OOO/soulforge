@@ -18,6 +18,7 @@ export const google: ProviderDefinition = {
   secretKey: "google-api-key",
   keyUrl: "aistudio.google.com",
   asciiIcon: "G",
+  description: "Gemini models",
 
   createModel(modelId: string) {
     const apiKey = getProviderApiKey("GOOGLE_GENERATIVE_AI_API_KEY");

@@ -11,6 +11,7 @@ export const openrouter: ProviderDefinition = {
   secretKey: "openrouter-api-key",
   keyUrl: "openrouter.ai",
   asciiIcon: "⊕",
+  description: "Multi-provider router",
   grouped: true,
 
   createModel(modelId: string) {

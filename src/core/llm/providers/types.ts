@@ -17,6 +17,8 @@ export interface ProviderDefinition {
   keyUrl?: string;
   /** ASCII fallback icon for terminals without nerd fonts. */
   asciiIcon?: string;
+  /** Short description for wizard/UI (e.g. "Claude models"). */
+  description?: string;
   createModel(modelId: string): LanguageModel;
   fetchModels(): Promise<ProviderModelInfo[] | null>;
   fallbackModels: ProviderModelInfo[];

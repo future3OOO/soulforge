@@ -11,6 +11,7 @@ export const llmgateway: ProviderDefinition = {
   secretKey: "llmgateway-api-key",
   keyUrl: "llmgateway.io/dashboard",
   asciiIcon: "☁",
+  description: "All models, one key",
   grouped: true,
 
   createModel(modelId) {

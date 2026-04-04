@@ -96,6 +96,7 @@ export const copilot: ProviderDefinition = {
   secretKey: "copilot-api-key",
   keyUrl: "github.com/features/copilot",
   asciiIcon: "CP",
+  description: "Free with Copilot sub",
 
   createModel: createCopilotModel,
 

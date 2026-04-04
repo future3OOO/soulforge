@@ -2,7 +2,7 @@ import { TextAttributes } from "@opentui/core";
 import { useKeyboard } from "@opentui/react";
 import { useEffect, useRef, useState } from "react";
 import { fetchGroupedModels, fetchProviderModels } from "../../../../core/llm/models.js";
-import { getProvider } from "../../../../core/llm/providers/index.js";
+import { getAllProviders, getProvider } from "../../../../core/llm/providers/index.js";
 import type { ProviderModelInfo } from "../../../../core/llm/providers/types.js";
 import {
   getDefaultKeyPriority,
@@ -30,71 +30,23 @@ interface ProviderEntry {
 
 const GATEWAY_REF = "https://llmgateway.io/dashboard?ref=6tjJR2H3X4E9RmVQiQwK";
 
-const PROVIDERS: ProviderEntry[] = [
-  {
-    id: "llmgateway-api-key",
-    providerId: "llmgateway",
-    label: "LLM Gateway",
-    envVar: "LLM_GATEWAY_API_KEY",
-    url: GATEWAY_REF,
-    desc: "All models, one key",
-    icon: getProvider("llmgateway")?.icon ?? "󰒍",
-  },
-  {
-    id: "anthropic-api-key",
-    providerId: "anthropic",
-    label: "Anthropic",
-    envVar: "ANTHROPIC_API_KEY",
-    url: "https://console.anthropic.com",
-    desc: "Claude models",
-    icon: getProvider("anthropic")?.icon ?? "●",
-  },
-  {
-    id: "openai-api-key",
-    providerId: "openai",
-    label: "OpenAI",
-    envVar: "OPENAI_API_KEY",
-    url: "https://platform.openai.com",
-    desc: "GPT & o-series",
-    icon: getProvider("openai")?.icon ?? "●",
-  },
-  {
-    id: "google-api-key",
-    providerId: "google",
-    label: "Google Gemini",
-    envVar: "GOOGLE_GENERATIVE_AI_API_KEY",
-    url: "https://aistudio.google.com",
-    desc: "Gemini models",
-    icon: getProvider("google")?.icon ?? "●",
-  },
-  {
-    id: "xai-api-key",
-    providerId: "xai",
-    label: "xAI Grok",
-    envVar: "XAI_API_KEY",
-    url: "https://console.x.ai",
-    desc: "Grok models",
-    icon: getProvider("xai")?.icon ?? "●",
-  },
-  {
-    id: "copilot-api-key",
-    providerId: "copilot",
-    label: "GitHub Copilot",
-    envVar: "COPILOT_API_KEY",
-    url: "https://github.com/features/copilot",
-    desc: "Free with Copilot sub",
-    icon: getProvider("copilot")?.icon ?? "CP",
-  },
-  {
-    id: "openrouter-api-key",
-    providerId: "openrouter",
-    label: "OpenRouter",
-    envVar: "OPENROUTER_API_KEY",
-    url: "https://openrouter.ai",
-    desc: "Multi-provider router",
-    icon: getProvider("openrouter")?.icon ?? "●",
-  },
-];
+/** URL overrides for specific providers (e.g. referral links). */
+const URL_OVERRIDES: Record<string, string> = {
+  llmgateway: GATEWAY_REF,
+};
+
+/** Derive wizard provider list from the provider registry — single source of truth. */
+const PROVIDERS: ProviderEntry[] = getAllProviders()
+  .filter((p) => p.envVar && p.secretKey)
+  .map((p) => ({
+    id: p.secretKey as SecretKey,
+    providerId: p.id,
+    label: p.name,
+    envVar: p.envVar,
+    url: URL_OVERRIDES[p.id] ?? (p.keyUrl ? `https://${p.keyUrl}` : ""),
+    desc: p.description ?? "",
+    icon: p.icon,
+  }));
 
 // ── Helpers ──
 

@@ -15,6 +15,7 @@ export const xai: ProviderDefinition = {
   secretKey: "xai-api-key",
   keyUrl: "console.x.ai",
   asciiIcon: "X",
+  description: "Grok models",
 
   createModel(modelId: string) {
     const apiKey = getProviderApiKey("XAI_API_KEY");

@@ -17,6 +17,7 @@ export const openai: ProviderDefinition = {
   secretKey: "openai-api-key",
   keyUrl: "platform.openai.com",
   asciiIcon: "O",
+  description: "GPT & o-series",
 
   createModel(modelId: string) {
     const apiKey = getProviderApiKey("OPENAI_API_KEY");

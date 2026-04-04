@@ -26,6 +26,7 @@ export const githubModels: ProviderDefinition = {
   secretKey: "github-models-api-key",
   keyUrl: "github.com/settings/tokens",
   asciiIcon: "GH",
+  description: "Free with GitHub PAT",
 
   createModel(modelId: string) {
     const apiKey = getProviderApiKey(ENV_VAR);

@@ -13,6 +13,7 @@ export const ollama: ProviderDefinition = {
   envVar: "",
   icon: "🦙",
   asciiIcon: "🦙",
+  description: "Local models — no key needed",
 
   createModel(modelId: string) {
     const client = createOpenAI({
