@@ -57,7 +57,13 @@ async function setupAgent(
     process.exit(EXIT_ERROR);
   }
 
-  const model = resolveModel(modelId);
+  let model: LanguageModel;
+  try {
+    model = resolveModel(modelId);
+  } catch (err) {
+    stderrError(err instanceof Error ? err.message : String(err));
+    process.exit(EXIT_ERROR);
+  }
   const providerOpts = await buildProviderOptions(modelId, merged);
 
   const repoMapDisabled =
