@@ -986,6 +986,7 @@ export class ContextManager {
       hasSymbols: this.isRepoMapReady() && this.repoMap.getStatsCached().symbols > 0,
       forgeMode: this.forgeMode,
       projectInstructions: this.projectInstructions || null,
+      cwd: this.cwd,
     };
     return buildPrompt(opts);
   }

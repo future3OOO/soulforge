@@ -47,6 +47,7 @@ export interface PromptBuilderOptions {
   forgeMode: ForgeMode;
   contextPercent?: number;
   projectInstructions: string | null;
+  cwd?: string;
 }
 
 /**
@@ -79,6 +80,9 @@ export function buildSystemPrompt(opts: PromptBuilderOptions): string {
   } else {
     parts.push(TOOL_GUIDANCE_NO_MAP);
   }
+
+  // 3. Working directory (stable — never changes during a session)
+  if (opts.cwd) parts.push(`Working directory: ${opts.cwd}`);
 
   // ── DYNAMIC SECTION ──
 

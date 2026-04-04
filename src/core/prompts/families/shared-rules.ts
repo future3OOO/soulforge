@@ -50,4 +50,5 @@ export const SHARED_RULES = `
 - Follow existing codebase patterns and conventions rather than inventing new abstractions.
 - Write modern, idiomatic code for the language and ecosystem. Use current ${CURRENT_YEAR}-era APIs, patterns, and best practices — avoid deprecated or legacy approaches.
 
-Only commit changes when the user explicitly asks you to.`;
+Only commit changes when the user explicitly asks you to.
+Use conventional commits: type: description (scope optional). Types: feat, fix, refactor, docs, test, chore, perf, ci, build, style, revert, etc.`;
