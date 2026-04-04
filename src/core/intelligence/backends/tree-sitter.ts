@@ -522,6 +522,7 @@ export class TreeSitterBackend implements IntelligenceBackend {
   readonly tier = 3;
   private parser: TSParser | null = null;
   private languages = new Map<string, TSLanguage>();
+  private failedLanguages = new Set<string>();
   private initPromise: Promise<void> | null = null;
   private cache: FileCache | null = null;
   /** Parse tree cache: absPath → { tree, content } */
@@ -1391,9 +1392,14 @@ export class TreeSitterBackend implements IntelligenceBackend {
   }
 
   private async doInit(): Promise<void> {
-    const wasmPath = this.resolveWasm("tree-sitter.wasm");
+    // web-tree-sitter ≤0.25.x ships tree-sitter.wasm; ≥0.26.x renamed to web-tree-sitter.wasm.
+    // Try both so bundled installs work regardless of which version built the wasm dir.
+    let wasmPath = this.resolveWasm("tree-sitter.wasm");
     if (!existsSync(wasmPath)) {
-      throw new Error(`tree-sitter.wasm not found at ${wasmPath}`);
+      wasmPath = this.resolveWasm("web-tree-sitter.wasm");
+    }
+    if (!existsSync(wasmPath)) {
+      throw new Error(`tree-sitter.wasm not found in ${BUNDLED_WASM_DIR} or node_modules`);
     }
     const mod = await import("web-tree-sitter");
     TSQueryClass = mod.Query;
@@ -1406,6 +1412,7 @@ export class TreeSitterBackend implements IntelligenceBackend {
   private async loadLanguage(language: string): Promise<TSLanguage | null> {
     const cached = this.languages.get(language);
     if (cached) return cached;
+    if (this.failedLanguages.has(language)) return null;
 
     const wasmFile = GRAMMAR_FILES[language];
     if (!wasmFile) return null;
@@ -1414,9 +1421,19 @@ export class TreeSitterBackend implements IntelligenceBackend {
       const mod = await import("web-tree-sitter");
       const wasmPath = this.resolveWasm(`tree-sitter-wasms/out/${wasmFile}`);
       const lang = await mod.Language.load(wasmPath);
+      // Validate the grammar actually works — WASM dynamic linker errors
+      // (e.g. "resolved is not a function") are deferred until first use,
+      // so Language.load() can succeed with a broken grammar. Parse real
+      // content to force all lazy WASM stubs to resolve.
+      if (this.parser) {
+        this.parser.setLanguage(lang);
+        const tree = this.parser.parse("# validate");
+        tree?.delete();
+      }
       this.languages.set(language, lang);
       return lang;
     } catch {
+      this.failedLanguages.add(language);
       return null;
     }
   }
@@ -1440,7 +1457,15 @@ export class TreeSitterBackend implements IntelligenceBackend {
     if (!lang) return null;
 
     this.parser.setLanguage(lang);
-    const tree = this.parser.parse(content);
+    let tree: TSTree | null;
+    try {
+      tree = this.parser.parse(content);
+    } catch {
+      // WASM grammar broken at runtime (e.g. ABI mismatch) — blacklist it
+      this.failedLanguages.add(grammarKey);
+      this.languages.delete(grammarKey);
+      return null;
+    }
     if (!tree) return null;
 
     // Cache the tree (evict oldest if full)
