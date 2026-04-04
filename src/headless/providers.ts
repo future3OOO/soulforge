@@ -1,6 +1,6 @@
 import { checkProviders } from "../core/llm/provider.js";
 import { getAllProviders } from "../core/llm/providers/index.js";
-import { getProviderApiKey, setCustomSecret, setSecret } from "../core/secrets.js";
+import { getProviderApiKey, setSecret } from "../core/secrets.js";
 import { BOLD, DIM, EXIT_ERROR, GREEN, PURPLE, RED, RST } from "./constants.js";
 
 export async function listProviders(): Promise<void> {
@@ -55,45 +55,27 @@ export async function listModels(providerId?: string): Promise<void> {
   }
 }
 
-const BUILTIN_SECRETS: Record<string, string> = {
-  anthropic: "anthropic-api-key",
-  openai: "openai-api-key",
-  google: "google-api-key",
-  xai: "xai-api-key",
-  openrouter: "openrouter-api-key",
-  llmgateway: "llmgateway-api-key",
-  vercel_gateway: "vercel-gateway-api-key",
-};
-
 export function setKey(providerId: string, key: string): void {
-  const builtinKey = BUILTIN_SECRETS[providerId];
-  if (builtinKey) {
-    const result = setSecret(builtinKey as Parameters<typeof setSecret>[0], key);
-    if (result.success) {
-      const where = result.storage === "keychain" ? "system keychain" : "~/.soulforge/secrets.json";
-      process.stdout.write(`${GREEN()}Saved${RST} ${providerId} key to ${where}\n`);
-    } else {
-      process.stderr.write(`${RED()}Error:${RST} Failed to save key\n`);
-      process.exit(EXIT_ERROR);
-    }
-    return;
-  }
-
   const provider = getAllProviders().find((p) => p.id === providerId);
-  if (provider?.envVar) {
-    const result = setCustomSecret(provider.envVar, key);
-    if (result.success) {
-      const where = result.storage === "keychain" ? "system keychain" : "~/.soulforge/secrets.json";
-      process.stdout.write(`${GREEN()}Saved${RST} ${providerId} key to ${where}\n`);
-    } else {
-      process.stderr.write(`${RED()}Error:${RST} Failed to save key\n`);
-      process.exit(EXIT_ERROR);
-    }
-    return;
+  if (!provider) {
+    const allIds = getAllProviders().map((p) => p.id);
+    process.stderr.write(`${RED()}Error:${RST} Unknown provider "${providerId}"\n`);
+    process.stderr.write(`Available: ${allIds.join(", ")}\n`);
+    process.exit(EXIT_ERROR);
   }
 
-  const allIds = getAllProviders().map((p) => p.id);
-  process.stderr.write(`${RED()}Error:${RST} Unknown provider "${providerId}"\n`);
-  process.stderr.write(`Available: ${allIds.join(", ")}\n`);
-  process.exit(EXIT_ERROR);
+  const secretId = provider.secretKey ?? provider.envVar;
+  if (!secretId) {
+    process.stderr.write(`${RED()}Error:${RST} Provider "${providerId}" does not use an API key\n`);
+    process.exit(EXIT_ERROR);
+  }
+
+  const result = setSecret(secretId, key);
+  if (result.success) {
+    const where = result.storage === "keychain" ? "system keychain" : "~/.soulforge/secrets.json";
+    process.stdout.write(`${GREEN()}Saved${RST} ${providerId} key to ${where}\n`);
+  } else {
+    process.stderr.write(`${RED()}Error:${RST} Failed to save key\n`);
+    process.exit(EXIT_ERROR);
+  }
 }

@@ -17,28 +17,35 @@ export function getDefaultKeyPriority(): "env" | "app" {
   return _defaultPriority;
 }
 
-type SecretKey =
-  | "brave-api-key"
-  | "jina-api-key"
-  | "anthropic-api-key"
-  | "openai-api-key"
-  | "google-api-key"
-  | "xai-api-key"
-  | "openrouter-api-key"
-  | "llmgateway-api-key"
-  | "vercel-gateway-api-key";
+/** Secret key identifier — kebab-case string used in keychain/file storage. */
+type SecretKey = string;
 
-const ENV_MAP: Record<SecretKey, string> = {
+/**
+ * Non-provider secret keys (web search, etc.) that live outside the provider registry.
+ * Provider keys are registered dynamically via `registerProviderSecrets()`.
+ */
+const STATIC_SECRETS: Record<string, string> = {
   "brave-api-key": "BRAVE_SEARCH_API_KEY",
   "jina-api-key": "JINA_API_KEY",
-  "anthropic-api-key": "ANTHROPIC_API_KEY",
-  "openai-api-key": "OPENAI_API_KEY",
-  "google-api-key": "GOOGLE_GENERATIVE_AI_API_KEY",
-  "xai-api-key": "XAI_API_KEY",
-  "openrouter-api-key": "OPENROUTER_API_KEY",
-  "llmgateway-api-key": "LLM_GATEWAY_API_KEY",
-  "vercel-gateway-api-key": "AI_GATEWAY_API_KEY",
 };
+
+/** secretKey → envVar mapping. Initialized with static keys, extended by providers at boot. */
+const ENV_MAP: Record<string, string> = { ...STATIC_SECRETS };
+
+/**
+ * Register provider secret keys from the provider registry.
+ * Called once at boot after providers are loaded — single source of truth.
+ */
+export function registerProviderSecrets(entries: { secretKey: string; envVar: string }[]): void {
+  for (const { secretKey, envVar } of entries) {
+    ENV_MAP[secretKey] = envVar;
+  }
+  // Rebuild reverse lookup
+  ENV_TO_SECRET.clear();
+  for (const [k, v] of Object.entries(ENV_MAP)) {
+    ENV_TO_SECRET.set(v, k);
+  }
+}
 
 function keychainAvailable(): boolean {
   if (process.platform === "darwin") return true;

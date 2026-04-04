@@ -1,9 +1,10 @@
 import { decodePasteBytes, type PasteEvent, TextAttributes } from "@opentui/core";
 import { useKeyboard, useRenderer, useTerminalDimensions } from "@opentui/react";
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { create } from "zustand";
 import { saveGlobalConfig } from "../../config/index.js";
 import { icon, providerIcon } from "../../core/icons.js";
+import { getAllProviders } from "../../core/llm/providers/index.js";
 import {
   deleteSecret,
   getDefaultKeyPriority,
@@ -18,101 +19,52 @@ import {
 import { useTheme } from "../../core/theme/index.js";
 import { Overlay, POPUP_BG, POPUP_HL, PopupRow, usePopupColors } from "../layout/shared.js";
 
-const MAX_POPUP_WIDTH = 68;
-const CHROME_ROWS = 12;
-const INPUT_FIELD_WIDTH = 40;
-
-interface ApiKeyState {
-  keys: Partial<Record<SecretKey, SecretSources>>;
-  priority: KeyPriority;
-  refresh: () => void;
-}
-
-const PROVIDER_KEYS: SecretKey[] = [
-  "llmgateway-api-key",
-  "anthropic-api-key",
-  "openai-api-key",
-  "google-api-key",
-  "xai-api-key",
-  "openrouter-api-key",
-  "vercel-gateway-api-key",
-];
-
-const PROVIDER_ICON_MAP: Partial<Record<SecretKey, string>> = {
-  "llmgateway-api-key": "llmgateway",
-  "anthropic-api-key": "anthropic",
-  "openai-api-key": "openai",
-  "google-api-key": "google",
-  "xai-api-key": "xai",
-  "openrouter-api-key": "openrouter",
-  "vercel-gateway-api-key": "vercel_gateway",
-};
-
-function refreshKeys(priority: KeyPriority) {
-  return Object.fromEntries(PROVIDER_KEYS.map((k) => [k, getSecretSources(k, priority)]));
-}
-
-const useApiKeyStore = create<ApiKeyState>()((set, get) => ({
-  keys: refreshKeys(getDefaultKeyPriority()),
-  priority: getDefaultKeyPriority(),
-  refresh: () => set({ keys: refreshKeys(get().priority) }),
-}));
+const MAX_POPUP_WIDTH = 76;
+const CHROME_ROWS = 10;
+const INPUT_FIELD_WIDTH = 44;
 
 interface KeyItem {
   id: SecretKey;
   label: string;
   envVar: string;
   url?: string;
+  providerId: string;
+  grouped: boolean;
 }
 
-const KEY_ITEMS: KeyItem[] = [
-  {
-    id: "llmgateway-api-key",
-    label: "LLM Gateway",
-    envVar: "LLM_GATEWAY_API_KEY",
-    url: "llmgateway.io/dashboard",
-  },
-  {
-    id: "anthropic-api-key",
-    label: "Anthropic",
-    envVar: "ANTHROPIC_API_KEY",
-    url: "console.anthropic.com",
-  },
-  {
-    id: "openai-api-key",
-    label: "OpenAI",
-    envVar: "OPENAI_API_KEY",
-    url: "platform.openai.com",
-  },
-  {
-    id: "google-api-key",
-    label: "Google Gemini",
-    envVar: "GOOGLE_GENERATIVE_AI_API_KEY",
-    url: "aistudio.google.com",
-  },
-  {
-    id: "xai-api-key",
-    label: "xAI Grok",
-    envVar: "XAI_API_KEY",
-    url: "console.x.ai",
-  },
-  {
-    id: "openrouter-api-key",
-    label: "OpenRouter",
-    envVar: "OPENROUTER_API_KEY",
-    url: "openrouter.ai",
-  },
-  {
-    id: "vercel-gateway-api-key",
-    label: "Vercel AI Gateway",
-    envVar: "AI_GATEWAY_API_KEY",
-    url: "vercel.com/ai-gateway",
-  },
-];
+function buildKeyItems(): KeyItem[] {
+  return getAllProviders()
+    .filter((p): p is typeof p & { secretKey: string } => !!(p.envVar && p.secretKey))
+    .map((p) => ({
+      id: p.secretKey as SecretKey,
+      label: p.name,
+      envVar: p.envVar,
+      url: p.keyUrl,
+      providerId: p.id,
+      grouped: !!p.grouped,
+    }));
+}
+
+interface ApiKeyState {
+  keys: Record<string, SecretSources>;
+  priority: KeyPriority;
+  refresh: (items: KeyItem[]) => void;
+}
+
+function refreshKeys(items: KeyItem[], priority: KeyPriority): Record<string, SecretSources> {
+  return Object.fromEntries(items.map((k) => [k.id, getSecretSources(k.id, priority)]));
+}
+
+const useApiKeyStore = create<ApiKeyState>()((set, get) => ({
+  keys: {},
+  priority: getDefaultKeyPriority(),
+  refresh: (items: KeyItem[]) => set({ keys: refreshKeys(items, get().priority) }),
+}));
 
 type MenuItem =
   | { type: "key"; item: KeyItem; sources: SecretSources }
   | { type: "remove"; label: string; keyId: SecretKey }
+  | { type: "section"; label: string }
   | { type: "priority" };
 
 interface Props {
@@ -141,6 +93,25 @@ function Hr({ iw }: { iw: number }) {
   );
 }
 
+function SectionRow({ label, iw }: { label: string; iw: number }) {
+  const t = useTheme();
+  const pad = iw - 4 - label.length;
+  return (
+    <PopupRow w={iw}>
+      <text bg={POPUP_BG} fg={t.textFaint}>
+        {"─ "}
+      </text>
+      <text bg={POPUP_BG} fg={t.textSecondary} attributes={TextAttributes.BOLD}>
+        {label}
+      </text>
+      <text bg={POPUP_BG} fg={t.textFaint}>
+        {" "}
+        {"─".repeat(Math.max(0, pad))}
+      </text>
+    </PopupRow>
+  );
+}
+
 function ProviderKeyRow({
   item,
   sources,
@@ -155,15 +126,16 @@ function ProviderKeyRow({
   const t = useTheme();
   const badges = formatBadges(sources);
   const hasAny = sources.active !== "none";
-  const pIcon = providerIcon(PROVIDER_ICON_MAP[item.id] ?? "");
+  const pIcon = providerIcon(item.providerId);
 
   return (
     <>
       <text bg={bg} fg={isSelected ? t.brand : t.textDim}>
-        {isSelected ? "› " : "  "}
+        {isSelected ? " › " : "   "}
       </text>
       <text bg={bg} fg={isSelected ? t.brandAlt : t.textFaint}>
-        {pIcon}{" "}
+        {pIcon}
+        {"  "}
       </text>
       <text
         bg={bg}
@@ -173,7 +145,7 @@ function ProviderKeyRow({
         {item.label}
       </text>
       <text bg={bg} fg={hasAny ? t.success : t.textDim}>
-        {" "}
+        {"  "}
         {badges}
       </text>
     </>
@@ -193,7 +165,7 @@ function RemoveKeyRow({
   return (
     <>
       <text bg={bg} fg={isSelected ? t.brand : t.textDim}>
-        {isSelected ? "›" : " "}
+        {isSelected ? " ›" : "  "}
         {"     "}
       </text>
       <text bg={bg} fg={isSelected ? t.brandSecondary : t.textMuted}>
@@ -208,46 +180,40 @@ function PriorityRow({
   bg,
   priority,
   priorityLabel,
-  iw,
+  innerW,
 }: {
   isSelected: boolean;
   bg: string;
   priority: KeyPriority;
   priorityLabel: string;
-  iw: number;
+  innerW: number;
 }) {
   const t = useTheme();
   return (
-    <box flexDirection="column">
-      <PopupRow w={iw}>
-        <text bg={POPUP_BG} fg={t.textFaint}>
-          {"─".repeat(iw - 2)}
-        </text>
-      </PopupRow>
-      <PopupRow w={iw}>
-        <text bg={bg} fg={isSelected ? t.brand : t.textDim}>
-          {isSelected ? "› " : "  "}
-        </text>
-        <text bg={bg} fg={isSelected ? "white" : t.textSecondary}>
-          {"Resolution  "}
-        </text>
-        <text bg={bg} fg={priority === "app" ? t.warning : t.info} attributes={TextAttributes.BOLD}>
-          {priorityLabel}
-        </text>
-      </PopupRow>
-    </box>
+    <PopupRow w={innerW}>
+      <text bg={bg} fg={isSelected ? t.brand : t.textDim}>
+        {isSelected ? " › " : "   "}
+      </text>
+      <text bg={bg} fg={isSelected ? "white" : t.textSecondary}>
+        {"Resolution  "}
+      </text>
+      <text bg={bg} fg={priority === "app" ? t.warning : t.info} attributes={TextAttributes.BOLD}>
+        {priorityLabel}
+      </text>
+    </PopupRow>
   );
 }
 
 export function ApiKeySettings({ visible, onClose }: Props) {
   const renderer = useRenderer();
   const { width: termCols, height: termRows } = useTerminalDimensions();
-  const popupWidth = Math.min(MAX_POPUP_WIDTH, Math.floor(termCols * 0.8));
+  const popupWidth = Math.min(MAX_POPUP_WIDTH, Math.max(56, Math.floor(termCols * 0.85)));
   const innerW = popupWidth - 2;
-  const maxVisible = Math.max(4, Math.floor((termRows - 2) * 0.8) - CHROME_ROWS);
+  const maxVisible = Math.max(6, Math.floor((termRows - 2) * 0.85) - CHROME_ROWS);
 
   const t = useTheme();
   usePopupColors();
+  const keyItems = useMemo(() => buildKeyItems(), []);
   const keys = useApiKeyStore((s) => s.keys);
   const priority = useApiKeyStore((s) => s.priority);
   const refresh = useApiKeyStore((s) => s.refresh);
@@ -263,13 +229,13 @@ export function ApiKeySettings({ visible, onClose }: Props) {
   useEffect(() => {
     if (visible) {
       useApiKeyStore.setState({ priority: getDefaultKeyPriority() });
-      refresh();
+      refresh(keyItems);
       setCursor(0);
       setScrollOffset(0);
       setMode("menu");
       setStatusMsg(null);
     }
-  }, [visible, refresh]);
+  }, [visible, refresh, keyItems]);
 
   useEffect(() => {
     if (!visible || mode !== "input") return;
@@ -285,19 +251,44 @@ export function ApiKeySettings({ visible, onClose }: Props) {
     };
   }, [visible, mode, renderer]);
 
-  const menuItems = (() => {
+  const menuItems = useMemo(() => {
     const items: MenuItem[] = [];
-    for (const k of KEY_ITEMS) {
-      const sources = keys[k.id];
-      if (!sources) continue;
-      items.push({ type: "key", item: k, sources });
-      if (sources.keychain || sources.file) {
-        items.push({ type: "remove", label: `Remove ${k.label}`, keyId: k.id });
+    const direct = keyItems.filter((k) => !k.grouped);
+    const gateways = keyItems.filter((k) => k.grouped);
+
+    if (direct.length > 0) {
+      items.push({ type: "section", label: "Providers" });
+      for (const k of direct) {
+        const sources = keys[k.id];
+        if (!sources) continue;
+        items.push({ type: "key", item: k, sources });
+        if (sources.keychain || sources.file) {
+          items.push({ type: "remove", label: `Remove ${k.label}`, keyId: k.id });
+        }
       }
     }
+
+    if (gateways.length > 0) {
+      items.push({ type: "section", label: "Gateways" });
+      for (const k of gateways) {
+        const sources = keys[k.id];
+        if (!sources) continue;
+        items.push({ type: "key", item: k, sources });
+        if (sources.keychain || sources.file) {
+          items.push({ type: "remove", label: `Remove ${k.label}`, keyId: k.id });
+        }
+      }
+    }
+
+    items.push({ type: "section", label: "Settings" });
     items.push({ type: "priority" });
     return items;
-  })();
+  }, [keyItems, keys]);
+
+  const selectableItems = useMemo(
+    () => menuItems.map((mi, i) => ({ mi, i })).filter(({ mi }) => mi.type !== "section"),
+    [menuItems],
+  );
 
   const flash = (msg: string, type: "success" | "error") => {
     setStatusMsg({ text: msg, type });
@@ -314,7 +305,7 @@ export function ApiKeySettings({ visible, onClose }: Props) {
     const next: KeyPriority = priority === "env" ? "app" : "env";
     setDefaultKeyPriority(next);
     useApiKeyStore.setState({ priority: next });
-    refresh();
+    refresh(keyItems);
     saveGlobalConfig({ keyPriority: next });
     flash(`Priority: ${next === "env" ? "env vars first" : "app keys first"}`, "success");
   };
@@ -334,7 +325,7 @@ export function ApiKeySettings({ visible, onClose }: Props) {
     } else {
       flash("Failed to save key", "error");
     }
-    refresh();
+    refresh(keyItems);
     setMode("menu");
     setInputValue("");
     setInputTarget(null);
@@ -347,10 +338,11 @@ export function ApiKeySettings({ visible, onClose }: Props) {
     } else {
       flash("Key not found", "error");
     }
-    refresh();
+    refresh(keyItems);
   };
 
-  const clampedCursor = Math.min(cursor, Math.max(0, menuItems.length - 1));
+  const clampedCursor = Math.min(cursor, Math.max(0, selectableItems.length - 1));
+  const selectedAbsIdx = selectableItems[clampedCursor]?.i ?? 0;
   const effectiveScrollOffset = Math.min(scrollOffset, Math.max(0, menuItems.length - maxVisible));
   const visibleItems = menuItems.slice(effectiveScrollOffset, effectiveScrollOffset + maxVisible);
 
@@ -383,22 +375,25 @@ export function ApiKeySettings({ visible, onClose }: Props) {
       return;
     }
     if (evt.name === "up") {
-      const next = clampedCursor > 0 ? clampedCursor - 1 : menuItems.length - 1;
+      const next = clampedCursor > 0 ? clampedCursor - 1 : selectableItems.length - 1;
       setCursor(next);
-      if (next < effectiveScrollOffset) setScrollOffset(next);
+      const absIdx = selectableItems[next]?.i ?? 0;
+      if (absIdx < effectiveScrollOffset) setScrollOffset(absIdx > 0 ? absIdx - 1 : 0);
       return;
     }
     if (evt.name === "down") {
-      const next = clampedCursor < menuItems.length - 1 ? clampedCursor + 1 : 0;
+      const next = clampedCursor < selectableItems.length - 1 ? clampedCursor + 1 : 0;
       setCursor(next);
-      if (next >= effectiveScrollOffset + maxVisible) {
-        setScrollOffset(next - maxVisible + 1);
+      const absIdx = selectableItems[next]?.i ?? 0;
+      if (absIdx >= effectiveScrollOffset + maxVisible) {
+        setScrollOffset(absIdx - maxVisible + 1);
       }
       return;
     }
     if (evt.name === "return" || evt.name === " ") {
-      const item = menuItems[clampedCursor];
-      if (!item) return;
+      const entry = selectableItems[clampedCursor];
+      if (!entry) return;
+      const item = entry.mi;
       if (item.type === "priority") {
         handleTogglePriority();
       } else if (item.type === "key") {
@@ -415,11 +410,11 @@ export function ApiKeySettings({ visible, onClose }: Props) {
 
   const backend = getStorageBackend();
   const backendLabel = backend === "keychain" ? "OS Keychain" : "~/.soulforge/secrets.json";
-  const configuredCount = KEY_ITEMS.filter((k) => keys[k.id]?.active !== "none").length;
+  const configuredCount = keyItems.filter((k) => keys[k.id]?.active !== "none").length;
   const priorityLabel = priority === "env" ? "env vars first" : "app keys first";
 
   if (mode === "input") {
-    const target = KEY_ITEMS.find((k) => k.id === inputTarget);
+    const target = keyItems.find((k) => k.id === inputTarget);
     const existingSources = inputTarget ? keys[inputTarget] : undefined;
     const masked =
       inputValue.length > 0
@@ -441,7 +436,7 @@ export function ApiKeySettings({ visible, onClose }: Props) {
         >
           <PopupRow w={innerW}>
             <text bg={POPUP_BG} fg={t.brand} attributes={TextAttributes.BOLD}>
-              {icon("key") ?? ""}
+              {icon("key")}
             </text>
             <text bg={POPUP_BG} fg={t.textPrimary} attributes={TextAttributes.BOLD}>
               {" "}
@@ -501,17 +496,20 @@ export function ApiKeySettings({ visible, onClose }: Props) {
         borderColor={t.brandAlt}
         width={popupWidth}
       >
-        {/* Header */}
         <PopupRow w={innerW}>
           <text bg={POPUP_BG} fg={t.brand} attributes={TextAttributes.BOLD}>
-            {icon("key") ?? ""}
+            {icon("key")}
           </text>
           <text bg={POPUP_BG} fg={t.textPrimary} attributes={TextAttributes.BOLD}>
             {" API Keys"}
           </text>
           <text bg={POPUP_BG} fg={t.textMuted}>
             {"  "}
-            {String(configuredCount)}/{String(KEY_ITEMS.length)} configured
+            {String(configuredCount)}/{String(keyItems.length)} configured
+          </text>
+          <text bg={POPUP_BG} fg={t.textFaint}>
+            {"  "}
+            {backendLabel}
           </text>
         </PopupRow>
 
@@ -519,18 +517,22 @@ export function ApiKeySettings({ visible, onClose }: Props) {
 
         {visibleItems.map((mi, idx) => {
           const absoluteIdx = effectiveScrollOffset + idx;
-          const isSelected = absoluteIdx === clampedCursor;
+          const isSelected = absoluteIdx === selectedAbsIdx;
           const bg = isSelected ? POPUP_HL : POPUP_BG;
+
+          if (mi.type === "section") {
+            return <SectionRow key={`s-${mi.label}`} label={mi.label} iw={innerW} />;
+          }
 
           if (mi.type === "priority") {
             return (
               <PriorityRow
-                key="priority-group"
+                key="priority"
                 isSelected={isSelected}
                 bg={bg}
                 priority={priority}
                 priorityLabel={priorityLabel}
-                iw={innerW}
+                innerW={innerW}
               />
             );
           }
@@ -551,29 +553,39 @@ export function ApiKeySettings({ visible, onClose }: Props) {
         })}
 
         {(() => {
-          const selected = menuItems[clampedCursor];
-          if (selected?.type === "key" && selected.item.url) {
+          const entry = selectableItems[clampedCursor];
+          if (!entry) return null;
+          const selected = entry.mi;
+          if (selected.type === "key" && selected.item.url) {
             return (
-              <PopupRow w={innerW}>
-                <text bg={POPUP_BG} fg={t.info}>
-                  {"    "}
-                  {selected.item.url}
-                </text>
-                <text bg={POPUP_BG} fg={t.textFaint}>
-                  {"  "}
-                  {selected.item.envVar}
-                </text>
-              </PopupRow>
+              <>
+                <Hr iw={innerW} />
+                <PopupRow w={innerW}>
+                  <text bg={POPUP_BG} fg={t.info}>
+                    {"   "}
+                    {selected.item.url}
+                  </text>
+                  <text bg={POPUP_BG} fg={t.textFaint}>
+                    {"  "}
+                    {selected.item.envVar}
+                  </text>
+                </PopupRow>
+              </>
             );
           }
-          if (selected?.type === "priority") {
+          if (selected.type === "priority") {
             return (
-              <PopupRow w={innerW}>
-                <text bg={POPUP_BG} fg={t.textDim}>
-                  {"    "}
-                  {priority === "env" ? "env vars override app keys" : "app keys override env vars"}
-                </text>
-              </PopupRow>
+              <>
+                <Hr iw={innerW} />
+                <PopupRow w={innerW}>
+                  <text bg={POPUP_BG} fg={t.textDim}>
+                    {"   "}
+                    {priority === "env"
+                      ? "env vars override app keys"
+                      : "app keys override env vars"}
+                  </text>
+                </PopupRow>
+              </>
             );
           }
           return null;
@@ -592,13 +604,7 @@ export function ApiKeySettings({ visible, onClose }: Props) {
 
         <PopupRow w={innerW}>
           <text bg={POPUP_BG} fg={t.textMuted}>
-            ↑↓ navigate · ⏎ set/toggle · esc close
-          </text>
-        </PopupRow>
-
-        <PopupRow w={innerW}>
-          <text bg={POPUP_BG} fg={t.textMuted}>
-            [active] (available) · {backendLabel}
+            ↑↓ navigate · ⏎ set key / toggle · esc close
           </text>
         </PopupRow>
       </box>
