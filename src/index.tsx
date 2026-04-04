@@ -103,6 +103,10 @@ process.on("SIGTERM", () => {
   cleanupAndExit(143);
 });
 
+process.on("SIGHUP", () => {
+  cleanupAndExit(129);
+});
+
 const RESTART_STEPS = [
   "Quenching active flames…",
   "Rereading the scrolls…",
