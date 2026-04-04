@@ -10,10 +10,11 @@
 </p>
 
 <p align="center">
+  <a href="https://www.npmjs.com/package/@proxysoul/soulforge"><img src="https://img.shields.io/npm/v/@proxysoul/soulforge?label=version&color=brightgreen" alt="Version" /></a>
   <a href="LICENSE"><img src="https://img.shields.io/badge/License-BSL%201.1-blue.svg" alt="License" /></a>
-  <a href="#"><img src="https://img.shields.io/badge/version-1.7.0-brightgreen.svg" alt="Version" /></a>
+  <a href="https://github.com/ProxySoul/soulforge/actions/workflows/ci.yml"><img src="https://img.shields.io/github/actions/workflow/status/ProxySoul/soulforge/ci.yml?label=CI" alt="CI" /></a>
+  <a href="https://github.com/ProxySoul/soulforge/actions/workflows/playground.yml"><img src="https://img.shields.io/github/actions/workflow/status/ProxySoul/soulforge/headless-forge.yml?label=Soul" alt="Headless Forge" /></a>
   <a href="https://www.typescriptlang.org/"><img src="https://img.shields.io/badge/TypeScript-strict-blue.svg" alt="TypeScript" /></a>
-  <img src="https://img.shields.io/badge/tests-2296%20passing-brightgreen.svg" alt="Tests" />
   <a href="https://bun.sh"><img src="https://img.shields.io/badge/runtime-Bun-f472b6.svg" alt="Bun" /></a>
 </p>
 
