@@ -4,64 +4,13 @@ import type { ToolResult } from "../../types";
 import { isForbidden } from "../security/forbidden.js";
 // TODO(beta): inline image rendering — disabled until suspend/resume bridge is stable
 // import { canRenderImages, renderImages } from "../terminal/image.js";
+import { buildSafeEnv, SAFE_STDIO } from "../spawn.js";
 import { getIOClient } from "../workers/io-client.js";
 import { checkShellBinaryRead } from "./binary-detect.js";
 import { compressShellOutputFull as compressLocal } from "./shell-compress.js";
 import { saveTee, truncateWithTee } from "./tee.js";
 
 const DEFAULT_TIMEOUT = 30_000;
-
-const SECRET_ENV_PATTERN = /(_API_KEY|_SECRET|_TOKEN|_PASSWORD|_CREDENTIAL|_PRIVATE_KEY)$/i;
-const ENV_ALLOWLIST = new Set([
-  "PATH",
-  "HOME",
-  "USER",
-  "SHELL",
-  "LANG",
-  "LC_ALL",
-  "LC_CTYPE",
-  "TERM",
-  "TERM_PROGRAM",
-  "COLORTERM",
-  "EDITOR",
-  "VISUAL",
-  "TMPDIR",
-  "XDG_DATA_HOME",
-  "XDG_CONFIG_HOME",
-  "XDG_CACHE_HOME",
-  "XDG_RUNTIME_DIR",
-  "GOPATH",
-  "GOROOT",
-  "CARGO_HOME",
-  "RUSTUP_HOME",
-  "NVM_DIR",
-  "BUN_INSTALL",
-  "NODE_PATH",
-  "PYTHONPATH",
-  "VIRTUAL_ENV",
-  "CONDA_PREFIX",
-  "SSH_AUTH_SOCK",
-  "GPG_TTY",
-  "GIT_AUTHOR_NAME",
-  "GIT_AUTHOR_EMAIL",
-  "GIT_COMMITTER_NAME",
-  "GIT_COMMITTER_EMAIL",
-  "SOULFORGE_NO_REPOMAP",
-  "NVIM_APPNAME",
-  "KITTY_WINDOW_ID",
-  "WEZTERM_PANE",
-  "OTUI_TREE_SITTER_WORKER_PATH",
-]);
-
-function buildSafeEnv(): Record<string, string | undefined> {
-  const env: Record<string, string | undefined> = {};
-  for (const [key, value] of Object.entries(process.env)) {
-    if (ENV_ALLOWLIST.has(key) || !SECRET_ENV_PATTERN.test(key)) {
-      env[key] = value;
-    }
-  }
-  return env;
-}
 
 // Intercept `git commit -m "..."` to:
 // 1. Auto-run lint/typecheck on staged files before committing
@@ -99,12 +48,17 @@ async function runPreCommitChecks(cwd: string): Promise<string | null> {
       const chunks: string[] = [];
       const errChunks: string[] = [];
       let lintBytes = 0;
-      const proc = spawn("sh", ["-c", lintCmd], { cwd, timeout: 15_000, env: buildSafeEnv() });
-      proc.stdout.on("data", (d: Buffer) => {
+      const proc = spawn("sh", ["-c", lintCmd], {
+        cwd,
+        timeout: 15_000,
+        env: buildSafeEnv(),
+        stdio: SAFE_STDIO,
+      });
+      proc.stdout?.on("data", (d: Buffer) => {
         lintBytes += d.length;
         if (lintBytes <= MAX_COLLECT_BYTES) chunks.push(d.toString());
       });
-      proc.stderr.on("data", (d: Buffer) => {
+      proc.stderr?.on("data", (d: Buffer) => {
         lintBytes += d.length;
         if (lintBytes <= MAX_COLLECT_BYTES) errChunks.push(d.toString());
       });
@@ -371,6 +325,7 @@ export const shellTool = {
         cwd,
         timeout,
         env: buildSafeEnv(),
+        stdio: SAFE_STDIO,
       });
 
       let cleanupAbortListener: (() => void) | undefined;
@@ -393,11 +348,11 @@ export const shellTool = {
         }
       }
 
-      proc.stdout.on("data", (data: Buffer) => {
+      proc.stdout?.on("data", (data: Buffer) => {
         stdoutBytes += data.length;
         if (stdoutBytes <= MAX_COLLECT_BYTES) chunks.push(data.toString());
       });
-      proc.stderr.on("data", (data: Buffer) => {
+      proc.stderr?.on("data", (data: Buffer) => {
         stderrBytes += data.length;
         if (stderrBytes <= MAX_COLLECT_BYTES) errChunks.push(data.toString());
       });

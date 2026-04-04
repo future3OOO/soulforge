@@ -28,10 +28,15 @@ async function handleBranchCreate(input: string, ctx: CommandContext): Promise<v
     .trim();
   if (!branchName) return;
   const { spawn } = await import("node:child_process");
-  const proc = spawn("git", ["checkout", "-b", branchName], { cwd: ctx.cwd });
+  const { SAFE_STDIO, buildSafeEnv } = await import("../spawn.js");
+  const proc = spawn("git", ["checkout", "-b", branchName], {
+    cwd: ctx.cwd,
+    env: buildSafeEnv(),
+    stdio: SAFE_STDIO,
+  });
   const chunks: string[] = [];
-  proc.stdout.on("data", (d: Buffer) => chunks.push(d.toString()));
-  proc.stderr.on("data", (d: Buffer) => chunks.push(d.toString()));
+  proc.stdout?.on("data", (d: Buffer) => chunks.push(d.toString()));
+  proc.stderr?.on("data", (d: Buffer) => chunks.push(d.toString()));
   proc.on("close", (code) => {
     ctx.refreshGit();
     sysMsg(ctx, code === 0 ? `Switched to new branch '${branchName}'` : chunks.join("").trim());

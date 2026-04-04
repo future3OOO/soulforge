@@ -1,4 +1,5 @@
 import { spawn } from "node:child_process";
+import { buildSafeEnv, SAFE_STDIO } from "../spawn.js";
 
 const encoder = new TextEncoder();
 
@@ -27,8 +28,13 @@ export function run(
 ): Promise<{ ok: boolean; stdout: string }> {
   return new Promise((resolve) => {
     const chunks: string[] = [];
-    const proc = spawn("git", args, { cwd, timeout, env: { ...process.env } });
-    proc.stdout.on("data", (d: Buffer) => chunks.push(d.toString()));
+    const proc = spawn("git", args, {
+      cwd,
+      timeout,
+      env: buildSafeEnv(),
+      stdio: SAFE_STDIO,
+    });
+    proc.stdout?.on("data", (d: Buffer) => chunks.push(d.toString()));
     proc.on("close", (code) => resolve({ ok: code === 0, stdout: chunks.join("") }));
     proc.on("error", () => resolve({ ok: false, stdout: "" }));
   });
