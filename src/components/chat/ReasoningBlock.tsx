@@ -1,6 +1,7 @@
 import { icon } from "../../core/icons.js";
 import { useTheme } from "../../core/theme/index.js";
 import { SPINNER_FRAMES, useSpinnerFrame } from "../layout/shared.js";
+import { Markdown } from "./Markdown.js";
 
 const brainIcon = () => icon("brain");
 
@@ -74,12 +75,7 @@ export function ReasoningBlock({ content, expanded, isStreaming, id }: Props) {
         </text>
       </box>
       <box flexDirection="column" paddingX={1}>
-        {trimmed.split("\n").map((line, i) => (
-          // biome-ignore lint/suspicious/noArrayIndexKey: static split lines don't reorder
-          <text key={i} fg={t.textSecondary}>
-            {line}
-          </text>
-        ))}
+        <Markdown text={trimmed} streaming={isStreaming} />
       </box>
     </box>
   );
