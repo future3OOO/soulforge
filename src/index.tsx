@@ -94,6 +94,30 @@ export function restart(): void {
   triggerRestart?.();
 }
 
+/**
+ * Replace the current process with a fresh instance of the binary.
+ * Used after an in-app upgrade so the new version's code is actually loaded.
+ * Works on macOS and Linux — spawns the new binary with inherited stdio,
+ * then exits the current process so the terminal seamlessly transfers.
+ */
+export function hardRestart(): void {
+  runCleanup();
+  renderer?.destroy();
+  // Clear screen and restore cursor before handing off
+  process.stdout.write("\x1b[?25h\x1b[2J\x1b[H");
+  const args = process.argv.slice(1);
+  // Spawn the (now-updated) binary with full terminal inheritance
+  const argv0 = process.argv[0] ?? "soulforge";
+  const child = Bun.spawn([argv0, ...args], {
+    stdio: ["inherit", "inherit", "inherit"],
+    env: process.env,
+  });
+  // Detach: let the child own the terminal, then exit this process.
+  // unref() ensures our event loop doesn't wait for the child.
+  child.unref();
+  process.exit(0);
+}
+
 process.on("exit", () => {
   runCleanup();
   printExitBanner();

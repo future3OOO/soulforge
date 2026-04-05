@@ -458,10 +458,9 @@ export function buildTools(
               }
             }
 
-            if (hasRanges) {
+            if (hasRanges && spec.ranges) {
               const rangeResults = await Promise.all(
-                // biome-ignore lint/style/noNonNullAssertion: hasRanges guard above ensures ranges is defined
-                spec.ranges!.map((r) =>
+                spec.ranges.map((r) =>
                   readFileTool.execute({ path: fp, startLine: r.start, endLine: r.end }),
                 ),
               );

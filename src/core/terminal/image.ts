@@ -202,6 +202,8 @@ export function decodePng(data: Buffer): PngData | null {
 
 /** Max display width in terminal columns. */
 const MAX_COLS = 200;
+/** Max display height in terminal rows — prevents tall images from overwhelming the chat. */
+const MAX_ROWS = 40;
 const IMAGE_WIDTH_RATIO = 0.6;
 const MIN_IMAGE_COLS = 40;
 
@@ -268,7 +270,16 @@ export function imageToHalfBlockArt(filePath: string, opts?: { cols?: number }):
   }
   if (!png) return null;
 
-  const targetCols = Math.min(opts?.cols ?? getDefaultCols(), MAX_COLS);
+  let targetCols = Math.min(opts?.cols ?? getDefaultCols(), MAX_COLS);
+
+  // Clamp height: if aspect ratio would exceed MAX_ROWS, reduce cols to fit
+  const cellAspect = 2;
+  const imageAspect = png.height / png.width;
+  const estimatedRows = Math.round((targetCols * imageAspect) / cellAspect);
+  if (estimatedRows > MAX_ROWS) {
+    targetCols = Math.max(MIN_IMAGE_COLS, Math.floor((MAX_ROWS * cellAspect) / imageAspect));
+  }
+
   const scaleX = png.width / targetCols;
   // Each display row covers 2 pixel rows (top half + bottom half)
   const scaleY = scaleX; // Keep aspect ratio square per cell
@@ -622,13 +633,19 @@ export function renderImageFromData(
   const dims = getPngDimensions(buf);
   if (!dims) return null; // Only PNG supported for now
 
-  const targetCols = Math.min(opts?.cols ?? getDefaultCols(), MAX_COLS);
+  let targetCols = Math.min(opts?.cols ?? getDefaultCols(), MAX_COLS);
+
+  // Clamp height: if aspect ratio would exceed MAX_ROWS, reduce cols to fit
+  const cellAspect = 2;
+  const imageAspect = dims.height / dims.width;
+  const estimatedRows = Math.round((targetCols * imageAspect) / cellAspect);
+  if (estimatedRows > MAX_ROWS) {
+    targetCols = Math.max(MIN_IMAGE_COLS, Math.floor((MAX_ROWS * cellAspect) / imageAspect));
+  }
 
   if (isKittyGraphicsTerminal()) {
     const imageId = allocateKittyImageId();
     const base64 = buf.toString("base64");
-    const cellAspect = 2;
-    const imageAspect = dims.height / dims.width;
     const targetRows = Math.max(1, Math.round((targetCols * imageAspect) / cellAspect));
 
     transmitKittyImage(base64, imageId, targetCols, targetRows);
@@ -683,12 +700,18 @@ export function renderAnimatedImage(
   const firstDims = getPngDimensions(first.png);
   if (!firstDims) return null;
 
-  const targetCols = Math.min(opts?.cols ?? getDefaultCols(), MAX_COLS);
+  let targetCols = Math.min(opts?.cols ?? getDefaultCols(), MAX_COLS);
+
+  // Clamp height: if aspect ratio would exceed MAX_ROWS, reduce cols to fit
+  const cellAspect = 2;
+  const imageAspect = firstDims.height / firstDims.width;
+  const estimatedRows = Math.round((targetCols * imageAspect) / cellAspect);
+  if (estimatedRows > MAX_ROWS) {
+    targetCols = Math.max(MIN_IMAGE_COLS, Math.floor((MAX_ROWS * cellAspect) / imageAspect));
+  }
 
   if (supportsKittyAnimation()) {
     const imageId = allocateKittyImageId();
-    const cellAspect = 2;
-    const imageAspect = firstDims.height / firstDims.width;
     const targetRows = Math.max(1, Math.round((targetCols * imageAspect) / cellAspect));
 
     transmitKittyAnimation(frames, imageId, targetCols, targetRows);

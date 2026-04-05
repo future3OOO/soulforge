@@ -1,8 +1,8 @@
 import { spawn, spawnSync } from "node:child_process";
 import {
   existsSync,
-  readFileSync,
   readdirSync,
+  readFileSync,
   statSync,
   unlinkSync,
   writeFileSync,
@@ -447,11 +447,13 @@ async function fetchVideoFromUrl(
         );
 
         if (dlResult.code === 0 && existsSync(videoPath)) {
-          // Kitty: full animated GIF
+          // Kitty: full animated GIF (retry once — ffmpeg two-pass can be flaky)
           if (supportsKittyAnimation()) {
-            const gif = await videoToGif(videoPath, toolCallId, MAX_GIF_DURATION, signal);
-            if (gif) {
-              return { data: gif, name: `${urlName}.gif`, isGif: true };
+            for (let attempt = 0; attempt < 2; attempt++) {
+              const gif = await videoToGif(videoPath, toolCallId, MAX_GIF_DURATION, signal);
+              if (gif) {
+                return { data: gif, name: `${urlName}.gif`, isGif: true };
+              }
             }
           }
           // Others: single frame PNG (much faster)
@@ -534,11 +536,13 @@ async function convertLocalVideo(
 
   const baseName = basename(displayName, extname(displayName));
 
-  // Kitty: full animated GIF
+  // Kitty: full animated GIF (retry once on failure — ffmpeg two-pass can be flaky)
   if (supportsKittyAnimation()) {
-    const gif = await videoToGif(filePath, toolCallId, MAX_GIF_DURATION, signal);
-    if (gif) {
-      return { data: gif, name: `${baseName}.gif`, isGif: true };
+    for (let attempt = 0; attempt < 2; attempt++) {
+      const gif = await videoToGif(filePath, toolCallId, MAX_GIF_DURATION, signal);
+      if (gif) {
+        return { data: gif, name: `${baseName}.gif`, isGif: true };
+      }
     }
   }
 

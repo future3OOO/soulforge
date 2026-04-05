@@ -119,7 +119,7 @@ SoulForge already knows. On startup it builds a **live dependency graph** of you
 </tr>
 <tr>
 <td><strong>Inline images</strong></td>
-<td>Pixel-perfect images and animated GIFs inline in chat via <code>soul_vision</code>. Kitty graphics protocol with Unicode placeholders. Supports local files, URLs, and code execution output. <a href="#inline-image-support">See terminal support</a></td>
+<td>Pixel-perfect images, animated GIFs, and video-to-GIF inline in chat via <code>soul_vision</code>. Kitty graphics protocol with Unicode placeholders. Supports local files, URLs, and code execution output. <a href="#inline-image-support">See terminal support</a></td>
 </tr>
 <tr>
 <td><strong>4-tier intelligence</strong></td>
@@ -139,7 +139,7 @@ SoulForge already knows. On startup it builds a **live dependency graph** of you
 
 ### Inline image support
 
-The `soul_vision` tool renders images directly in your chat — pixel-perfect on supported terminals, high-quality terminal art everywhere else.
+The `soul_vision` tool renders images and videos directly in chat. Pixel-perfect on supported terminals, high-quality terminal art everywhere else. Videos are converted to animated GIF via ffmpeg (two-pass palette encoding).
 
 <table>
 <thead>
@@ -147,6 +147,7 @@ The `soul_vision` tool renders images directly in your chat — pixel-perfect on
 <th width="140">Terminal</th>
 <th width="120">Static images</th>
 <th width="120">Animated GIF</th>
+<th width="120">Video to GIF</th>
 <th>Method</th>
 <th>Notes</th>
 </tr>
@@ -154,57 +155,65 @@ The `soul_vision` tool renders images directly in your chat — pixel-perfect on
 <tbody>
 <tr>
 <td><strong>Kitty</strong></td>
-<td>✅ pixel-perfect</td>
-<td>✅ animated</td>
+<td>Pixel-perfect</td>
+<td>Animated</td>
+<td>Animated</td>
 <td>Kitty graphics protocol + Unicode placeholders</td>
-<td>Full support — the gold standard</td>
+<td>Full support, the gold standard</td>
 </tr>
 <tr>
 <td><strong>Ghostty</strong></td>
-<td>✅ pixel-perfect</td>
-<td>⬜ static frame</td>
+<td>Pixel-perfect</td>
+<td>Static frame</td>
+<td>Static frame</td>
 <td>Kitty graphics protocol + Unicode placeholders</td>
 <td>Animation not yet implemented (<a href="https://github.com/ghostty-org/ghostty/discussions/5218">#5218</a>)</td>
 </tr>
 <tr>
 <td><strong>Konsole</strong></td>
-<td>🎨 chafa / half-block</td>
-<td>⬜ static frame</td>
-<td>Terminal art (chafa → built-in half-block)</td>
+<td>chafa / half-block</td>
+<td>Static frame</td>
+<td>Static frame</td>
+<td>Terminal art (chafa, built-in half-block)</td>
 <td>Has Kitty graphics but no Unicode placeholders (<a href="https://invent.kde.org/utilities/konsole/-/merge_requests/594">MR #594</a>)</td>
 </tr>
 <tr>
 <td><strong>iTerm2</strong></td>
-<td>🎨 chafa / half-block</td>
-<td>⬜ static frame</td>
-<td>Terminal art (chafa → built-in half-block)</td>
+<td>chafa / half-block</td>
+<td>Static frame</td>
+<td>Static frame</td>
+<td>Terminal art (chafa, built-in half-block)</td>
 <td>Has Kitty graphics but no Unicode placeholders (<a href="https://github.com/gnachman/iTerm2/commit/4fe5b21">commit</a>)</td>
 </tr>
 <tr>
 <td><strong>WezTerm</strong></td>
-<td>🎨 chafa / half-block</td>
-<td>⬜ static frame</td>
-<td>Terminal art (chafa → built-in half-block)</td>
+<td>chafa / half-block</td>
+<td>Static frame</td>
+<td>Static frame</td>
+<td>Terminal art (chafa, built-in half-block)</td>
 <td>No Unicode placeholders (<a href="https://github.com/wezterm/wezterm/issues/986">#986</a>)</td>
 </tr>
 <tr>
 <td><strong>Warp</strong></td>
-<td>🎨 chafa / half-block</td>
-<td>⬜ static frame</td>
-<td>Terminal art (chafa → built-in half-block)</td>
+<td>chafa / half-block</td>
+<td>Static frame</td>
+<td>Static frame</td>
+<td>Terminal art (chafa, built-in half-block)</td>
 <td>No Unicode placeholders (<a href="https://github.com/warpdotdev/Warp/issues/6210">#6210</a>)</td>
 </tr>
 <tr>
 <td><strong>Alacritty</strong></td>
-<td>🎨 chafa / half-block</td>
-<td>⬜ static frame</td>
-<td>Terminal art (chafa → built-in half-block)</td>
+<td>chafa / half-block</td>
+<td>Static frame</td>
+<td>Static frame</td>
+<td>Terminal art (chafa, built-in half-block)</td>
 <td>No graphics protocol</td>
 </tr>
 <tr>
 <td><strong>Others</strong></td>
-<td>🎨 half-block art</td>
-<td>⬜ static frame</td>
+<td>Half-block art</td>
+<td>Static frame</td>
+<td>Static frame</td>
 <td>Built-in half-block ANSI art</td>
 <td>Any truecolor terminal works</td>
 </tr>
@@ -213,10 +222,8 @@ The `soul_vision` tool renders images directly in your chat — pixel-perfect on
 
 <sub>
 
-**Legend:** ✅ = native pixel rendering &nbsp; 🎨 = terminal art &nbsp; ⬜ = no animation (shows first frame)
-
-**Formats:** PNG, JPG, WebP, GIF, BMP, TIFF — non-PNG auto-converted via `ffmpeg`, `sips` (macOS), or ImageMagick.
-Install [`chafa`](https://github.com/hpjansson/chafa) for higher quality terminal art on non-pixel terminals. Install [`ffmpeg`](https://github.com/FFmpeg/FFmpeg) for animated GIF + format conversion. Install [`yt-dlp`](https://github.com/yt-dlp/yt-dlp) for video to GIF conversion.
+**Formats:** PNG, JPG, WebP, GIF, BMP, TIFF, MP4, MKV, WebM, AVI, MOV. Non-PNG images auto-converted via `ffmpeg`, `sips` (macOS), or ImageMagick. Videos converted to GIF with two-pass palette encoding (fps capped, scaled to 320px width).
+Install [`chafa`](https://github.com/hpjansson/chafa) for higher quality terminal art on non-pixel terminals. Install [`ffmpeg`](https://github.com/FFmpeg/FFmpeg) for animated GIF, video conversion, and format support. Install [`yt-dlp`](https://github.com/yt-dlp/yt-dlp) to display videos from URLs.
 
 ```bash
 brew install ffmpeg chafa yt-dlp
