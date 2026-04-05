@@ -46,7 +46,7 @@ import { useNeovim } from "../hooks/useNeovim.js";
 import { buildSessionMeta } from "../hooks/useSessionBuilder.js";
 import { useTabs } from "../hooks/useTabs.js";
 import { useVersionCheck } from "../hooks/useVersionCheck.js";
-import { cleanupAndExit, restart, setExitSessionId } from "../index.js";
+import { cleanupAndExit, hardRestart, restart, setExitSessionId } from "../index.js";
 import { logBackgroundError } from "../stores/errors.js";
 import { startMemoryPoll } from "../stores/statusbar.js";
 import { useToolsStore } from "../stores/tools.js";
@@ -1423,7 +1423,7 @@ export function App({
       <UpdateModal
         visible={modalUpdateModal}
         onClose={getCloser("updateModal")}
-        onRestart={restart}
+        onRestart={hardRestart}
       />
 
       <SimpleModalLayer

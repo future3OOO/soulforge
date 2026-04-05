@@ -432,6 +432,14 @@ export function createForgeAgent({
   const repoMap = contextManager.isRepoMapReady() ? contextManager.getRepoMap() : undefined;
   const skills = contextManager.getActiveSkillEntries();
 
+  // Auto mode: bypass all permission prompts — fully autonomous execution.
+  const autoApprove = () => Promise.resolve(true);
+  const effectiveApproveWebSearch = forgeMode === "auto" ? autoApprove : onApproveWebSearch;
+  const effectiveApproveFetchPage = forgeMode === "auto" ? autoApprove : onApproveFetchPage;
+  const effectiveApproveOutsideCwd =
+    forgeMode === "auto" ? (autoApprove as typeof onApproveOutsideCwd) : onApproveOutsideCwd;
+  const effectiveApproveDestructive = forgeMode === "auto" ? autoApprove : onApproveDestructive;
+
   const modelId =
     typeof model === "object" && model !== null && "modelId" in model
       ? String((model as { modelId: string }).modelId)
@@ -445,7 +453,7 @@ export function createForgeAgent({
   const onDemandEnabled = !disabledTools?.has("request_tools") && !isRestricted && !planExecution;
   const activeDeferredTools = onDemandEnabled ? new Set<string>() : undefined;
 
-  const directTools = buildTools(undefined, editorIntegration, onApproveWebSearch, {
+  const directTools = buildTools(undefined, editorIntegration, effectiveApproveWebSearch, {
     codeExecution: canUseCodeExecution,
     computerUse: computerUse && isAnthropic,
     anthropicTextEditor: anthropicTextEditor && isAnthropic,
@@ -453,9 +461,9 @@ export function createForgeAgent({
     agentSkills: !disabledTools?.has("skills"),
     webSearchModel,
     repoMap,
-    onApproveFetchPage,
-    onApproveOutsideCwd,
-    onApproveDestructive,
+    onApproveFetchPage: effectiveApproveFetchPage,
+    onApproveOutsideCwd: effectiveApproveOutsideCwd,
+    onApproveDestructive: effectiveApproveDestructive,
     tabId: tabId ?? contextManager.getTabId() ?? undefined,
     tabLabel: tabLabel ?? contextManager.getTabLabel() ?? undefined,
     activeDeferredTools,
@@ -552,8 +560,8 @@ export function createForgeAgent({
           webSearchModel,
           providerOptions,
           headers: subagentHeaders,
-          onApproveWebSearch,
-          onApproveFetchPage,
+          onApproveWebSearch: effectiveApproveWebSearch,
+          onApproveFetchPage: effectiveApproveFetchPage,
           readOnly: true,
           repoMap,
           sharedCacheRef,
@@ -575,8 +583,8 @@ export function createForgeAgent({
         webSearchModel,
         providerOptions,
         headers: subagentHeaders,
-        onApproveWebSearch,
-        onApproveFetchPage,
+        onApproveWebSearch: effectiveApproveWebSearch,
+        onApproveFetchPage: effectiveApproveFetchPage,
         repoMap,
         sharedCacheRef,
         agentFeatures,
