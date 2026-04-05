@@ -2,6 +2,21 @@
 
 All notable changes to SoulForge are documented here.
 
+## [2.4.0] — 2026-04-05
+
+### Bug Fixes
+
+- custom providers not showing in Ctrl+L model picker
+- eliminate unsafe casts on LLM data, add Zod validation for plan output
+### Documentation
+
+- fix features SVG — drop animations, use static opacity for GitHub compatibility
+- fix features SVG visibility, remove prompt caching and sandboxed execution
+- expand features SVG with 16 pills, fix header spacing
+- update README and assets
+### Miscellaneous
+
+- readme overhaul
 ## [2.3.0] — 2026-04-04
 
 ### Features
