@@ -2,6 +2,11 @@
 
 All notable changes to SoulForge are documented here.
 
+## [2.6.1] — 2026-04-06
+
+### Miscellaneous
+
+- upgrade npm in ci
 ## [2.6.0] — 2026-04-05
 
 ### Bug Fixes
