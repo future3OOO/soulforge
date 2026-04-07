@@ -52,6 +52,9 @@
       },
     },
   },
+  "overrides": {
+    "@opentui/core": "0.1.96",
+  },
   "packages": {
     "@ai-sdk/amazon-bedrock": ["@ai-sdk/amazon-bedrock@4.0.89", "", { "dependencies": { "@ai-sdk/anthropic": "3.0.66", "@ai-sdk/provider": "3.0.8", "@ai-sdk/provider-utils": "4.0.22", "@smithy/eventstream-codec": "4.2.12", "@smithy/util-utf8": "4.2.2", "aws4fetch": "1.0.20" }, "peerDependencies": { "zod": "4.3.6" } }, "sha512-4/396qHWt/AzHf7qjLC+Ie8PYNI/tEA8m3Zc9SQKkU84+woTMKMavcbnbF6Q6eUU7Y4i5BadIRtKhujvmc9H4A=="],
 

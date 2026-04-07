@@ -120,8 +120,7 @@ export function ImageDisplay({ img }: { img: ImageArt }) {
     );
   }
 
-  // Fallback: half-block ANSI art via ghostty-terminal
-  // cols must accommodate the widest line — use a safe upper bound
+  // Fallback: chafa / half-block ANSI art via ghostty-terminal
   const vtCols = Math.max(80, img.lines.length > 0 ? (img.lines[0]?.length ?? 120) : 120);
   return (
     <box flexDirection="column" flexShrink={0}>

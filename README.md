@@ -149,6 +149,8 @@ SoulForge already knows. On startup it builds a **live dependency graph** of you
 
 The `soul_vision` tool renders images and videos directly in chat. Pixel-perfect on supported terminals, high-quality terminal art everywhere else. Videos are converted to animated GIF via ffmpeg (two-pass palette encoding).
 
+> **Kitty ≥ 0.38 note:** Pixel-perfect images require [Kitty ≤ 0.37](https://github.com/kovidgoyal/kitty/releases/tag/v0.37.0). Kitty 0.38+ introduced a new [text sizing protocol](https://sw.kovidgoyal.net/kitty/text-sizing-protocol/) (0.40) with strict Unicode grapheme segmentation that changed how combining diacritics on U+10EEEE placeholder characters are processed. opentui's native Zig renderer doesn't emit the combining marks correctly for supplementary plane codepoints, so kitty can't map placeholders to image regions. [Kitty ≤ 0.37](https://github.com/kovidgoyal/kitty/releases/tag/v0.37.0) and Ghostty work perfectly. We're tracking the upstream opentui fix.
+
 <table>
 <thead>
 <tr>
@@ -167,7 +169,7 @@ The `soul_vision` tool renders images and videos directly in chat. Pixel-perfect
 <td>Animated</td>
 <td>Animated</td>
 <td>Kitty graphics protocol + Unicode placeholders</td>
-<td>Full support, the gold standard</td>
+<td>Kitty ≤ 0.37 only — see note above</td>
 </tr>
 <tr>
 <td><strong>Ghostty</strong></td>

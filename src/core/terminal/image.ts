@@ -1,4 +1,4 @@
-import { spawn } from "node:child_process";
+import { execSync, spawn } from "node:child_process";
 import {
   closeSync,
   existsSync,
@@ -13,6 +13,43 @@ import { basename, extname, resolve } from "node:path";
 import { inflateSync } from "node:zlib";
 
 // ── Terminal capability detection ──
+
+/** Cached kitty version — parsed once on first access. null = not kitty or can't detect. */
+let _kittyVersion: [number, number, number] | null | undefined;
+
+/** Reset cached kitty version — for testing only. */
+export function _resetKittyVersionCache(override?: [number, number, number] | null): void {
+  _kittyVersion = override === undefined ? undefined : override;
+}
+
+/** Get the kitty version as [major, minor, patch], or null if not kitty / can't detect. */
+function getKittyVersion(): [number, number, number] | null {
+  if (_kittyVersion !== undefined) return _kittyVersion;
+  _kittyVersion = null;
+  if (!process.env.KITTY_WINDOW_ID && process.env.TERM_PROGRAM?.toLowerCase() !== "kitty") {
+    return null;
+  }
+  try {
+    // `kitty --version` outputs: "kitty 0.37.0 created by Kovid Goyal"
+    const out = execSync("kitty --version", { timeout: 2000, stdio: ["pipe", "pipe", "pipe"] })
+      .toString()
+      .trim();
+    const m = /kitty\s+(\d+)\.(\d+)\.(\d+)/.exec(out);
+    if (m) {
+      _kittyVersion = [Number(m[1]), Number(m[2]), Number(m[3])];
+    }
+  } catch {
+    // Can't detect — assume incompatible
+  }
+  return _kittyVersion;
+}
+
+/** Compare kitty version: true if running kitty <= the given version. */
+function isKittyVersionAtMost(major: number, minor: number): boolean {
+  const v = getKittyVersion();
+  if (!v) return false;
+  return v[0] < major || (v[0] === major && v[1] <= minor);
+}
 
 /** Check if the terminal supports truecolor (24-bit) — needed for image art. */
 export function canRenderImages(): boolean {
@@ -40,7 +77,10 @@ export function canRenderImages(): boolean {
  * by embedding U+10EEEE chars in the cell buffer. Without them, images paint behind the TUI.
  *
  * Confirmed Unicode placeholder support:
- *   Kitty, Ghostty
+ *   Kitty ≤ 0.37, Ghostty
+ *
+ * Broken (kitty 0.38+ text sizing protocol changed grapheme segmentation for U+10EEEE):
+ *   Kitty ≥ 0.38 — falls through to chafa/half-block art
  *
  * NO Unicode placeholder support (images break TUI):
  *   Konsole — has Kitty protocol but no Unicode placeholders
@@ -55,8 +95,14 @@ export function isKittyGraphicsTerminal(): boolean {
   if (term === "warp" || term === "wezterm") return false;
   if (process.env.WEZTERM_PANE !== undefined) return false;
 
-  if (process.env.KITTY_WINDOW_ID) return true;
-  if (term === "kitty" || term === "ghostty") return true;
+  // Kitty: only ≤ 0.37 supports Unicode placeholders correctly.
+  // 0.38+ changed grapheme segmentation (text sizing protocol) which breaks
+  // U+10EEEE + combining diacritics that opentui's renderer emits.
+  if (process.env.KITTY_WINDOW_ID || term === "kitty") {
+    return isKittyVersionAtMost(0, 37);
+  }
+
+  if (term === "ghostty") return true;
 
   // Konsole: has Kitty graphics protocol but does NOT support Unicode placeholders (U+10EEEE).
   // Direct image transmission works, but placeholders render as blank/broken.
@@ -68,12 +114,15 @@ export function isKittyGraphicsTerminal(): boolean {
 
 /**
  * Check if the terminal supports Kitty graphics ANIMATION (a=f frames, a=a control).
- * Currently only Kitty itself supports animation.
+ * Currently only Kitty ≤ 0.37 supports animation (same placeholder constraint).
  * Ghostty, WezTerm, Konsole support static images but NOT animation.
  * See: https://github.com/ghostty-org/ghostty/discussions/5218
  */
 export function supportsKittyAnimation(): boolean {
-  return !!(process.env.KITTY_WINDOW_ID || process.env.TERM_PROGRAM?.toLowerCase() === "kitty");
+  if (!(process.env.KITTY_WINDOW_ID || process.env.TERM_PROGRAM?.toLowerCase() === "kitty")) {
+    return false;
+  }
+  return isKittyVersionAtMost(0, 37);
 }
 
 // ── Image file validation ──

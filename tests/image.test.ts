@@ -1,6 +1,7 @@
 import { afterEach, beforeEach, describe, expect, it } from "bun:test";
 import { deflateSync } from "node:zlib";
 import {
+	_resetKittyVersionCache,
 	canRenderImages,
 	decodePng,
 	getPngDimensions,
@@ -183,6 +184,7 @@ describe("isKittyGraphicsTerminal", () => {
 		savedEnv = {};
 		for (const key of ENV_KEYS) savedEnv[key] = process.env[key];
 		clearTermEnv();
+		_resetKittyVersionCache();
 	});
 	afterEach(() => {
 		for (const key of ENV_KEYS) {
@@ -191,9 +193,22 @@ describe("isKittyGraphicsTerminal", () => {
 		}
 	});
 
-	it("returns true for Kitty", () => {
+	it("returns true for Kitty <= 0.37", () => {
 		process.env.KITTY_WINDOW_ID = "1";
+		_resetKittyVersionCache([0, 37, 0]);
 		expect(isKittyGraphicsTerminal()).toBe(true);
+	});
+
+	it("returns false for Kitty >= 0.38", () => {
+		process.env.KITTY_WINDOW_ID = "1";
+		_resetKittyVersionCache([0, 38, 0]);
+		expect(isKittyGraphicsTerminal()).toBe(false);
+	});
+
+	it("returns false for Kitty when version can't be detected", () => {
+		process.env.KITTY_WINDOW_ID = "1";
+		_resetKittyVersionCache(null);
+		expect(isKittyGraphicsTerminal()).toBe(false);
 	});
 
 	it("returns true for Ghostty", () => {
@@ -237,6 +252,7 @@ describe("supportsKittyAnimation", () => {
 		savedEnv = {};
 		for (const key of ENV_KEYS) savedEnv[key] = process.env[key];
 		clearTermEnv();
+		_resetKittyVersionCache();
 	});
 	afterEach(() => {
 		for (const key of ENV_KEYS) {
@@ -245,14 +261,22 @@ describe("supportsKittyAnimation", () => {
 		}
 	});
 
-	it("returns true for Kitty (KITTY_WINDOW_ID)", () => {
+	it("returns true for Kitty <= 0.37 (KITTY_WINDOW_ID)", () => {
 		process.env.KITTY_WINDOW_ID = "1";
+		_resetKittyVersionCache([0, 37, 0]);
 		expect(supportsKittyAnimation()).toBe(true);
 	});
 
-	it("returns true for TERM_PROGRAM=kitty", () => {
+	it("returns true for TERM_PROGRAM=kitty <= 0.37", () => {
 		process.env.TERM_PROGRAM = "kitty";
+		_resetKittyVersionCache([0, 37, 0]);
 		expect(supportsKittyAnimation()).toBe(true);
+	});
+
+	it("returns false for Kitty >= 0.38", () => {
+		process.env.KITTY_WINDOW_ID = "1";
+		_resetKittyVersionCache([0, 46, 2]);
+		expect(supportsKittyAnimation()).toBe(false);
 	});
 
 	it("returns false for Ghostty (no animation support)", () => {
