@@ -2,6 +2,22 @@
 
 All notable changes to SoulForge are documented here.
 
+## [2.8.0] — 2026-04-07
+
+### Documentation
+
+- replace intro video with looping GIF in README
+- fix video embed to bare URL and remove intro.mov
+- add compressed intro.mp4 and fix video embed in README
+- replace main-1 screenshot with intro video in README
+### Features
+
+- rich soul map diffs + navigate annotations from DB
+- MemPalace integration via MCP
+- add Harbor Terminal-Bench agent adapter
+### Miscellaneous
+
+- fix import ordering and add missing cwd dependency
 ## [2.7.0] — 2026-04-07
 
 ### Bug Fixes
