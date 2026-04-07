@@ -4,6 +4,7 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { fuzzyMatch } from "../../core/history/fuzzy.js";
 import { icon, providerIcon } from "../../core/icons.js";
 import { PROVIDER_CONFIGS } from "../../core/llm/models.js";
+import { getProvider } from "../../core/llm/providers/index.js";
 import { useTheme } from "../../core/theme/index.js";
 import { useAllProviderModels } from "../../hooks/useAllProviderModels.js";
 import { isModelFree } from "../../stores/statusbar.js";
@@ -22,6 +23,9 @@ type Entry =
       count: number;
       noKey?: boolean;
       error?: string;
+      noAuthLabel?: string;
+      authErrorLabel?: string;
+      badge?: string;
     }
   | {
       kind: "model";
@@ -89,17 +93,17 @@ function HeaderRow({
       )}
       {!entry.avail && !entry.loading && (
         <text fg={t.textDim} bg={bg}>
-          {" · no key — Enter to add"}
+          {entry.noAuthLabel ?? " · no key — Enter to add"}
         </text>
       )}
       {entry.avail && !entry.loading && entry.count === 0 && entry.error && (
         <text fg={t.error ?? t.brandSecondary} bg={bg}>
-          {" · invalid key"}
+          {entry.authErrorLabel ?? " · invalid key"}
         </text>
       )}
-      {entry.id === "copilot" && entry.avail && !entry.loading && (
+      {entry.badge && !entry.loading && (
         <text fg={t.textFaint} bg={bg}>
-          {" · unofficial"}
+          {` · ${entry.badge}`}
         </text>
       )}
     </PopupRow>
@@ -254,6 +258,9 @@ export function LlmSelector({ visible, activeModel, onSelect, onClose }: Props) 
           loading,
           count: 0,
           noKey: true,
+          noAuthLabel: cfg.noAuthLabel,
+          authErrorLabel: cfg.authErrorLabel,
+          badge: cfg.badge,
         });
         continue;
       }
@@ -275,6 +282,9 @@ export function LlmSelector({ visible, activeModel, onSelect, onClose }: Props) 
         loading,
         count: filtered.length,
         error: pd?.error,
+        noAuthLabel: cfg.noAuthLabel,
+        authErrorLabel: cfg.authErrorLabel,
+        badge: cfg.badge,
       });
 
       for (const m of filtered) {
@@ -418,7 +428,12 @@ export function LlmSelector({ visible, activeModel, onSelect, onClose }: Props) 
       const e = ents[cursorRef.current];
       if (e?.kind === "header" && (e.noKey || (e.error && e.count === 0))) {
         onClose();
-        useUIStore.getState().openModal("apiKeySettings");
+        const provider = getProvider(e.id);
+        if (provider?.onRequestAuth) {
+          void provider.onRequestAuth();
+        } else {
+          useUIStore.getState().openModal("apiKeySettings");
+        }
       } else if (e?.kind === "header") {
         toggleCollapse(e.id);
       } else if (e?.kind === "model") {
