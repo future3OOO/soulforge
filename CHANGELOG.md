@@ -2,6 +2,11 @@
 
 All notable changes to SoulForge are documented here.
 
+## [2.9.3] — 2026-04-08
+
+### Bug Fixes
+
+- use ESM-compatible path resolution in npm build patch
 ## [2.9.2] — 2026-04-08
 
 ### Bug Fixes
