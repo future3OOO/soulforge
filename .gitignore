@@ -25,6 +25,8 @@ report.[0-9]_.[0-9]_.[0-9]_.[0-9]_.json
 roadmap_local
 
 skills-lock.json 
+scripts/test-local.sh
+
 
 # caches
 .eslintcache

@@ -94,8 +94,5 @@
     "web-tree-sitter": "0.25.10",
     "zod": "4.3.6",
     "zustand": "5.0.12"
-  },
-  "overrides": {
-    "@opentui/core": "0.1.96"
   }
 }

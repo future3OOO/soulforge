@@ -201,20 +201,6 @@ if (isCompile) {
     process.exit(1);
   }
 
-  // Patch: replace dynamic platform import that Bun can't statically resolve.
-  // Same issue as the compile build — the template literal passes through verbatim.
-  // For npm installs, resolve the native lib relative to the dist directory so
-  // users don't need ~/.soulforge/native/ pre-populated.
-  {
-    const bundlePath = "dist/index.js";
-    let src = await Bun.file(bundlePath).text();
-    src = src.replace(
-      /\w+ = await import\(`@opentui\/core-\$\{process\.platform\}-\$\{process\.arch\}\/index\.ts`\);\s*\w+ = \w+\.default;/,
-      `targetLibPath = import.meta.dir + "/native/libopentui." + (process.platform === "darwin" ? "dylib" : "so");`,
-    );
-    await Bun.write(bundlePath, src);
-  }
-
   // Build workers separately — npm installs need them as standalone files
   const workerResult = await Bun.build({
     entrypoints: [
@@ -236,20 +222,10 @@ if (isCompile) {
   // Copy runtime resources that can't be bundled inline.
   // opentui-assets: tree-sitter grammar WASMs + query files for markdown rendering.
   // init.lua: neovim configuration shipped with soulforge.
-  // parser.worker.js: tree-sitter worker for syntax highlighting.
-  // native/libopentui.*: platform-specific rendering library.
+  // Parser worker is NOT pre-bundled — npm installs use the original from
+  // @opentui/core in node_modules (set via OTUI_TREE_SITTER_WORKER_PATH in syntax.ts).
   copyFileSync("src/core/editor/init.lua", "dist/init.lua");
   cpSync("node_modules/@opentui/core/assets", "dist/opentui-assets", { recursive: true });
-  copyFileSync("node_modules/@opentui/core/parser.worker.js", "dist/parser.worker.js");
-
-  // Copy the native rendering library for the current platform
-  {
-    const ext = process.platform === "darwin" ? "dylib" : "so";
-    const nativePkg = `@opentui/core-${process.platform}-${process.arch}`;
-    const libSrc = resolve(`node_modules/${nativePkg}/libopentui.${ext}`);
-    mkdirSync("dist/native", { recursive: true });
-    copyFileSync(libSrc, `dist/native/libopentui.${ext}`);
-  }
 
   // Shell wrapper that checks for bun before exec — gives a clear error to
   // npm/pnpm users who don't have bun installed.
