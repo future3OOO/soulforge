@@ -4,7 +4,7 @@ import { useTheme } from "../../core/theme/index.js";
 import { getModeColor, getModeLabel } from "../../hooks/useForgeMode.js";
 import type { Tab, TabActivity } from "../../hooks/useTabs.js";
 import type { ForgeMode } from "../../types/index.js";
-import { SPINNER_FRAMES, useSpinnerFrame } from "./shared.js";
+import { Spinner } from "./shared.js";
 
 interface TabBarProps {
   tabs: Tab[];
@@ -27,8 +27,6 @@ export function TabBar({
   getMode,
   getModelLabel,
 }: TabBarProps) {
-  const spinFrame = useSpinnerFrame();
-
   const activities = new Map(tabs.map((t) => [t.id, getActivity(t.id)]));
 
   const t = useTheme();
@@ -83,11 +81,9 @@ export function TabBar({
           <box key={tab.id} flexDirection="row">
             {i > 0 && <text fg={t.textSubtle}> │ </text>}
             {needsAttention && !isActive && <text fg={t.warning}>? </text>}
-            {isCompacting && !needsAttention && (
-              <text fg={t.info}>{SPINNER_FRAMES[spinFrame] ?? "⠋"} </text>
-            )}
+            {isCompacting && !needsAttention && <Spinner color={t.info} suffix={" "} />}
             {isLoading && !isCompacting && !needsAttention && (
-              <text fg={t.brandAlt}>{SPINNER_FRAMES[spinFrame] ?? "⠋"} </text>
+              <Spinner color={t.brandAlt} suffix={" "} />
             )}
             <text fg={bracketColor}>[</text>
             <text fg={numColor} attributes={isActive ? TextAttributes.BOLD : undefined}>

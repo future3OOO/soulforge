@@ -1,6 +1,6 @@
-import { type ScrollBoxRenderable, TextAttributes } from "@opentui/core";
 import { unlink } from "node:fs/promises";
 import { join } from "node:path";
+import { type ScrollBoxRenderable, TextAttributes } from "@opentui/core";
 import { memo, useCallback, useEffect, useMemo, useRef } from "react";
 import { useShallow } from "zustand/react/shallow";
 import { ContextManager, type SharedContextResources } from "../../core/context/manager.js";
@@ -20,6 +20,7 @@ import {
   useChat,
   type WorkspaceSnapshot,
 } from "../../hooks/useChat.js";
+import { useLandingTransition } from "../../hooks/useLandingTransition.js";
 import type { TabActivity } from "../../hooks/useTabs.js";
 import { useStatusBarStore } from "../../stores/statusbar.js";
 import { useUIStore } from "../../stores/ui.js";
@@ -34,8 +35,8 @@ import { filterQuietTools, LOCKIN_EDIT_TOOLS, LockInWrapper } from "../chat/Lock
 import { CodeExpandedProvider } from "../chat/Markdown.js";
 import { RAIL_BORDER, ReasoningExpandedProvider, StaticMessage } from "../chat/MessageList.js";
 import { StreamSegmentList } from "../chat/StreamSegmentList.js";
-import { formatArgs } from "../chat/tool-formatters.js";
 import { SUBAGENT_NAMES, ToolCallDisplay } from "../chat/ToolCallDisplay.js";
+import { formatArgs } from "../chat/tool-formatters.js";
 import { PlanProgress } from "../plan/PlanProgress.js";
 import { PlanReviewPrompt } from "../plan/PlanReviewPrompt.js";
 import { TaskProgress, useTaskList } from "../plan/TaskProgress.js";
@@ -320,6 +321,9 @@ export const TabInstance = memo(function TabInstance({
   }, [chat.messages]);
 
   const hasContent = nonSystemCount > 0 || isStreaming;
+  const transition = useLandingTransition(hasContent);
+  const showLanding = transition.phase !== "chat";
+  const showChat = transition.phase !== "landing";
 
   // Show scrollbar as soon as we have content. The stickyScroll + stickyStart="bottom"
   // combo handles initial positioning correctly.
@@ -461,145 +465,170 @@ export const TabInstance = memo(function TabInstance({
       <SystemBanner messages={chat.messages} expanded={codeExpanded} />
 
       <box flexGrow={1} flexShrink={1} minHeight={0} flexDirection="row">
-        {!hasContent ? (
-          <LandingPage
-            bootProviders={bootProviders}
-            bootPrereqs={bootPrereqs}
-            activeModel={chat.activeModel}
-          />
-        ) : (
-          <AnimatedBorder active={chat.isLoading || chat.isCompacting}>
-            <scrollbox
-              ref={scrollRef}
-              stickyScroll={true}
-              stickyStart="bottom"
-              viewportCulling={true}
-              focusable={false}
-              flexGrow={1}
-              flexShrink={1}
-              minHeight={0}
-              style={SCROLLBOX_STYLE}
-              verticalScrollbarOptions={scrollbarReady ? getScrollbarVisible(t) : SCROLLBAR_HIDDEN}
-              horizontalScrollbarOptions={SCROLLBAR_HIDDEN}
-            >
-              <CodeExpandedProvider value={codeExpanded}>
-                <ReasoningExpandedProvider value={reasoningExpanded}>
-                  {hiddenCount > 0 && (
-                    <box paddingX={1} marginBottom={1}>
-                      <text fg={t.textDim}>
-                        ── {String(hiddenCount)} earlier message{hiddenCount > 1 ? "s" : ""} ──
-                      </text>
-                    </box>
-                  )}
-                  {visibleMessages.map((msg) => (
-                    <StaticMessage
-                      key={msg.id}
-                      msg={msg}
-                      chatStyle={chatStyle}
-                      diffStyle={effectiveConfig.diffStyle}
-                      collapseDiffs={effectiveConfig.collapseDiffs === true}
-                      showReasoning={showReasoning}
-                      reasoningExpanded={reasoningExpanded}
-                      animate={false}
-                      lockIn={lockIn}
-                    />
-                  ))}
-                  {isStreaming && (
-                    <box paddingX={1} flexShrink={0} marginBottom={1}>
-                      <box
-                        flexDirection="column"
-                        border={["left"]}
-                        borderColor={t.brand}
-                        customBorderChars={RAIL_BORDER}
-                        paddingLeft={2}
-                      >
-                        <box>
-                          <text fg={t.brand}>
-                            {icon("ai")} Forge
-                            {lockIn ? <span fg={t.textMuted}> (locked in)</span> : null}
-                          </text>
-                        </box>
-                        {lockIn ? (
-                          <>
-                            <LockInWrapper
-                              hasEdits={chat.liveToolCalls.some((tc) =>
-                                LOCKIN_EDIT_TOOLS.has(tc.toolName),
-                              )}
-                              hasDispatch={chat.liveToolCalls.some((tc) =>
-                                SUBAGENT_NAMES.has(tc.toolName),
-                              )}
-                              done={false}
-                              seed={chat.messages.length}
-                              loadingStartedAt={loadingStartedAtRef.current}
-                              tools={chat.liveToolCalls
-                                .filter(
-                                  (tc) =>
-                                    filterQuietTools(tc.toolName) &&
-                                    !SUBAGENT_NAMES.has(tc.toolName),
-                                )
-                                .map((tc) => ({
-                                  id: tc.id,
-                                  name: tc.toolName,
-                                  done: tc.state !== "running",
-                                  error: tc.state === "error",
-                                  argStr: formatArgs(tc.toolName, tc.args),
-                                }))}
-                            >
-                              {chat.liveToolCalls.some((tc) => SUBAGENT_NAMES.has(tc.toolName)) ? (
-                                <ToolCallDisplay
-                                  calls={chat.liveToolCalls.filter((tc) =>
-                                    SUBAGENT_NAMES.has(tc.toolName),
-                                  )}
-                                  diffStyle="compact"
-                                />
-                              ) : null}
-                            </LockInWrapper>
+        {/* ── Landing page layer (fades out during transition) ── */}
+        {showLanding && (
+          <box
+            flexGrow={1}
+            flexShrink={1}
+            minHeight={0}
+            style={{ opacity: transition.landingOpacity }}
+            position={showChat ? "absolute" : "relative"}
+            width={showChat ? "100%" : undefined}
+            height={showChat ? "100%" : undefined}
+          >
+            <LandingPage
+              bootProviders={bootProviders}
+              bootPrereqs={bootPrereqs}
+              activeModel={chat.activeModel}
+            />
+          </box>
+        )}
+
+        {/* ── Chat content layer (fades in during transition) ── */}
+        {showChat && (
+          <box
+            flexGrow={1}
+            flexShrink={1}
+            minHeight={0}
+            style={{ opacity: transition.chatOpacity }}
+          >
+            <AnimatedBorder active={chat.isLoading || chat.isCompacting}>
+              <scrollbox
+                ref={scrollRef}
+                stickyScroll={true}
+                stickyStart="bottom"
+                viewportCulling={true}
+                focusable={false}
+                flexGrow={1}
+                flexShrink={1}
+                minHeight={0}
+                style={SCROLLBOX_STYLE}
+                verticalScrollbarOptions={
+                  scrollbarReady ? getScrollbarVisible(t) : SCROLLBAR_HIDDEN
+                }
+                horizontalScrollbarOptions={SCROLLBAR_HIDDEN}
+              >
+                <CodeExpandedProvider value={codeExpanded}>
+                  <ReasoningExpandedProvider value={reasoningExpanded}>
+                    {hiddenCount > 0 && (
+                      <box paddingX={1} marginBottom={1}>
+                        <text fg={t.textDim}>
+                          ── {String(hiddenCount)} earlier message{hiddenCount > 1 ? "s" : ""} ──
+                        </text>
+                      </box>
+                    )}
+                    {visibleMessages.map((msg) => (
+                      <StaticMessage
+                        key={msg.id}
+                        msg={msg}
+                        chatStyle={chatStyle}
+                        diffStyle={effectiveConfig.diffStyle}
+                        collapseDiffs={effectiveConfig.collapseDiffs === true}
+                        showReasoning={showReasoning}
+                        reasoningExpanded={reasoningExpanded}
+                        animate={false}
+                        lockIn={lockIn}
+                      />
+                    ))}
+                    {isStreaming && (
+                      <box paddingX={1} flexShrink={0} marginBottom={1}>
+                        <box
+                          flexDirection="column"
+                          border={["left"]}
+                          borderColor={t.brand}
+                          customBorderChars={RAIL_BORDER}
+                          paddingLeft={2}
+                        >
+                          <box>
+                            <text fg={t.brand}>
+                              {icon("ai")} Forge
+                              {lockIn ? <span fg={t.textMuted}> (locked in)</span> : null}
+                            </text>
+                          </box>
+                          {lockIn ? (
+                            <>
+                              <LockInWrapper
+                                hasEdits={chat.liveToolCalls.some((tc) =>
+                                  LOCKIN_EDIT_TOOLS.has(tc.toolName),
+                                )}
+                                hasDispatch={chat.liveToolCalls.some((tc) =>
+                                  SUBAGENT_NAMES.has(tc.toolName),
+                                )}
+                                done={false}
+                                seed={chat.messages.length}
+                                loadingStartedAt={loadingStartedAtRef.current}
+                                tools={chat.liveToolCalls
+                                  .filter(
+                                    (tc) =>
+                                      filterQuietTools(tc.toolName) &&
+                                      !SUBAGENT_NAMES.has(tc.toolName),
+                                  )
+                                  .map((tc) => ({
+                                    id: tc.id,
+                                    name: tc.toolName,
+                                    done: tc.state !== "running",
+                                    error: tc.state === "error",
+                                    argStr: formatArgs(tc.toolName, tc.args),
+                                  }))}
+                              >
+                                {chat.liveToolCalls.some((tc) =>
+                                  SUBAGENT_NAMES.has(tc.toolName),
+                                ) ? (
+                                  <ToolCallDisplay
+                                    calls={chat.liveToolCalls.filter((tc) =>
+                                      SUBAGENT_NAMES.has(tc.toolName),
+                                    )}
+                                    diffStyle="compact"
+                                  />
+                                ) : null}
+                              </LockInWrapper>
+                              <StreamSegmentList
+                                segments={chat.streamSegments}
+                                toolCalls={chat.liveToolCalls}
+                                streaming={chat.isLoading}
+                                verbose={effectiveConfig.verbose === true}
+                                diffStyle="compact"
+                                showReasoning={showReasoning}
+                                reasoningExpanded={reasoningExpanded}
+                                lockIn
+                              />
+                            </>
+                          ) : (
                             <StreamSegmentList
                               segments={chat.streamSegments}
                               toolCalls={chat.liveToolCalls}
                               streaming={chat.isLoading}
                               verbose={effectiveConfig.verbose === true}
-                              diffStyle="compact"
+                              diffStyle={effectiveConfig.diffStyle}
                               showReasoning={showReasoning}
                               reasoningExpanded={reasoningExpanded}
-                              lockIn
+                              lockIn={lockIn}
                             />
-                          </>
-                        ) : (
-                          <StreamSegmentList
-                            segments={chat.streamSegments}
-                            toolCalls={chat.liveToolCalls}
-                            streaming={chat.isLoading}
-                            verbose={effectiveConfig.verbose === true}
-                            diffStyle={effectiveConfig.diffStyle}
-                            showReasoning={showReasoning}
-                            reasoningExpanded={reasoningExpanded}
-                            lockIn={lockIn}
-                          />
-                        )}
+                          )}
+                        </box>
                       </box>
+                    )}
+                  </ReasoningExpandedProvider>
+                </CodeExpandedProvider>
+                {lockIn ? (
+                  chat.isLoading ? (
+                    <box paddingX={1} height={1} flexShrink={0}>
+                      <text fg={t.error} attributes={TextAttributes.BOLD}>
+                        {icon("stop")} ^X to stop
+                      </text>
                     </box>
-                  )}
-                </ReasoningExpandedProvider>
-              </CodeExpandedProvider>
-              {lockIn ? (
-                chat.isLoading ? (
-                  <box paddingX={1} height={1} flexShrink={0}>
-                    <text fg={t.error} attributes={TextAttributes.BOLD}>
-                      {icon("stop")} ^X to stop
-                    </text>
-                  </box>
-                ) : null
-              ) : (
-                <LoadingStatus
-                  isLoading={chat.isLoading}
-                  isCompacting={chat.isCompacting}
-                  queueCount={chat.messageQueue.length}
-                  loadingStartedAt={loadingStartedAtRef.current}
-                />
-              )}
-            </scrollbox>
-          </AnimatedBorder>
+                  ) : null
+                ) : (
+                  <LoadingStatus
+                    isLoading={chat.isLoading}
+                    isCompacting={chat.isCompacting}
+                    queueCount={chat.messageQueue.length}
+                    loadingStartedAt={loadingStartedAtRef.current}
+                  />
+                )}
+              </scrollbox>
+            </AnimatedBorder>
+          </box>
         )}
         {(changesExpanded || terminalsExpanded) && (
           <box flexDirection="column" width="20%">
@@ -677,23 +706,36 @@ export const TabInstance = memo(function TabInstance({
                 })()}
             </box>
           )}
-          <box flexShrink={0} zIndex={10}>
-            <InputBox
-              onSubmit={handleInputSubmit}
-              isLoading={chat.isLoading}
-              isCompacting={chat.isCompacting}
-              isFocused={isFocused}
-              cwd={cwd}
-              onExit={onExit}
-              onQueue={(msg, images) =>
-                chat.setMessageQueue((prev) =>
-                  prev.length >= 5
-                    ? prev
-                    : [...prev, { content: msg, queuedAt: Date.now(), images }],
-                )
+          <box
+            flexShrink={0}
+            zIndex={10}
+            alignItems={transition.phase !== "chat" ? "center" : undefined}
+          >
+            <box
+              width={
+                transition.phase === "chat"
+                  ? "100%"
+                  : (`${String(Math.round(transition.inputWidthPct))}%` as `${number}%`)
               }
-              queueCount={chat.messageQueue.length}
-            />
+              flexShrink={0}
+            >
+              <InputBox
+                onSubmit={handleInputSubmit}
+                isLoading={chat.isLoading}
+                isCompacting={chat.isCompacting}
+                isFocused={isFocused}
+                cwd={cwd}
+                onExit={onExit}
+                onQueue={(msg, images) =>
+                  chat.setMessageQueue((prev) =>
+                    prev.length >= 5
+                      ? prev
+                      : [...prev, { content: msg, queuedAt: Date.now(), images }],
+                  )
+                }
+                queueCount={chat.messageQueue.length}
+              />
+            </box>
           </box>
         </>
       )}

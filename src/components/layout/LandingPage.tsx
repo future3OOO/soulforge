@@ -1,53 +1,300 @@
-import { TextAttributes } from "@opentui/core";
+import { fg as fgStyle, StyledText, TextAttributes, type TextRenderable } from "@opentui/core";
 import { useTerminalDimensions } from "@opentui/react";
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { icon } from "../../core/icons.js";
 import { getShortModelLabel } from "../../core/llm/models.js";
 import type { ProviderStatus } from "../../core/llm/provider.js";
 import type { PrerequisiteStatus } from "../../core/setup/prerequisites.js";
-import { useTheme } from "../../core/theme/index.js";
-import { garble, WISP_FRAMES, WORDMARK } from "../../core/utils/splash.js";
+import { getThemeTokens, useTheme } from "../../core/theme/index.js";
+import { WORDMARK } from "../../core/utils/splash.js";
+import { useMCPStore } from "../../stores/mcp.js";
 import { useRepoMapStore } from "../../stores/repomap.js";
-import { ScanDivider } from "./ScanDivider.js";
-import { SPINNER_FRAMES, useSpinnerFrame } from "./shared.js";
+import { ForgeSpinner } from "./ForgeSpinner.js";
+import { Spinner } from "./shared.js";
 
 const BOLD = TextAttributes.BOLD;
 const ITALIC = TextAttributes.ITALIC;
-const DIM = TextAttributes.DIM;
 
-const GHOST_FADE = ["░", "▒", "▓"];
+// ── Floating rune particles (imperative — zero re-renders) ──────────
 
-/* ── Forge quips — one picked randomly per mount ── */
-const IDLE_QUIPS = [
+const RUNE_POOL = "ᛁᚲᚠᛊᛏᛉᛞᚨᚱᚺᚾᛃᛇᛈᛋᛒᛗᛚᛝᛟ";
+
+interface Particle {
+  x: number;
+  y: number;
+  rune: string;
+  speed: number;
+  life: number; // 0→4 lifecycle
+}
+
+function spawnParticle(cols: number, rows: number): Particle {
+  return {
+    x: Math.floor(Math.random() * cols),
+    y: Math.floor(Math.random() * rows),
+    rune: RUNE_POOL[Math.floor(Math.random() * RUNE_POOL.length)] ?? "ᛁ",
+    speed: 0.2 + Math.random() * 0.5,
+    life: 0,
+  };
+}
+
+function RuneField({ cols, rows }: { cols: number; rows: number }) {
+  const textRef = useRef<TextRenderable>(null);
+  const particlesRef = useRef<Particle[]>([]);
+  const tickRef = useRef(0);
+  const maxParticles = Math.min(10, Math.floor((cols * rows) / 120));
+
+  useEffect(() => {
+    // Seed a few particles at random lifecycle stages
+    particlesRef.current = [];
+    for (let i = 0; i < Math.floor(maxParticles / 3); i++) {
+      const p = spawnParticle(cols, rows);
+      p.life = 1 + Math.random() * 2; // start mid-life so they're visible
+      particlesRef.current.push(p);
+    }
+
+    const timer = setInterval(() => {
+      tickRef.current++;
+      const particles = particlesRef.current;
+      const tk = getThemeTokens();
+
+      // Slowly spawn new particles
+      if (particles.length < maxParticles && Math.random() < 0.08) {
+        particles.push(spawnParticle(cols, rows));
+      }
+
+      // Build sparse grid
+      const grid = new Map<string, { rune: string; color: string }>();
+
+      for (let i = particles.length - 1; i >= 0; i--) {
+        const p = particles[i] as Particle;
+        p.life += 0.03 * p.speed;
+
+        // Slow gentle drift upward
+        p.y -= p.speed * 0.08;
+        p.x += Math.sin(tickRef.current * 0.05 + i * 2) * 0.03;
+
+        // Lifecycle: fade in (0-1) → visible (1-3) → fade out (3-4) → dead (4+)
+        let alpha: number;
+        if (p.life < 1) alpha = p.life;
+        else if (p.life < 3) alpha = 1;
+        else if (p.life < 4) alpha = 4 - p.life;
+        else {
+          particles.splice(i, 1);
+          continue;
+        }
+
+        const gx = Math.round(p.x);
+        const gy = Math.round(p.y);
+        if (gx < 0 || gx >= cols || gy < 0 || gy >= rows) {
+          particles.splice(i, 1);
+          continue;
+        }
+
+        const color = alpha > 0.6 ? tk.brandDim : alpha > 0.3 ? tk.textFaint : tk.textSubtle;
+        grid.set(`${String(gx)},${String(gy)}`, { rune: p.rune, color });
+      }
+
+      // Render sparse — only rune cells, rest is spaces
+      const parts: ReturnType<ReturnType<typeof fgStyle>>[] = [];
+      for (let y = 0; y < rows; y++) {
+        for (let x = 0; x < cols; x++) {
+          const cell = grid.get(`${String(x)},${String(y)}`);
+          parts.push(cell ? fgStyle(cell.color)(cell.rune) : fgStyle(tk.textSubtle)(" "));
+        }
+        if (y < rows - 1) parts.push(fgStyle(tk.textSubtle)("\n"));
+      }
+
+      try {
+        if (textRef.current) textRef.current.content = new StyledText(parts);
+      } catch {}
+    }, 250); // Slow tick — particles drift gently
+
+    return () => clearInterval(timer);
+  }, [cols, rows, maxParticles]);
+
+  return (
+    <box position="absolute" width={cols} height={rows}>
+      <text ref={textRef}> </text>
+    </box>
+  );
+}
+
+// ── Ember line (imperative — zero re-renders) ───────────────────────
+
+function buildEmberLine(tick: number, w: number): StyledText {
+  const tk = getThemeTokens();
+  const segments: ReturnType<ReturnType<typeof fgStyle>>[] = [];
+  const center = w / 2;
+  const breathe = Math.sin(tick * 0.15) * 0.5 + 0.5;
+
+  for (let i = 0; i < w; i++) {
+    const distFromCenter = Math.abs(i - center) / center;
+    const wave = Math.sin(i * 0.3 + tick * 0.2) * 0.5 + 0.5;
+    const intensity = (1 - distFromCenter) * (0.3 + breathe * 0.7) * wave;
+
+    let char: string;
+    let color: string;
+    if (intensity > 0.7) {
+      char = "━";
+      color = tk.brandAlt;
+    } else if (intensity > 0.4) {
+      char = "─";
+      color = tk.brand;
+    } else if (intensity > 0.2) {
+      char = "╌";
+      color = tk.brandDim;
+    } else {
+      char = " ";
+      color = tk.textSubtle;
+    }
+    segments.push(fgStyle(color)(char));
+  }
+  return new StyledText(segments);
+}
+
+function EmberDivider({ width: w }: { width: number }) {
+  const ref = useRef<TextRenderable>(null);
+  const tickRef = useRef(0);
+
+  useEffect(() => {
+    const timer = setInterval(() => {
+      tickRef.current++;
+      try {
+        if (ref.current) ref.current.content = buildEmberLine(tickRef.current, w);
+      } catch {}
+    }, 100);
+    return () => clearInterval(timer);
+  }, [w]);
+
+  return <text ref={ref} content={buildEmberLine(0, w)} />;
+}
+
+// ── Quips ────────────────────────────────────────────────────────────
+
+const QUIPS = [
   "The forge awaits your command.",
   "The anvil is warm. What shall we build?",
   "The runes are aligned. Speak your intent.",
-  "All spirits present and accounted for.",
   "The blade is sharp. The code is ready.",
-  "Another day, another codebase to conquer.",
   "The ether hums with potential.",
-  "Your codebase has been mapped. The forge sees all.",
-  "The scrolls are indexed. Ask anything.",
   "Ready to transmute code into gold.",
-  "The ghost remembers your last session.",
   "Forge hot. Tools sharp. Let's ship.",
 ];
 
-/* ── Time-of-day greetings ── */
-function getTimeGreeting(): string {
+function getTimeQuip(): string {
   const h = new Date().getHours();
   if (h < 6) return "The forge burns at midnight.";
   if (h < 12) return "Morning forge session. Coffee recommended.";
   if (h < 17) return "Afternoon forging in progress.";
-  if (h < 21) return "Evening session. The runes glow brighter at dusk.";
+  if (h < 21) return "The runes glow brighter at dusk.";
   return "Late night forging. The spirits are restless.";
 }
 
 function pickQuip(): string {
-  // ~30% chance of time-of-day greeting, otherwise random quip
-  if (Math.random() < 0.3) return getTimeGreeting();
-  return IDLE_QUIPS[Math.floor(Math.random() * IDLE_QUIPS.length)] as string;
+  if (Math.random() < 0.3) return getTimeQuip();
+  return QUIPS[Math.floor(Math.random() * QUIPS.length)] as string;
 }
+
+// ── Status block — model on top (colored), info below (muted) ───────
+
+function StatusBlock({ modelLabel }: { modelLabel: string | null }) {
+  const tk = useTheme();
+
+  // Live repo map / LSP status
+  const [repoState, setRepoState] = useState(() => {
+    const s = useRepoMapStore.getState();
+    return { status: s.status, files: s.files, lspStatus: s.lspStatus };
+  });
+
+  useEffect(
+    () =>
+      useRepoMapStore.subscribe((s) => {
+        setRepoState((prev) => {
+          if (prev.status === s.status && prev.files === s.files && prev.lspStatus === s.lspStatus)
+            return prev;
+          return { status: s.status, files: s.files, lspStatus: s.lspStatus };
+        });
+      }),
+    [],
+  );
+
+  // Live MCP server count
+  const mcpReady = useMCPStore((s) => {
+    let count = 0;
+    for (const srv of Object.values(s.servers)) {
+      if (srv.status === "ready") count++;
+    }
+    return count;
+  });
+
+  const { status, files, lspStatus } = repoState;
+
+  // Build info segments (everything except model)
+  const infoParts: React.ReactNode[] = [];
+
+  if (status === "scanning") {
+    infoParts.push(
+      <text key="idx">
+        <Spinner inline color={tk.amber} suffix={" "} />
+        <span fg={tk.amber}>indexing…</span>
+      </text>,
+    );
+  } else if (status === "ready") {
+    infoParts.push(
+      <text key="idx" fg={tk.textMuted}>
+        {String(files)} files indexed
+      </text>,
+    );
+  }
+
+  if (lspStatus === "ready") {
+    infoParts.push(
+      <text key="lsp" fg={tk.textMuted}>
+        lsp ready
+      </text>,
+    );
+  }
+
+  if (mcpReady > 0) {
+    infoParts.push(
+      <text key="mcp" fg={tk.textMuted}>
+        {String(mcpReady)} mcp
+      </text>,
+    );
+  }
+
+  // Join info parts with · separators
+  const joinedInfo: React.ReactNode[] = [];
+  for (let i = 0; i < infoParts.length; i++) {
+    if (i > 0) {
+      joinedInfo.push(
+        <text key={`sep-${String(i)}`} fg={tk.textFaint}>
+          {" · "}
+        </text>,
+      );
+    }
+    joinedInfo.push(infoParts[i]);
+  }
+
+  return (
+    <box flexDirection="column" alignItems="center" gap={0}>
+      {/* Model — prominent, colored */}
+      {modelLabel && (
+        <text fg={tk.brand} attributes={BOLD}>
+          {modelLabel}
+        </text>
+      )}
+      {/* Info line — muted, compact */}
+      {joinedInfo.length > 0 && (
+        <box flexDirection="row" gap={0} justifyContent="center">
+          {joinedInfo}
+        </box>
+      )}
+    </box>
+  );
+}
+
+// ── Main landing page ───────────────────────────────────────────────
 
 interface LandingPageProps {
   bootProviders: ProviderStatus[];
@@ -55,284 +302,93 @@ interface LandingPageProps {
   activeModel?: string;
 }
 
-export function LandingPage({ bootProviders, bootPrereqs, activeModel }: LandingPageProps) {
+export function LandingPage({
+  bootProviders: _bp,
+  bootPrereqs: _bq,
+  activeModel,
+}: LandingPageProps) {
   const tk = useTheme();
   const { width, height } = useTerminalDimensions();
   const columns = width ?? 80;
   const rows = height ?? 24;
 
-  const compact = rows < 20;
+  const compact = rows < 18;
   const showWordmark = columns >= 35;
+  const showRuneField = rows >= 16 && columns >= 50;
 
-  /* ── Glitch-decode entrance (tick-gated like UpdateModal/ShutdownSplash) ── */
-  const [tick, setTick] = useState(0);
-  useEffect(() => {
-    if (tick >= 14) return;
-    const timer = setInterval(() => setTick((t) => t + 1), 60);
-    return () => clearInterval(timer);
-  }, [tick]);
-
-  const ghostChar = tick < GHOST_FADE.length ? (GHOST_FADE[tick] ?? "░") : icon("ghost");
-  const wordmarkGarbled = tick < 5;
-  const taglineReady = tick >= 6;
-  const statusReady = tick >= 8;
-  const hintsReady = tick >= 10;
-
-  /* ── Wisp animation ── */
-  const wispFrame = WISP_FRAMES[tick % WISP_FRAMES.length] ?? "";
-
-  /* ── Slow ghost breathe (after materialization) ── */
-  const glowCycle = useMemo(
-    () => [tk.brand, tk.brand, tk.brandAlt, tk.brand, tk.brand, tk.brandDim],
-    [tk.brand, tk.brandAlt, tk.brandDim],
-  );
-  const [glowIdx, setGlowIdx] = useState(0);
-  useEffect(() => {
-    if (tick < GHOST_FADE.length) return;
-    const timer = setInterval(() => setGlowIdx((g) => (g + 1) % glowCycle.length), 2500);
-    return () => clearInterval(timer);
-  }, [tick, glowCycle]);
-  const ghostColor = tick < GHOST_FADE.length ? tk.brand : (glowCycle[glowIdx] ?? tk.brand);
-
-  /* ── Quip — stable per mount ── */
   const quip = useMemo(() => pickQuip(), []);
-
-  /* ── Status data ── */
-  const activeProviders = useMemo(() => bootProviders.filter((p) => p.available), [bootProviders]);
-  const missingRequired = useMemo(
-    () => bootPrereqs.filter((p) => !p.installed && p.prerequisite.required),
-    [bootPrereqs],
-  );
-  const allToolsOk = useMemo(
-    () => bootPrereqs.every((p) => p.installed || !p.prerequisite.required),
-    [bootPrereqs],
-  );
-  const anyProvider = activeProviders.length > 0;
-
-  const divW = Math.min(WORDMARK[0]?.length ?? 30, columns - 8);
-
-  /* ── Model label ── */
   const modelLabel = activeModel ? getShortModelLabel(activeModel) : null;
+  const divW = Math.min(WORDMARK[0]?.length ?? 27, columns - 4);
 
   return (
     <box flexDirection="column" flexGrow={1} flexShrink={1} minHeight={0} justifyContent="center">
-      <box flexDirection="column" alignItems="center" gap={0}>
-        {/* ── Ghost materializes through fade stages ── */}
-        <text fg={ghostColor} attributes={BOLD}>
-          {ghostChar}
-        </text>
-        <text fg={tk.brandDim} attributes={DIM}>
-          {wispFrame}
+      {/* ── Floating rune particles (behind content) ── */}
+      {showRuneField && <RuneField cols={columns} rows={rows} />}
+
+      {/* ── Content ── */}
+      <box flexDirection="column" alignItems="center" gap={0} zIndex={1}>
+        {/* ── Ghost ── */}
+        <text fg={tk.brand} attributes={BOLD}>
+          {icon("ghost")}
         </text>
 
         {!compact && <box height={1} />}
 
-        {/* ── Wordmark with glitch-decode (matches ShutdownSplash style) ── */}
+        {/* ── Wordmark with runic subtitle ── */}
         {showWordmark ? (
-          WORDMARK.map((line) => (
-            <text key={line} fg={tk.brand} attributes={BOLD}>
-              {wordmarkGarbled ? garble(line) : line}
+          <>
+            {WORDMARK.map((line) => (
+              <text key={line} fg={tk.brand} attributes={BOLD}>
+                {line}
+              </text>
+            ))}
+            <text fg={tk.textDim}>
+              <span fg={tk.brandAlt}>ᛊ</span>
+              <span fg={tk.textFaint}>·</span>
+              <span fg={tk.textDim}>ᛟ·ᚢ·ᛚ</span>
+              <span fg={tk.textFaint}>·</span>
+              <span fg={tk.brandAlt}>ᚠ</span>
+              <span fg={tk.textFaint}>·</span>
+              <span fg={tk.textDim}>ᛟ</span>
+              <span fg={tk.textFaint}>·</span>
+              <span fg={tk.brandAlt}>ᚱ</span>
+              <span fg={tk.textFaint}>·</span>
+              <span fg={tk.textDim}>ᚷ·ᛖ</span>
             </text>
-          ))
+          </>
         ) : (
           <text fg={tk.brand} attributes={BOLD}>
-            {wordmarkGarbled ? garble("SOULFORGE") : "SOULFORGE"}
+            SOULFORGE
           </text>
         )}
 
         {/* ── Tagline ── */}
-        {taglineReady && (
-          <box flexDirection="row" gap={0}>
-            <text fg={tk.textDim}>{"── "}</text>
-            <text fg={tk.textMuted} attributes={ITALIC}>
-              Graph-Powered Code Intelligence
-            </text>
-            <text fg={tk.textDim}>{" ──"}</text>
-          </box>
-        )}
+        <text fg={tk.textMuted} attributes={ITALIC}>
+          Graph-Powered Code Intelligence
+        </text>
 
         {!compact && <box height={1} />}
 
-        {/* ── Scan divider — runs once then settles ── */}
-        <ScanDivider width={divW} />
+        {/* ── Ember divider ── */}
+        <EmberDivider width={divW} />
+
+        {!compact && <box height={1} />}
 
         {/* ── Quip ── */}
-        {taglineReady && (
-          <>
-            {!compact && <box height={1} />}
-            <text fg={tk.brandAlt} attributes={ITALIC}>
-              {quip}
-            </text>
-          </>
-        )}
-
-        {/* ── Compact status line ── */}
-        {statusReady && (
-          <>
-            {!compact && <box height={1} />}
-            <StatusLine providers={activeProviders} allToolsOk={allToolsOk} />
-            <IndexingStatus />
-            {(missingRequired.length > 0 || !anyProvider) && (
-              <text fg={tk.textDim}>/setup to configure</text>
-            )}
-          </>
-        )}
-
-        {/* ── Model hint + help ── */}
-        {hintsReady && (
-          <>
-            {!compact && <box height={1} />}
-            <box flexDirection="row" gap={0} justifyContent="center">
-              {modelLabel && (
-                <>
-                  <text fg={tk.textDim}>^L </text>
-                  <text fg={tk.brand} attributes={BOLD}>
-                    {modelLabel}
-                  </text>
-                  <text fg={tk.textFaint}>{" · "}</text>
-                </>
-              )}
-              <text fg={tk.textDim}>/</text>
-              <text fg={tk.textSecondary}>help</text>
-            </box>
-          </>
-        )}
-
-        {compact ? null : <box height={1} />}
-      </box>
-    </box>
-  );
-}
-
-/* ── Compact single-line status ── */
-function StatusLine({
-  providers,
-  allToolsOk,
-}: {
-  providers: ProviderStatus[];
-  allToolsOk: boolean;
-}) {
-  const tk = useTheme();
-  const names = providers.slice(0, 4).map((p) => p.name.toLowerCase());
-  const overflow = providers.length > 4 ? providers.length - 4 : 0;
-
-  return (
-    <box flexDirection="row" gap={0} justifyContent="center">
-      {providers.length > 0 ? (
-        <text fg={tk.textMuted}>
-          {names.join(" · ")}
-          {overflow > 0 ? ` +${String(overflow)}` : ""}
+        <text fg={tk.brandAlt} attributes={ITALIC}>
+          {quip}
         </text>
-      ) : (
-        <text fg={tk.warning}>○ no providers configured</text>
-      )}
-      {allToolsOk && (
-        <>
-          <text fg={tk.textFaint}>{" · "}</text>
-          <text fg={tk.textMuted}>tools ready</text>
-        </>
-      )}
-    </box>
-  );
-}
 
-/* ── Indexing + LSP status ── */
-function IndexingStatus() {
-  const tk = useTheme();
-  const [state, setState] = useState(() => {
-    const s = useRepoMapStore.getState();
-    return {
-      status: s.status,
-      files: s.files,
-      scanProgress: s.scanProgress,
-      lspStatus: s.lspStatus,
-    };
-  });
-  const spinFrame = useSpinnerFrame();
+        {!compact && <box height={1} />}
 
-  useEffect(
-    () =>
-      useRepoMapStore.subscribe((s) => {
-        setState((prev) => {
-          if (
-            prev.status === s.status &&
-            prev.files === s.files &&
-            prev.scanProgress === s.scanProgress &&
-            prev.lspStatus === s.lspStatus
-          )
-            return prev;
-          return {
-            status: s.status,
-            files: s.files,
-            scanProgress: s.scanProgress,
-            lspStatus: s.lspStatus,
-          };
-        });
-      }),
-    [],
-  );
+        {/* ── Status line: model · index · lsp · mcp ── */}
+        <StatusBlock modelLabel={modelLabel} />
 
-  const { status, files, scanProgress, lspStatus } = state;
-  const frame = SPINNER_FRAMES[spinFrame % SPINNER_FRAMES.length] ?? "⠋";
+        {!compact && <box height={1} />}
 
-  if (status === "scanning") {
-    return (
-      <box flexDirection="row" gap={0} justifyContent="center">
-        <text fg={tk.amber}>
-          {frame} indexing{scanProgress ? ` ${scanProgress}` : "…"}
-        </text>
+        {/* ── Forge spinner ── */}
+        <ForgeSpinner />
       </box>
-    );
-  }
-
-  // Ready or error — show combined line
-  const parts: React.ReactNode[] = [];
-
-  if (status === "ready") {
-    parts.push(
-      <text key="idx" fg={tk.textMuted}>
-        {icon("check")} {String(files)} files indexed
-      </text>,
-    );
-  } else if (status === "error") {
-    parts.push(
-      <text key="idx" fg={tk.brandSecondary}>
-        ○ indexing failed
-      </text>,
-    );
-  }
-
-  if (lspStatus === "ready" && parts.length > 0) {
-    parts.push(
-      <text key="sep" fg={tk.textFaint}>
-        {" · "}
-      </text>,
-    );
-    parts.push(
-      <text key="lsp" fg={tk.textMuted}>
-        lsp ready
-      </text>,
-    );
-  } else if (lspStatus === "generating") {
-    if (parts.length > 0) {
-      parts.push(
-        <text key="sep" fg={tk.textFaint}>
-          {" · "}
-        </text>,
-      );
-    }
-    parts.push(
-      <text key="lsp" fg={tk.amber}>
-        lsp warming up
-      </text>,
-    );
-  }
-
-  if (parts.length === 0) return null;
-
-  return (
-    <box flexDirection="row" gap={0} justifyContent="center">
-      {parts}
     </box>
   );
 }
