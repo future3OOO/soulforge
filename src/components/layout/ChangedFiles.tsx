@@ -4,7 +4,7 @@ import { icon } from "../../core/icons.js";
 import { useTheme } from "../../core/theme/index.js";
 import type { ChatMessage } from "../../types/index.js";
 
-interface FileEntry {
+export interface FileEntry {
   path: string;
   editCount: number;
   created: boolean;
@@ -81,13 +81,13 @@ export function ChangedFilesBar({ messages }: BarProps) {
   );
 }
 
-interface TreeNode {
+export interface TreeNode {
   name: string;
   file?: FileEntry;
   children: Map<string, TreeNode>;
 }
 
-function buildTree(files: FileEntry[], cwd: string): TreeNode {
+export function buildTree(files: FileEntry[], cwd: string): TreeNode {
   const root: TreeNode = { name: "", children: new Map() };
   for (const f of files) {
     const rel = relative(cwd, f.path) || basename(f.path);
@@ -108,7 +108,7 @@ function buildTree(files: FileEntry[], cwd: string): TreeNode {
   return root;
 }
 
-interface FlatRow {
+export interface FlatRow {
   depth: number;
   name: string;
   file?: FileEntry;
@@ -117,7 +117,7 @@ interface FlatRow {
   parentLasts: boolean[];
 }
 
-function flattenTree(node: TreeNode, depth: number, parentLasts: boolean[]): FlatRow[] {
+export function flattenTree(node: TreeNode, depth: number, parentLasts: boolean[]): FlatRow[] {
   const rows: FlatRow[] = [];
   const sorted = [...node.children.values()].sort((a, b) => {
     const aDir = a.children.size > 0 && !a.file;
@@ -160,7 +160,7 @@ function flattenTree(node: TreeNode, depth: number, parentLasts: boolean[]): Fla
   return rows;
 }
 
-function buildPrefix(row: FlatRow): string {
+export function buildPrefix(row: FlatRow): string {
   if (row.depth === 0) return row.isLast ? "└─ " : "├─ ";
   let prefix = "";
   for (let i = 0; i < row.parentLasts.length; i++) {

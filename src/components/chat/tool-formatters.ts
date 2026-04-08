@@ -31,15 +31,7 @@ export function formatArgs(toolName: string, args?: string): string {
         return `${trimmed}${suffix}`;
       }
       if (files.length > 1) {
-        const rangeCount = files.reduce(
-          (s: number, f: { ranges?: unknown[] }) => s + (f.ranges?.length ?? 0),
-          0,
-        );
-        const fullCount = files.filter((f: { ranges?: unknown[] }) => !f.ranges?.length).length;
-        const parts: string[] = [`${String(files.length)} files`];
-        if (rangeCount > 0) parts.push(`${String(rangeCount)} ranges`);
-        if (fullCount > 0) parts.push(`${String(fullCount)} full`);
-        return parts.join(", ");
+        return `${String(files.length)} files`;
       }
       return "";
     }
@@ -222,6 +214,46 @@ export function formatArgs(toolName: string, args?: string): string {
     }
   }
   return "";
+}
+
+export interface MultiReadFile {
+  path: string;
+  /** e.g. "(2 ranges)" or "(full)" or "(fn:foo)" */
+  detail: string;
+}
+
+/**
+ * Extract file info from a multi-file read tool call's args.
+ * Returns per-file path + detail (ranges/full/target) when 2+ files.
+ * Works with both parsed args (Record) and raw JSON string.
+ */
+export function extractMultiReadFiles(
+  toolName: string,
+  args?: Record<string, unknown> | string,
+): MultiReadFile[] | null {
+  if (toolName !== "read") return null;
+  try {
+    const parsed: Record<string, unknown> =
+      typeof args === "string" ? JSON.parse(args) : (args ?? {});
+    const files = Array.isArray(parsed.files) ? parsed.files : parsed.files ? [parsed.files] : [];
+    if (files.length < 2) return null;
+    const result: MultiReadFile[] = [];
+    for (const f of files) {
+      if (!isObj(f) || typeof f.path !== "string") continue;
+      let detail = "";
+      if (f.target && f.name) {
+        detail = `(${String(f.target)}:${String(f.name)})`;
+      } else if (Array.isArray(f.ranges) && f.ranges.length > 0) {
+        detail = `(${String(f.ranges.length)} range${f.ranges.length > 1 ? "s" : ""})`;
+      } else {
+        detail = "(full)";
+      }
+      result.push({ path: f.path, detail });
+    }
+    return result.length >= 2 ? result : null;
+  } catch {
+    return null;
+  }
 }
 
 export function formatResult(toolName: string, result?: string): string {

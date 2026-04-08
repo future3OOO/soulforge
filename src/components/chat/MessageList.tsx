@@ -24,6 +24,7 @@ import type {
   ToolCall,
 } from "../../types/index.js";
 import { parsePlanOutput } from "../../types/plan-schema.js";
+import { buildPrefix, buildTree, flattenTree } from "../layout/ChangedFiles.js";
 import { Spinner } from "../layout/shared.js";
 import { StructuredPlanView } from "../plan/StructuredPlanView.js";
 import { DiffView } from "./DiffView.js";
@@ -33,7 +34,7 @@ import { Markdown, useCodeExpanded } from "./Markdown.js";
 import { ReasoningBlock } from "./ReasoningBlock.js";
 import { buildFinalToolRowProps, StaticToolRow } from "./StaticToolRow.js";
 import { SUBAGENT_NAMES, TREE_PIPE, TREE_SPACE, type TreePosition } from "./ToolCallDisplay.js";
-import { formatArgs } from "./tool-formatters.js";
+import { extractMultiReadFiles, formatArgs } from "./tool-formatters.js";
 
 const ReasoningExpandedContext = createContext(false);
 export const ReasoningExpandedProvider = ReasoningExpandedContext.Provider;
@@ -368,7 +369,47 @@ function ToolCallRow({
         ))
       : null;
 
-  const needsContinuation = diffContent || imageContent || (inTree && errorContent);
+  // Multi-file read tree (2+ files in a single read call)
+  const multiReadFiles = extractMultiReadFiles(tc.name, tc.args);
+  const multiReadContent =
+    multiReadFiles && multiReadFiles.length >= 2
+      ? (() => {
+          const cwd = process.cwd();
+          const detailMap = new Map(multiReadFiles.map((f) => [f.path, f.detail]));
+          const entries = multiReadFiles.map((f) => ({
+            path: f.path,
+            editCount: 1,
+            created: false,
+          }));
+          const treeRoot = buildTree(entries, cwd);
+          const rows = flattenTree(treeRoot, 0, []);
+          const { icon: readIcon, iconColor: readIconColor } = resolveToolDisplay("read");
+          return (
+            <box flexDirection="column">
+              {rows.map((row, ri) => {
+                const prefix = buildPrefix(row);
+                const fileDetail = row.file ? detailMap.get(row.file.path) : undefined;
+                return (
+                  <box key={`mr-${row.name}-${String(ri)}`} height={1}>
+                    <text truncate>
+                      <span fg={t.textFaint}>{prefix}</span>
+                      {!row.isDir ? <span fg={readIconColor}>{readIcon} </span> : null}
+                      <span fg={row.isDir ? t.textMuted : t.textSecondary}>
+                        {row.name}
+                        {row.isDir ? "/" : ""}
+                      </span>
+                      {fileDetail ? <span fg={t.textDim}> {fileDetail}</span> : null}
+                    </text>
+                  </box>
+                );
+              })}
+            </box>
+          );
+        })()
+      : null;
+
+  const needsContinuation =
+    diffContent || imageContent || multiReadContent || (inTree && errorContent);
 
   if (needsContinuation) {
     return (
@@ -383,6 +424,7 @@ function ToolCallRow({
           <box flexDirection="column">
             {diffContent}
             {imageContent}
+            {multiReadContent}
             {errorContent}
           </box>
         </box>
@@ -395,6 +437,15 @@ function ToolCallRow({
       <box flexDirection="column" flexShrink={0}>
         <StaticToolRow {...props} />
         {errorContent}
+      </box>
+    );
+  }
+
+  if (multiReadContent) {
+    return (
+      <box flexDirection="column" flexShrink={0}>
+        <StaticToolRow {...props} />
+        <box paddingLeft={3}>{multiReadContent}</box>
       </box>
     );
   }
@@ -898,30 +949,46 @@ function renderSegments(
             );
           }
           if (g.type === "batch") {
-            const fileCounts = new Map<string, number>();
-            let ok = 0;
-            let fail = 0;
-            let pending = 0;
+            const cwd = process.cwd();
+            // Extract all paths from batch calls (edits use args.path, reads use args.files)
+            interface BatchFile {
+              path: string;
+              success: boolean | null;
+            }
+            const batchFiles: BatchFile[] = [];
             for (const tc of g.calls) {
-              const full = extractPathFromArgs(tc.args) ?? "";
-              const short = full
-                ? full.includes("/")
-                  ? (full.split("/").pop() ?? full)
-                  : full
-                : tc.name;
-              fileCounts.set(short, (fileCounts.get(short) ?? 0) + 1);
-              if (!tc.result) pending++;
-              else if (tc.result.success) ok++;
-              else fail++;
+              const directPath = extractPathFromArgs(tc.args);
+              if (directPath) {
+                batchFiles.push({
+                  path: directPath,
+                  success: tc.result ? tc.result.success : null,
+                });
+              } else if (tc.args && Array.isArray(tc.args.files)) {
+                // read tool: args.files is array of {path, ...}
+                for (const f of tc.args.files as Array<{ path?: string }>) {
+                  if (typeof f.path === "string") {
+                    batchFiles.push({
+                      path: f.path,
+                      success: tc.result ? tc.result.success : null,
+                    });
+                  }
+                }
+                // Also handle single-object form: args.files = {path: ...}
+                if (
+                  !Array.isArray(tc.args.files) &&
+                  typeof (tc.args.files as Record<string, unknown>)?.path === "string"
+                ) {
+                  batchFiles.push({
+                    path: String((tc.args.files as Record<string, unknown>).path),
+                    success: tc.result ? tc.result.success : null,
+                  });
+                }
+              }
             }
-            const parts: string[] = [];
-            for (const [file, count] of fileCounts) {
-              parts.push(count > 1 ? `${file} ×${String(count)}` : file);
-            }
-            const label =
-              parts.length <= 3
-                ? parts.join(", ")
-                : `${parts.slice(0, 2).join(", ")} +${String(parts.length - 2)}`;
+
+            const ok = batchFiles.filter((f) => f.success === true).length;
+            const fail = batchFiles.filter((f) => f.success === false).length;
+            const pending = batchFiles.filter((f) => f.success === null).length;
             const allDone = pending === 0;
             const statusIcon = allDone
               ? fail === 0
@@ -940,20 +1007,53 @@ function renderSegments(
             const kindLabel =
               g.kind === "edits" ? "edit_file" : g.kind === "reads" ? "read" : "soul_grep";
             const { icon: batchIcon, iconColor } = resolveToolDisplay(kindLabel);
+
+            // Build nested tree from paths
+            const treeEntries = batchFiles.map((f) => ({
+              path: f.path,
+              editCount: 1,
+              created: false,
+            }));
+            const treeRoot = buildTree(treeEntries, cwd);
+            const rows = flattenTree(treeRoot, 0, []);
+
             return (
-              <box key={`batch-${String(gi)}`} height={1} flexShrink={0}>
-                <text truncate>
-                  {connChar ? <span fg={t.textFaint}>{connChar}</span> : null}
-                  <span fg={statusColor}>{statusIcon} </span>
-                  <span fg={iconColor}>{batchIcon} </span>
-                  <span fg={t.textSecondary}>{label}</span>
-                  {fail > 0 && ok > 0 ? (
-                    <span fg={t.textMuted}>
-                      {" "}
-                      ({String(ok)} ok, {String(fail)} failed)
-                    </span>
-                  ) : null}
-                </text>
+              <box key={`batch-${String(gi)}`} flexDirection="column" flexShrink={0}>
+                <box height={1} flexShrink={0}>
+                  <text truncate>
+                    {connChar ? <span fg={t.textFaint}>{connChar}</span> : null}
+                    <span fg={statusColor}>{statusIcon} </span>
+                    <span fg={iconColor}>{batchIcon} </span>
+                    <span fg={t.textSecondary}>{String(batchFiles.length)} files</span>
+                    {fail > 0 && ok > 0 ? (
+                      <span fg={t.textMuted}>
+                        {" "}
+                        ({String(ok)} ok, {String(fail)} failed)
+                      </span>
+                    ) : null}
+                  </text>
+                </box>
+                {rows.map((row, ri) => {
+                  const prefix = buildPrefix(row);
+                  if (row.isDir) {
+                    return (
+                      <box key={`d-${row.name}-${String(ri)}`} paddingLeft={3} height={1}>
+                        <text truncate>
+                          <span fg={t.textFaint}>{prefix}</span>
+                          <span fg={t.textMuted}>{row.name}/</span>
+                        </text>
+                      </box>
+                    );
+                  }
+                  return (
+                    <box key={`f-${row.name}-${String(ri)}`} paddingLeft={3} height={1}>
+                      <text truncate>
+                        <span fg={t.textFaint}>{prefix}</span>
+                        <span fg={t.textSecondary}>{row.name}</span>
+                      </text>
+                    </box>
+                  );
+                })}
               </box>
             );
           }

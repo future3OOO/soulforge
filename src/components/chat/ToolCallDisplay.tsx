@@ -11,6 +11,7 @@ import {
   type ToolCategory,
 } from "../../core/tool-display.js";
 import { parsePlanOutput } from "../../types/plan-schema.js";
+import { buildPrefix, buildTree, flattenTree } from "../layout/ChangedFiles.js";
 import { Spinner } from "../layout/shared.js";
 import { StructuredPlanView } from "../plan/StructuredPlanView.js";
 import { DiffView } from "./DiffView.js";
@@ -23,6 +24,7 @@ import {
   shortModelId,
 } from "./multi-agent-display.js";
 import { buildLiveToolRowProps, StaticToolRow } from "./StaticToolRow.js";
+import { extractMultiReadFiles } from "./tool-formatters.js";
 
 function isObj(v: unknown): v is Record<string, unknown> {
   return v != null && typeof v === "object" && !Array.isArray(v);
@@ -764,6 +766,47 @@ const ToolRow = memo(
             </box>
           ))
         : null;
+    // Multi-file read tree (2+ files in a single read call)
+    const multiReadFiles = useMemo(() => {
+      if (tc.toolName !== "read" || !tc.args) return null;
+      return extractMultiReadFiles(tc.toolName, tc.args);
+    }, [tc.toolName, tc.args]);
+    const multiReadContent =
+      multiReadFiles && multiReadFiles.length >= 2
+        ? (() => {
+            const cwd = process.cwd();
+            const detailMap = new Map(multiReadFiles.map((f) => [f.path, f.detail]));
+            const entries = multiReadFiles.map((f) => ({
+              path: f.path,
+              editCount: 1,
+              created: false,
+            }));
+            const treeRoot = buildTree(entries, cwd);
+            const rows = flattenTree(treeRoot, 0, []);
+            const { icon: readIcon, iconColor: readIconColor } = resolveToolDisplay("read");
+            return (
+              <box flexDirection="column">
+                {rows.map((row, ri) => {
+                  const prefix = buildPrefix(row);
+                  const fileDetail = row.file ? detailMap.get(row.file.path) : undefined;
+                  return (
+                    <box key={`mr-${row.name}-${String(ri)}`} height={1}>
+                      <text truncate>
+                        <span fg={t.textFaint}>{prefix}</span>
+                        {!row.isDir ? <span fg={readIconColor}>{readIcon} </span> : null}
+                        <span fg={row.isDir ? t.textMuted : t.textSecondary}>
+                          {row.name}
+                          {row.isDir ? "/" : ""}
+                        </span>
+                        {fileDetail ? <span fg={t.textDim}> {fileDetail}</span> : null}
+                      </text>
+                    </box>
+                  );
+                })}
+              </box>
+            );
+          })()
+        : null;
 
     return (
       <box flexDirection="column">
@@ -778,12 +821,14 @@ const ToolRow = memo(
             <box flexDirection="column">
               {diffContent}
               {imageContent}
+              {multiReadContent}
               {multiAgentContent}
               {singleAgentContent}
             </box>
           </box>
         ) : (
           <>
+            {multiReadContent ? <box paddingLeft={3}>{multiReadContent}</box> : null}
             {multiAgentContent}
             {singleAgentContent}
           </>
