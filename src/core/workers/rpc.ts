@@ -419,6 +419,16 @@ export class WorkerClient {
       p.reject(new Error("Worker disposed"));
     }
     this.pending.clear();
-    this.worker.terminate();
+    // Send dispose message so the worker can clean up child processes
+    // (e.g. LSP servers) before we terminate it.
+    try {
+      this.worker.postMessage({ type: "dispose" });
+    } catch {}
+    // Give the worker a brief window to run onDispose, then force-kill.
+    setTimeout(() => {
+      try {
+        this.worker.terminate();
+      } catch {}
+    }, 2000);
   }
 }

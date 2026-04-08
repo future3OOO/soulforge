@@ -202,7 +202,11 @@ export class IntelligenceClient extends WorkerClient {
   }
 
   async close(): Promise<void> {
-    await this.call<void>("close");
+    try {
+      await this.call<void>("close");
+    } catch {
+      // Worker may already be dead — still need to dispose
+    }
     this.dispose();
   }
 
