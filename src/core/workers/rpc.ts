@@ -420,15 +420,11 @@ export class WorkerClient {
     }
     this.pending.clear();
     // Send dispose message so the worker can clean up child processes
-    // (e.g. LSP servers) before we terminate it.
+    // (e.g. LSP servers). The worker's onDispose handler runs cleanup
+    // then calls process.exit(0). The worker is already unref()'d
+    // (see spawnWorker), so it won't block the main process from exiting.
     try {
       this.worker.postMessage({ type: "dispose" });
     } catch {}
-    // Give the worker a brief window to run onDispose, then force-kill.
-    setTimeout(() => {
-      try {
-        this.worker.terminate();
-      } catch {}
-    }, 2000);
   }
 }
