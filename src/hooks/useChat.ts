@@ -780,11 +780,19 @@ export function useChat({
         );
         // Use the exact token counts already displayed in the context bar / topbar.
         // These come from the API's inputTokens — no char-based estimation needed.
+        // When API tokens aren't available (dot not green), fall back to the same
+        // char-based estimation the ContextBar uses so we don't show 0%.
         const barState = useStatusBarStore.getState();
         const beforePct =
           barState.contextTokens > 0 && contextWindow > 0
             ? Math.round((barState.contextTokens / contextWindow) * 100)
-            : contextManager.getContextPercent();
+            : (() => {
+                const totalChars = systemChars + barState.chatChars + barState.subagentChars;
+                const estTokens = totalChars / charsPerToken;
+                return estTokens > 0
+                  ? Math.min(100, Math.max(1, Math.round((estTokens / contextWindow) * 100)))
+                  : 0;
+              })();
 
         const compactionCfg = effectiveConfig.compaction;
         const isV2 = compactionCfg?.strategy === "v2";
