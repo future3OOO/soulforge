@@ -2,6 +2,69 @@
 
 All notable changes to SoulForge are documented here.
 
+## [2.9.0] — 2026-04-08
+
+### Bug Fixes
+
+- connect tree rails through multi-file read expansions during streaming
+- correct stop shortcut hint from ^+X to ^X
+- lock-in view hides left border for single tool calls
+- correct GLM model context window sizes
+- inline Spinner imperative update uses children not content
+- context percentage fallback when API tokens unavailable
+- prevent stale soul map entries and LSP zombie processes
+- restart compiled installs without bunfs entrypoint (#22)
+- centralized Anthropic tool version selection per model capability
+- detect kitty version, fall back to chafa for ≥0.38
+### Documentation
+
+- strengthen output discipline — no narration between tool calls
+- add mempalace integration guide
+- improve soul_impact tool guidance in agent prompts
+### Features
+
+- nested file tree display for multi-file reads and batch tool calls
+- Tab/Shift+Tab to cycle between tabs from input box
+- InputBox widthPct prop for landing transition
+- smooth opacity fade for streaming text drip
+- register text-table renderable for JSX usage
+- landing page redesign with animated transition to chat
+- redesign boot splash with rune spinner and glitch-decode wordmark
+- migrate 15 popups to reusable Popup compound component
+### Miscellaneous
+
+- remove brackets from stop hint in LoadingStatus
+- remove ForgeSpinner3D and three.js type stubs
+- bump AI SDK providers and dependencies
+### Other
+
+- Add Codex as a first-class provider (#20)
+
+## Summary
+- add Codex as a first-class provider in SoulForge
+- use the official Codex app-server for browser login and live model
+discovery, so ChatGPT/Codex subscriptions work directly in the app
+- add `/codex login`, Codex-aware model picker login UX, and live
+provider status refresh after login
+
+## Testing
+- `bun test tests/provider-status.test.ts tests/codex-provider.test.ts
+tests/new-providers.test.ts tests/local-providers.test.ts
+tests/custom-providers.test.ts`
+- `bun run typecheck`
+- `bun run dev -- --headless --model codex/gpt-5.2-codex --max-steps 3
+--quiet \"Reply with exactly PONG.\"`
+### Performance
+
+- offload model fetching and session listing to IO worker
+### Refactor
+
+- remove unused queueCount prop from LoadingStatus and InputBox
+- improve tool call display — tree borders, multi_edit diffs, flat standalone lists
+- tab bar back to bracket style with active background
+- cleaner tab bar design without brackets
+- popup polish — deferred rendering, import order, cleanup
+- oscillating rune wheel spinner and unified Spinner component
 ## [2.8.0] — 2026-04-07
 
 ### Documentation
