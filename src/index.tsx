@@ -3,6 +3,7 @@ import type { createRoot as CreateRoot } from "@opentui/react";
 import { startTransition, useCallback, useEffect, useState } from "react";
 import type { App as AppComponent } from "./components/App.js";
 import type { ContextManager } from "./core/context/manager.js";
+import { killAllNvimProcesses } from "./core/editor/neovim.js";
 import { icon } from "./core/icons.js";
 import { disposeIntelligenceRouter } from "./core/intelligence/index.js";
 import { deactivateCurrentProvider, type ProviderStatus } from "./core/llm/provider.js";
@@ -53,6 +54,9 @@ function runCleanup(): void {
   } catch {}
   try {
     killAllTracked();
+  } catch {}
+  try {
+    killAllNvimProcesses();
   } catch {}
   try {
     disposeMCPManager();

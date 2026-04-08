@@ -1,14 +1,15 @@
 import { TextAttributes } from "@opentui/core";
+import type { GhosttyTerminalRenderable } from "ghostty-opentui/terminal-buffer";
 import { memo, useEffect, useRef, useState } from "react";
-import type { ScreenSegment } from "../../core/editor/screen.js";
 import { UI_ICONS } from "../../core/icons.js";
 import { type ThemeTokens, useTheme } from "../../core/theme/index.js";
 
 interface Props {
   isOpen: boolean;
   fileName: string | null;
-  screenLines: ScreenSegment[][];
-  defaultBg?: string;
+  ptyOnData: (cb: (data: Uint8Array) => void) => () => void;
+  nvimCols: number;
+  nvimRows: number;
   modeName?: string;
   focused?: boolean;
   cursorLine?: number;
@@ -41,42 +42,44 @@ function modeLabel(mode: string): string {
   return mode.toUpperCase().replace("_", " ");
 }
 
-const ScreenRow = memo(function ScreenRow({
-  segments,
-  bg,
+/** Renders neovim PTY output via ghostty-terminal in persistent mode. */
+const NvimTerminal = memo(function NvimTerminal({
+  ptyOnData,
+  cols,
+  rows,
 }: {
-  segments: ScreenSegment[];
-  bg: string | undefined;
+  ptyOnData: (cb: (data: Uint8Array) => void) => () => void;
+  cols: number;
+  rows: number;
 }) {
-  return (
-    <box flexDirection="row">
-      {segments.map((seg, j) => {
-        let attrs = 0;
-        if (seg.bold) attrs |= TextAttributes.BOLD;
-        if (seg.italic) attrs |= TextAttributes.ITALIC;
-        if (seg.underline) attrs |= TextAttributes.UNDERLINE;
-        if (seg.strikethrough) attrs |= TextAttributes.STRIKETHROUGH;
-        return (
-          <text
-            // biome-ignore lint/suspicious/noArrayIndexKey: segments are positional
-            key={j}
-            fg={seg.fg}
-            bg={seg.bg ?? bg}
-            attributes={attrs || undefined}
-          >
-            {seg.text}
-          </text>
-        );
-      })}
-    </box>
-  );
+  const termRef = useRef<GhosttyTerminalRenderable | null>(null);
+
+  useEffect(() => {
+    return ptyOnData((data) => {
+      const term = termRef.current;
+      if (term) {
+        term.feed(data);
+      }
+    });
+  }, [ptyOnData]);
+
+  useEffect(() => {
+    const term = termRef.current;
+    if (term) {
+      term.cols = cols;
+      term.rows = rows;
+    }
+  }, [cols, rows]);
+
+  return <ghostty-terminal ref={termRef} persistent showCursor cols={cols} rows={rows} />;
 });
 
 export const EditorPanel = memo(function EditorPanel({
   isOpen,
   fileName,
-  screenLines,
-  defaultBg,
+  ptyOnData,
+  nvimCols,
+  nvimRows,
   modeName = "normal",
   focused = false,
   cursorLine,
@@ -187,7 +190,6 @@ export const EditorPanel = memo(function EditorPanel({
       ? fileName.slice(process.cwd().length + 1)
       : (fileName.split("/").pop() ?? fileName)
     : "no file";
-  const bg = defaultBg;
   const modeColor = getModeColors(t)[modeName] ?? t.brand;
 
   return (
@@ -230,16 +232,7 @@ export const EditorPanel = memo(function EditorPanel({
       </box>
 
       <box flexDirection="column" flexGrow={1} overflow="hidden">
-        {screenLines.length === 0 ? (
-          <box justifyContent="center" alignItems="center" flexGrow={1}>
-            <text fg={t.textFaint}>waiting for nvim...</text>
-          </box>
-        ) : (
-          screenLines.map((segments, row) => (
-            // biome-ignore lint/suspicious/noArrayIndexKey: stable screen rows
-            <ScreenRow key={row} segments={segments} bg={bg} />
-          ))
-        )}
+        <NvimTerminal ptyOnData={ptyOnData} cols={nvimCols} rows={nvimRows} />
       </box>
 
       <box paddingX={1} flexShrink={0} height={1}>

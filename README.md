@@ -603,7 +603,7 @@ Extracting the intelligence layer into reusable packages:
 - **[Aider](https://github.com/Aider-AI/aider)** : tree-sitter repo maps with PageRank. SoulForge adds cochange, blast radius, clone detection, live updates.
 - **[Everything Claude Code](https://github.com/affaan-m/everything-claude-code)** : enforce behavior with code, not prompts.
 - **[Vercel AI SDK](https://sdk.vercel.ai)** : multi-provider abstraction.
-- **[Neovim](https://neovim.io)** : embedded via msgpack-RPC. Your config and muscle memory intact.
+- **[Neovim](https://neovim.io)** : PTY-native rendering via ghostty + RPC over socket. Your config and muscle memory intact.
 
 <img src="assets/separator.svg" width="100%" height="8" />
 

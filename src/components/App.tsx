@@ -313,8 +313,10 @@ export function App({
   const editorSplitRef = useRef(60);
   const {
     ready: nvimReady,
-    screenLines,
-    defaultBg,
+    ptyWrite,
+    ptyOnData,
+    nvimCols,
+    nvimRows,
     modeName: nvimMode,
     fileName: editorFile,
     cursorLine,
@@ -322,8 +324,6 @@ export function App({
     visualSelection,
     clearSelection: clearNvimSelection,
     openFile: nvimOpen,
-    sendKeys,
-    sendMouse,
     error: nvimError,
   } = useNeovim(
     true,
@@ -393,8 +393,7 @@ export function App({
   }, []);
 
   useEditorInput({
-    sendKeys,
-    sendMouse,
+    ptyWrite,
     isEditorFocused: focusMode === "editor" && nvimReady,
     isEditorVisible: editorVisible,
     onFocusChat: focusChat,
@@ -1141,8 +1140,9 @@ export function App({
         <EditorPanel
           isOpen={editorOpen}
           fileName={editorFile}
-          screenLines={screenLines}
-          defaultBg={defaultBg}
+          ptyOnData={ptyOnData}
+          nvimCols={nvimCols}
+          nvimRows={nvimRows}
           modeName={nvimMode}
           focused={focusMode === "editor"}
           cursorLine={cursorLine}
