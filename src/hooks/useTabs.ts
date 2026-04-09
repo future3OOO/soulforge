@@ -293,7 +293,14 @@ export function useTabs(): UseTabsReturn {
           id: tm.id,
           label: tm.label,
           messages: msgs,
-          coreMessages: rebuildCoreMessages(msgs),
+          coreMessages: rebuildCoreMessages(
+            (() => {
+              // Find the last compaction summary — rebuild core only from that
+              // point so compacted context isn't resurrected from full history.
+              const lastCompactIdx = msgs.findLastIndex((m) => m.isCompactionSummary);
+              return lastCompactIdx >= 0 ? msgs.slice(lastCompactIdx) : msgs;
+            })(),
+          ),
           activeModel: tm.activeModel,
           activePlan: null,
           sidebarPlan: null,

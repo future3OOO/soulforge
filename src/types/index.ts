@@ -151,6 +151,10 @@ export interface ChatMessage {
   durationMs?: number;
   /** Attached images (pasted from clipboard or referenced by path). */
   images?: ImageAttachment[];
+  /** Marks the synthetic summary message injected by compaction.
+   *  On session restore, core messages are rebuilt only from this point forward
+   *  so compacted context isn't resurrected. */
+  isCompactionSummary?: boolean;
 }
 
 export interface ToolCall {

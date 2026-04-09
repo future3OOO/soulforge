@@ -1124,15 +1124,64 @@ export function useChat({
           };
         });
 
-        setMessages((prev) => [
-          ...prev,
-          {
-            id: crypto.randomUUID(),
-            role: "system",
-            content: `Context optimized (${beforePct}% → ${afterPct}%).`,
-            timestamp: Date.now(),
-          },
-        ]);
+        // Restructure ChatMessages so the compaction summary + recent messages
+        // appear at the end. On restore, rebuildCoreMessages starts from the last
+        // isCompactionSummary message — this preserves full chat history for display
+        // while keeping the compacted core small.
+        //
+        // We find which ChatMessages correspond to the "recent" core messages
+        // (from keepStart onward) and place them after the summary/ack pair.
+        // rebuildCoreMessages always produces valid assistant/tool pairs from
+        // ChatMessages (toolCalls are bundled), so the core sanitization edge
+        // cases (orphaned tool messages) don't apply on restore.
+        const compactTs = Date.now();
+        setMessages((prev) => {
+          // Walk ChatMessages to find the split point matching keepStart in core.
+          // System messages produce 0 core messages; assistant+toolCalls produces 2.
+          // We walk the original array (not filtered) to preserve ephemeral system
+          // messages in the UI, while correctly mapping core index → chat index.
+          let ci = 0;
+          let chatSplit = prev.length;
+          for (let i = 0; i < prev.length; i++) {
+            if (ci >= keepStart) {
+              chatSplit = i;
+              break;
+            }
+            const m = prev[i]!;
+            if (m.role === "system") continue;
+            if (m.role === "assistant" && m.toolCalls && m.toolCalls.length > 0) {
+              ci += 2;
+            } else {
+              ci += 1;
+            }
+          }
+          const olderChat = prev.slice(0, chatSplit);
+          const recentChat = prev.slice(chatSplit);
+
+          return [
+            ...olderChat,
+            {
+              id: crypto.randomUUID(),
+              role: "user" as const,
+              content: summary,
+              timestamp: compactTs,
+              isCompactionSummary: true,
+            },
+            {
+              id: crypto.randomUUID(),
+              role: "assistant" as const,
+              content: "Continuing.",
+              timestamp: compactTs,
+            },
+            ...recentChat,
+            {
+              id: crypto.randomUUID(),
+              role: "system" as const,
+              content: `Context optimized (${beforePct}% → ${afterPct}%).`,
+              timestamp: compactTs,
+            },
+          ];
+        });
 
         logCompaction("compact", `${beforePct}% → ${afterPct}%`, {
           model: modelLabel,

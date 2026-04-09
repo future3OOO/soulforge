@@ -160,7 +160,11 @@ export class SessionManager {
     const firstTab = data.meta.tabs[0];
     if (!firstTab) return null;
     const msgs = data.tabMessages.get(firstTab.id) ?? [];
-    return { messages: msgs, coreMessages: rebuildCoreMessages(msgs) };
+    // Rebuild core only from the last compaction summary so compacted
+    // context isn't resurrected from the full chat history.
+    const lastCompactIdx = msgs.findLastIndex((m) => m.isCompactionSummary);
+    const coreSource = lastCompactIdx >= 0 ? msgs.slice(lastCompactIdx) : msgs;
+    return { messages: msgs, coreMessages: rebuildCoreMessages(coreSource) };
   }
 
   findByPrefix(prefix: string): string | null {

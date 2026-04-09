@@ -31,39 +31,11 @@ const NvimTerminal = memo(function NvimTerminal({
   const termRef = useRef<GhosttyTerminalRenderable | null>(null);
 
   useEffect(() => {
-    // Batch PTY chunks that arrive in the same event loop tick into a single
-    // feed() call. Without this, neovim's rapid small writes (dozens per frame
-    // during scrolling) each trigger a separate requestRender(), causing
-    // partial/torn frames and visible artifacts.
-    let pending: Uint8Array[] = [];
-    let scheduled = false;
-
-    const flush = () => {
-      scheduled = false;
-      const term = termRef.current;
-      if (!term || pending.length === 0) return;
-      if (pending.length === 1) {
-        term.feed(pending[0] as Uint8Array);
-      } else {
-        let total = 0;
-        for (const chunk of pending) total += chunk.byteLength;
-        const combined = new Uint8Array(total);
-        let offset = 0;
-        for (const chunk of pending) {
-          combined.set(chunk, offset);
-          offset += chunk.byteLength;
-        }
-        term.feed(combined);
-      }
-      pending = [];
-    };
-
+    // Feed PTY data directly — ghostty's requestRender() is coalesced
+    // by opentui's render loop so multiple feeds per frame are fine.
     return ptyOnData((data) => {
-      pending.push(data);
-      if (!scheduled) {
-        scheduled = true;
-        queueMicrotask(flush);
-      }
+      const term = termRef.current;
+      if (term) term.feed(data);
     });
   }, [ptyOnData]);
 
