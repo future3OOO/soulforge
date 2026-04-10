@@ -12,6 +12,7 @@ import { rename, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import { logBackgroundError } from "../../stores/errors.js";
 import type { ChatMessage } from "../../types/index.js";
+import { ensureSoulforgeDir } from "../utils/ensure-soulforge-dir.js";
 import { getIOClient } from "../workers/io-client.js";
 import { rebuildCoreMessages } from "./rebuild.js";
 import type { SessionMeta, TabMeta } from "./types.js";
@@ -27,13 +28,16 @@ export interface SessionListEntry {
 
 export class SessionManager {
   private dir: string;
+  private cwd: string;
 
   constructor(cwd: string) {
+    this.cwd = cwd;
     this.dir = join(cwd, ".soulforge", "sessions");
   }
 
   private ensureDir(): void {
     if (!existsSync(this.dir)) {
+      ensureSoulforgeDir(this.cwd);
       mkdirSync(this.dir, { recursive: true });
     }
   }
