@@ -229,9 +229,18 @@ export function useNeovim(
             mode?: string;
             sel?: string;
           };
-          if (r.name) setFileName((prev) => (prev === r.name ? prev : r.name!));
-          if (r.line != null) setCursorLine((prev) => (prev === r.line ? prev : r.line!));
-          if (r.col != null) setCursorCol((prev) => (prev === r.col ? prev : r.col!));
+          if (r.name) {
+            const name = r.name;
+            setFileName((prev) => (prev === name ? prev : name));
+          }
+          if (r.line != null) {
+            const line = r.line;
+            setCursorLine((prev) => (prev === line ? prev : line));
+          }
+          if (r.col != null) {
+            const col = r.col;
+            setCursorCol((prev) => (prev === col ? prev : col));
+          }
           setVisualSelection((prev) => {
             if (r.sel) return r.sel;
             return prev;
