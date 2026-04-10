@@ -29,14 +29,17 @@ function getHookPaths(cwd: string): string[] {
   ];
 }
 
-function readHooksFromFile(filePath: string): HooksConfig | null {
+interface SettingsFile {
+  hooks?: HooksConfig;
+  disableAllHooks?: boolean;
+}
+
+function readSettingsFile(filePath: string): SettingsFile | null {
   if (!existsSync(filePath)) return null;
   try {
     const raw = readFileSync(filePath, "utf-8");
     const parsed = JSON.parse(raw);
-    if (parsed && typeof parsed === "object" && parsed.hooks && typeof parsed.hooks === "object") {
-      return parsed.hooks as HooksConfig;
-    }
+    if (parsed && typeof parsed === "object") return parsed as SettingsFile;
     return null;
   } catch {
     return null;
@@ -46,14 +49,21 @@ function readHooksFromFile(filePath: string): HooksConfig | null {
 /**
  * Load and merge hooks from all config sources.
  * Returns a merged HooksConfig where each event has all rules from all sources.
+ * Returns empty config if any source sets `disableAllHooks: true`.
  */
 export function loadHooks(cwd: string): HooksConfig {
   const paths = getHookPaths(cwd);
   const merged: Record<string, HookRule[]> = {};
 
   for (const path of paths) {
-    const hooks = readHooksFromFile(path);
-    if (!hooks) continue;
+    const settings = readSettingsFile(path);
+    if (!settings) continue;
+
+    // disableAllHooks in any config file kills all hooks globally
+    if (settings.disableAllHooks === true) return {};
+
+    const hooks = settings.hooks;
+    if (!hooks || typeof hooks !== "object") continue;
 
     for (const [event, rules] of Object.entries(hooks)) {
       if (!Array.isArray(rules)) continue;

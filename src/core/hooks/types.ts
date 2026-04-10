@@ -31,10 +31,26 @@ export interface CommandHook {
   command: string;
   /** Run in background without blocking the agent. */
   async?: boolean;
-  /** Timeout in seconds (default: 60). */
+  /** Timeout in seconds (default: 10). */
   timeout?: number;
   /** Spinner message shown in UI while hook runs. */
   statusMessage?: string;
+  /** Run only once per session. Subsequent calls are silently skipped. */
+  once?: boolean;
+  /**
+   * Conditional execution using permission rule syntax.
+   * Only spawns the hook process if the condition matches the tool input.
+   *
+   * Examples:
+   * - `"Bash(git *)"` — only fire for git commands
+   * - `"Edit(*.ts)"` — only fire for TypeScript file edits
+   * - `"Bash(rm *)"` — only fire for rm commands
+   *
+   * Format: `ToolName(glob_pattern)` — ToolName must match, and the
+   * first string argument of the tool input must match the glob.
+   * Without `if`, the hook fires on every matcher match.
+   */
+  if?: string;
 }
 
 // We only support command hooks for now — http/prompt/agent can be added later.

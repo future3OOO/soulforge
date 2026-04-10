@@ -31,6 +31,55 @@ const DEFAULT_TIMEOUT_S = 10;
 /** Max stdout bytes to capture from a hook process. */
 const MAX_STDOUT_BYTES = 256 * 1024; // 256KB
 
+// ── once: true tracking ──────────────────────────────────────────────
+// Keyed by command string — a hook with once:true only fires once per
+// process lifetime (session). Survives cache invalidation.
+const _onceFired = new Set<string>();
+
+/** Reset once-tracking (for tests). */
+export function resetOnceTracking(): void {
+  _onceFired.clear();
+}
+
+// ── if: conditional execution ────────────────────────────────────────
+
+/**
+ * Check if a hook's `if` condition matches the current tool input.
+ *
+ * Format: `ToolName(glob_pattern)` — e.g. `Bash(git *)`, `Edit(*.ts)`
+ * The ToolName must match the current tool, and the glob pattern is tested
+ * against the first string value in tool_input (typically `command` or `path`).
+ *
+ * Simple glob: `*` matches any sequence, `?` matches one char.
+ */
+function matchesIfCondition(
+  condition: string,
+  claudeToolName: string,
+  toolInput?: Record<string, unknown>,
+): boolean {
+  const m = condition.match(/^(\w+)\((.+)\)$/);
+  if (!m) return true; // Malformed condition — don't block
+
+  const [, condTool, pattern] = m;
+  if (condTool !== claudeToolName) return false;
+
+  // Find the first string value in tool input to match against
+  if (!toolInput) return false;
+  const firstStr = Object.values(toolInput).find((v): v is string => typeof v === "string");
+  if (!firstStr) return false;
+
+  // Convert simple glob to regex: * → .*, ? → .
+  const escaped = pattern!
+    .replace(/[.+^${}()|[\]\\]/g, "\\$&")
+    .replace(/\*/g, ".*")
+    .replace(/\?/g, ".");
+  try {
+    return new RegExp(`^${escaped}$`).test(firstStr);
+  } catch {
+    return true; // Bad pattern — don't block
+  }
+}
+
 /** Resolve the shell binary. */
 function getShell(): { cmd: string; args: string[] } {
   return { cmd: "/bin/sh", args: ["-c"] };
@@ -286,6 +335,19 @@ export async function runHooks(opts: RunHooksOptions): Promise<HookResult> {
   for (const rule of rules) {
     for (const hook of rule.hooks) {
       if (hook.type !== "command") continue;
+
+      // once: true — skip if this command already fired this session
+      if (hook.once) {
+        const key = `${opts.event}:${hook.command}`;
+        if (_onceFired.has(key)) continue;
+        _onceFired.add(key);
+      }
+
+      // if: conditional — skip if condition doesn't match tool input
+      if (hook.if && opts.toolName) {
+        const claudeName = toClaudeToolName(opts.toolName);
+        if (!matchesIfCondition(hook.if, claudeName, updatedInput ?? opts.toolInput)) continue;
+      }
 
       if (hook.async) {
         // Fire-and-forget — don't await, don't block

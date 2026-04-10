@@ -1,7 +1,7 @@
 import { describe, test, expect } from "vitest";
 import { matchesToolName, toClaudeToolName } from "../src/core/hooks/tool-names.js";
 import { invalidateHooksCache, loadHooks } from "../src/core/hooks/loader.js";
-import { runHooks } from "../src/core/hooks/runner.js";
+import { resetOnceTracking, runHooks } from "../src/core/hooks/runner.js";
 import { mkdirSync, rmSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { tmpdir } from "node:os";
@@ -447,4 +447,261 @@ describe("runHooks", () => {
     expect(result.blocked).toBe(false);
     cleanup();
   }, 5000);
+});
+
+// ── disableAllHooks ──────────────────────────────────────────────────
+
+describe("disableAllHooks", () => {
+  const testDir = join(tmpdir(), `soulforge-hooks-disable-${Date.now()}`);
+
+  function setup(files: Record<string, unknown>) {
+    for (const [relPath, content] of Object.entries(files)) {
+      const fullPath = join(testDir, relPath);
+      const dir = fullPath.replace(/\/[^/]+$/, "");
+      mkdirSync(dir, { recursive: true });
+      writeFileSync(fullPath, JSON.stringify(content, null, 2));
+    }
+  }
+
+  function cleanup() {
+    invalidateHooksCache();
+    try { rmSync(testDir, { recursive: true, force: true }); } catch {}
+  }
+
+  test("disableAllHooks in settings.local.json kills all hooks", () => {
+    cleanup();
+    setup({
+      ".claude/settings.json": {
+        hooks: {
+          PreToolUse: [{ matcher: "Bash", hooks: [{ type: "command", command: "exit 2" }] }],
+        },
+      },
+      ".claude/settings.local.json": { disableAllHooks: true },
+    });
+    const hooks = loadHooks(testDir);
+    expect(hooks.PreToolUse).toBeUndefined();
+    cleanup();
+  });
+
+  test("disableAllHooks in soulforge config kills all hooks", () => {
+    cleanup();
+    setup({
+      ".claude/settings.json": {
+        hooks: {
+          PreToolUse: [{ matcher: "Bash", hooks: [{ type: "command", command: "exit 2" }] }],
+        },
+      },
+      ".soulforge/config.json": { disableAllHooks: true },
+    });
+    const hooks = loadHooks(testDir);
+    expect(hooks.PreToolUse).toBeUndefined();
+    cleanup();
+  });
+
+  test("hooks load normally when disableAllHooks is false", () => {
+    cleanup();
+    setup({
+      ".claude/settings.json": {
+        hooks: {
+          PreToolUse: [{ matcher: "Bash", hooks: [{ type: "command", command: "echo ok" }] }],
+        },
+      },
+      ".claude/settings.local.json": { disableAllHooks: false },
+    });
+    const hooks = loadHooks(testDir);
+    expect(hooks.PreToolUse).toHaveLength(1);
+    cleanup();
+  });
+});
+
+// ── once: true ───────────────────────────────────────────────────────
+
+describe("once: true", () => {
+  const testDir = join(tmpdir(), `soulforge-hooks-once-${Date.now()}`);
+
+  function setup(config: unknown) {
+    const dir = join(testDir, ".claude");
+    mkdirSync(dir, { recursive: true });
+    writeFileSync(join(dir, "settings.json"), JSON.stringify(config, null, 2));
+    invalidateHooksCache();
+  }
+
+  function cleanup() {
+    invalidateHooksCache();
+    resetOnceTracking();
+    try { rmSync(testDir, { recursive: true, force: true }); } catch {}
+  }
+
+  test("once:true hook fires first time, skips second", async () => {
+    cleanup();
+    const outFile = join(testDir, "once_count");
+    // Append a line each time — count lines to verify invocations
+    setup({
+      hooks: {
+        PreToolUse: [{
+          matcher: "Bash",
+          hooks: [{ type: "command", command: `echo x >> "${outFile}"`, once: true }],
+        }],
+      },
+    });
+
+    await runHooks({ event: "PreToolUse", toolName: "shell", cwd: testDir });
+    await runHooks({ event: "PreToolUse", toolName: "shell", cwd: testDir });
+    await runHooks({ event: "PreToolUse", toolName: "shell", cwd: testDir });
+
+    const { readFileSync } = await import("node:fs");
+    const lines = readFileSync(outFile, "utf-8").trim().split("\n");
+    expect(lines).toHaveLength(1);
+    cleanup();
+  });
+
+  test("hook without once:true fires every time", async () => {
+    cleanup();
+    const outFile = join(testDir, "no_once_count");
+    setup({
+      hooks: {
+        PreToolUse: [{
+          matcher: "Bash",
+          hooks: [{ type: "command", command: `echo x >> "${outFile}"` }],
+        }],
+      },
+    });
+
+    await runHooks({ event: "PreToolUse", toolName: "shell", cwd: testDir });
+    await runHooks({ event: "PreToolUse", toolName: "shell", cwd: testDir });
+    await runHooks({ event: "PreToolUse", toolName: "shell", cwd: testDir });
+
+    const { readFileSync } = await import("node:fs");
+    const lines = readFileSync(outFile, "utf-8").trim().split("\n");
+    expect(lines).toHaveLength(3);
+    cleanup();
+  });
+});
+
+// ── if: conditional execution ────────────────────────────────────────
+
+describe("if: conditional", () => {
+  const testDir = join(tmpdir(), `soulforge-hooks-if-${Date.now()}`);
+
+  function setup(config: unknown) {
+    const dir = join(testDir, ".claude");
+    mkdirSync(dir, { recursive: true });
+    writeFileSync(join(dir, "settings.json"), JSON.stringify(config, null, 2));
+    invalidateHooksCache();
+  }
+
+  function cleanup() {
+    invalidateHooksCache();
+    try { rmSync(testDir, { recursive: true, force: true }); } catch {}
+  }
+
+  test("if condition matches — hook fires", async () => {
+    cleanup();
+    setup({
+      hooks: {
+        PreToolUse: [{
+          matcher: "Bash",
+          hooks: [{ type: "command", command: "exit 2", if: "Bash(git *)" }],
+        }],
+      },
+    });
+    const result = await runHooks({
+      event: "PreToolUse",
+      toolName: "shell",
+      toolInput: { command: "git status" },
+      cwd: testDir,
+    });
+    expect(result.blocked).toBe(true);
+    cleanup();
+  });
+
+  test("if condition doesn't match — hook skipped", async () => {
+    cleanup();
+    setup({
+      hooks: {
+        PreToolUse: [{
+          matcher: "Bash",
+          hooks: [{ type: "command", command: "exit 2", if: "Bash(git *)" }],
+        }],
+      },
+    });
+    const result = await runHooks({
+      event: "PreToolUse",
+      toolName: "shell",
+      toolInput: { command: "ls -la" },
+      cwd: testDir,
+    });
+    expect(result.blocked).toBe(false);
+    cleanup();
+  });
+
+  test("if with wrong tool name — hook skipped", async () => {
+    cleanup();
+    setup({
+      hooks: {
+        PreToolUse: [{
+          matcher: "Bash",
+          hooks: [{ type: "command", command: "exit 2", if: "Edit(*.ts)" }],
+        }],
+      },
+    });
+    const result = await runHooks({
+      event: "PreToolUse",
+      toolName: "shell",
+      toolInput: { command: "echo hello" },
+      cwd: testDir,
+    });
+    expect(result.blocked).toBe(false);
+    cleanup();
+  });
+
+  test("if with file glob pattern", async () => {
+    cleanup();
+    setup({
+      hooks: {
+        PreToolUse: [{
+          matcher: "Edit",
+          hooks: [{ type: "command", command: "exit 2", if: "Edit(*.ts)" }],
+        }],
+      },
+    });
+    // Matches .ts file
+    const r1 = await runHooks({
+      event: "PreToolUse",
+      toolName: "edit_file",
+      toolInput: { path: "src/index.ts", oldString: "", newString: "" },
+      cwd: testDir,
+    });
+    expect(r1.blocked).toBe(true);
+
+    // Doesn't match .js file
+    const r2 = await runHooks({
+      event: "PreToolUse",
+      toolName: "edit_file",
+      toolInput: { path: "src/index.js", oldString: "", newString: "" },
+      cwd: testDir,
+    });
+    expect(r2.blocked).toBe(false);
+    cleanup();
+  });
+
+  test("no if field — hook always fires", async () => {
+    cleanup();
+    setup({
+      hooks: {
+        PreToolUse: [{
+          matcher: "Bash",
+          hooks: [{ type: "command", command: "exit 2" }],
+        }],
+      },
+    });
+    const result = await runHooks({
+      event: "PreToolUse",
+      toolName: "shell",
+      toolInput: { command: "anything" },
+      cwd: testDir,
+    });
+    expect(result.blocked).toBe(true);
+    cleanup();
+  });
 });

@@ -4,7 +4,7 @@ export {
   invalidateHooksCache,
   loadHooks,
 } from "./loader.js";
-export { hasToolHooks, runHooks } from "./runner.js";
+export { hasToolHooks, resetOnceTracking, runHooks } from "./runner.js";
 export { matchesToolName, toClaudeToolName } from "./tool-names.js";
 export type {
   CommandHook,
