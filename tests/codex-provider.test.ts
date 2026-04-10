@@ -1,11 +1,11 @@
 import type { LanguageModelV2CallOptions } from "@ai-sdk/provider";
 import { describe, expect, test } from "bun:test";
 import { getAllProviders, getProvider } from "../src/core/llm/providers/index.js";
+import { performCodexBrowserLogin } from "../src/core/llm/providers/codex/auth.js";
 import {
   buildCodexSchema,
   codex,
   createCodexLanguageModel,
-  performCodexBrowserLogin,
   parseCodexLoginStatus,
   parseCodexModelListResult,
   parseCodexResponse,
