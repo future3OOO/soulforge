@@ -60,7 +60,7 @@ import { getIOClient } from "../core/workers/io-client.js";
 import { logCompaction } from "../stores/compaction-logs.js";
 import { logBackgroundError } from "../stores/errors.js";
 import { useRepoMapStore } from "../stores/repomap.js";
-import { ZERO_USAGE, accumulateModelUsage, useStatusBarStore } from "../stores/statusbar.js";
+import { accumulateModelUsage, useStatusBarStore, ZERO_USAGE } from "../stores/statusbar.js";
 import { useToolsStore } from "../stores/tools.js";
 import type {
   AppConfig,

@@ -2,9 +2,9 @@ import { toErrorMessage } from "../../utils/errors.js";
 import { ensureProxy } from "../proxy/lifecycle.js";
 import { getProviderApiKey } from "../secrets.js";
 import { getIOClient } from "../workers/io-client.js";
+import { inferModelGroup } from "./model-utils.js";
 import { getAllProviders, getProvider, onProvidersChanged } from "./providers/index.js";
 import type { ProviderModelInfo } from "./providers/types.js";
-import { inferModelGroup } from "./model-utils.js";
 
 // Re-export for backward compatibility
 export type { ProviderModelInfo } from "./providers/types.js";

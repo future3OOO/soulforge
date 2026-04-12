@@ -13,13 +13,13 @@ import { useTheme } from "../../core/theme/index.js";
 import type { UseTabsReturn } from "../../hooks/useTabs.js";
 import { useRepoMapStore } from "../../stores/repomap.js";
 import {
-  ZERO_USAGE,
   computeModelCost,
   computeTotalCostFromBreakdown,
   isModelFree,
   isModelLocal,
   type TokenUsage,
   useStatusBarStore,
+  ZERO_USAGE,
 } from "../../stores/statusbar.js";
 import { useWorkerStore } from "../../stores/workers.js";
 import { POPUP_BG, Popup, PopupRow } from "../layout/shared.js";
