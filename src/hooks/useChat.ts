@@ -2674,21 +2674,13 @@ export function useChat({
           throw new Error("Stream stall — abort did not throw");
         }
 
-        // Log agent stop reason for debugging (visible via /errors)
-        try {
-          const resp = await Promise.race([
-            result.response,
-            new Promise<null>((r) => setTimeout(() => r(null), 2_000)),
-          ]);
-          if (resp) {
-            const lastStep = resp.messages?.length ?? 0;
-            const reason = (resp as { finishReason?: string }).finishReason ?? "unknown";
-            logBackgroundError(
-              "agent-stop",
-              `finishReason=${reason} steps=${String(lastStep)} streamErrors=${String(streamErrors.length)}`,
-            );
-          }
-        } catch {}
+        // Log agent stop reason for debugging (visible via /errors) — only when errors occurred
+        if (streamErrors.length > 0) {
+          logBackgroundError(
+            "agent-stop",
+            `streamErrors=${String(streamErrors.length)}: ${streamErrors[0]?.slice(0, 200)}`,
+          );
+        }
 
         if (flushTimerRef.current) {
           clearInterval(flushTimerRef.current);
