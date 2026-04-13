@@ -246,6 +246,7 @@ export const editFileTool = {
         let out = `Created ${filePath} (lines: ${String(metrics.lineCount)}, imports: ${String(metrics.importCount)})`;
         if (dirCreated) out += ` [directory created: ${dir}]`;
         if (openedInEditor) out += " → opened in editor";
+        out = await appendCloneHints(filePath, out);
         return { success: true, output: out };
       }
 
