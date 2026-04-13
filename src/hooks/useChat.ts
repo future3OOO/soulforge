@@ -14,7 +14,6 @@ import type { StreamSegment } from "../components/chat/StreamSegmentList.js";
 import type { LiveToolCall } from "../components/chat/ToolCallDisplay.js";
 import { normalizePath } from "../core/agents/agent-bus.js";
 import { createForgeAgent } from "../core/agents/index.js";
-
 import { onAgentStats, onMultiAgentEvent, onSubagentStep } from "../core/agents/subagent-events.js";
 import type { SharedCacheRef } from "../core/agents/subagent-tools.js";
 import {
@@ -75,6 +74,7 @@ import type {
   PlanStepStatus,
   QueuedMessage,
 } from "../types/index.js";
+import { compressImageForApi } from "../utils/image-compress.js";
 import { reprimeContextFromMessages, safeParseArgs } from "./chat/message-processing.js";
 import { buildAssistantMessage, hasRenderableAssistantContent } from "./useChat-content.js";
 import { cycleForgeMode } from "./useForgeMode.js";
@@ -1471,10 +1471,12 @@ export function useChat({
       if (images && images.length > 0) {
         const parts: Array<TextPart | ImagePart> = [{ type: "text" as const, text: input }];
         for (const img of images) {
+          const raw = Buffer.from(img.base64, "base64");
+          const { data, mediaType } = await compressImageForApi(raw, img.mediaType);
           parts.push({
             type: "image" as const,
-            image: Buffer.from(img.base64, "base64"),
-            mediaType: img.mediaType,
+            image: data,
+            mediaType,
           });
         }
         userContent = parts;
