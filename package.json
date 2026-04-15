@@ -82,6 +82,7 @@
     "ai": "6.0.154",
     "ghostty-opentui": "1.4.10",
     "isbinaryfile": "6.0.0",
+    "jsonrepair": "^3.13.3",
     "linkedom": "0.18.12",
     "linkify-it": "5.0.0",
     "marked": "17.0.5",

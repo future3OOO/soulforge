@@ -1,5 +1,6 @@
 import type { LanguageModelV3ToolCall } from "@ai-sdk/provider";
 import type { ModelMessage } from "ai";
+import { jsonrepair } from "jsonrepair";
 
 /**
  * Sanitize tool-call inputs in messages to prevent Anthropic API rejections.
@@ -49,10 +50,12 @@ export function sanitizeToolInputsStep({
 /**
  * Attempt to repair malformed tool call JSON from weaker models.
  *
- * Common issues:
+ * Uses the `jsonrepair` library which handles:
  * - Trailing commas in objects/arrays
  * - Truncated JSON (unclosed brackets from output token limits)
- * - Unquoted property names
+ * - Unquoted property names and string values
+ * - Single quotes instead of double quotes
+ * - Special quote characters, comments, and more
  *
  * Returns the repaired tool call or null if repair isn't possible.
  */
@@ -61,102 +64,26 @@ export async function repairToolCall({
 }: {
   toolCall: LanguageModelV3ToolCall;
 }): Promise<LanguageModelV3ToolCall | null> {
-  let input = toolCall.input.trim();
-  if (!input) return null;
+  const trimmed = toolCall.input.trim();
+  if (!trimmed) return null;
 
-  // Fix unquoted string values: {"path": src/core/tools} → {"path": "src/core/tools"}
-  // Matches: after a colon (with optional whitespace), a bare value that isn't
-  // a number, boolean, null, string, object, or array — i.e. an unquoted string.
-  input = input.replace(
-    /:\s*(?!\s*["{}[\]0-9-]|\s*(?:true|false|null)\b)([^,}\]\n]+?)\s*([,}\]])/g,
-    (_match, val, delim) => `: "${val.trim()}"${delim}`,
-  );
-
-  // Fix trailing commas: {"a": 1,} → {"a": 1}
-  input = input.replace(/,\s*([}\]])/g, "$1");
-
-  // Try closing truncated JSON — track bracket stack outside of strings
-  let inString = false;
-  let escaped = false;
-  const stack: string[] = [];
-  for (const ch of input) {
-    if (escaped) {
-      escaped = false;
-      continue;
-    }
-    if (ch === "\\") {
-      escaped = inString;
-      continue;
-    }
-    if (ch === '"') {
-      inString = !inString;
-      continue;
-    }
-    if (inString) continue;
-    if (ch === "{" || ch === "[") stack.push(ch);
-    if (ch === "}") {
-      if (stack.length > 0 && stack[stack.length - 1] === "{") stack.pop();
-    }
-    if (ch === "]") {
-      if (stack.length > 0 && stack[stack.length - 1] === "[") stack.pop();
-    }
-  }
-
-  // Close any unclosed brackets (truncated output)
-  if (stack.length > 0) {
-    // Strip trailing partial key/value that might be mid-string
-    if (inString) {
-      const lastQuote = input.lastIndexOf('"');
-      if (lastQuote > 0) {
-        input = input.slice(0, lastQuote);
-        // Remove the dangling key or value back to the last comma or bracket
-        input = input.replace(/,?\s*"[^"]*$/, "");
-      }
-    }
-    // Re-scan after trimming
-    const stack2: string[] = [];
-    let inStr2 = false;
-    let esc2 = false;
-    for (const ch of input) {
-      if (esc2) {
-        esc2 = false;
-        continue;
-      }
-      if (ch === "\\") {
-        esc2 = inStr2;
-        continue;
-      }
-      if (ch === '"') {
-        inStr2 = !inStr2;
-        continue;
-      }
-      if (inStr2) continue;
-      if (ch === "{" || ch === "[") stack2.push(ch);
-      if (ch === "}") {
-        if (stack2.length > 0 && stack2[stack2.length - 1] === "{") stack2.pop();
-      }
-      if (ch === "]") {
-        if (stack2.length > 0 && stack2[stack2.length - 1] === "[") stack2.pop();
-      }
-    }
-    // Fix trailing commas again after trimming
-    input = input.replace(/,\s*$/, "");
-    // Close remaining brackets in reverse order
-    for (let i = stack2.length - 1; i >= 0; i--) {
-      input += stack2[i] === "{" ? "}" : "]";
-    }
-  }
-
-  // Nothing changed — repair not possible
-  if (input === toolCall.input.trim()) return null;
-
-  // Verify the result actually parses
+  let repaired: string;
   try {
-    const parsed = JSON.parse(input);
+    repaired = jsonrepair(trimmed);
+  } catch {
+    return null;
+  }
+
+  // Verify the result is a valid JSON object (not array, string, number, etc.)
+  try {
+    const parsed = JSON.parse(repaired);
     if (typeof parsed !== "object" || parsed === null || Array.isArray(parsed)) return null;
   } catch {
     return null;
   }
 
-  return { ...toolCall, input };
+  // Nothing changed — no repair was needed
+  if (repaired === trimmed) return null;
+
+  return { ...toolCall, input: repaired };
 }

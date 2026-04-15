@@ -33,14 +33,16 @@ describe("repairToolCall — truncated output", () => {
     expect(JSON.parse(result!.input).items).toEqual([1, 2, 3]);
   });
 
-  it("cannot recover truncation mid-string value", async () => {
+  it("recovers truncation mid-string value", async () => {
     const result = await repairToolCall({ toolCall: mockToolCall('{"file": "src/core/too') });
-    expect(result).toBeNull();
+    expect(result).not.toBeNull();
+    expect(JSON.parse(result!.input).file).toBe("src/core/too");
   });
 
-  it("cannot recover truncation mid-key", async () => {
+  it("recovers truncation mid-key", async () => {
     const result = await repairToolCall({ toolCall: mockToolCall('{"file": "test.ts", "con') });
-    expect(result).toBeNull();
+    expect(result).not.toBeNull();
+    expect(JSON.parse(result!.input).file).toBe("test.ts");
   });
 
   it("handles deeply nested truncation", async () => {
@@ -113,9 +115,10 @@ describe("repairToolCall — string edge cases", () => {
     expect(result).toBeNull();
   });
 
-  it("cannot recover truncation after escaped quote", async () => {
+  it("recovers truncation after escaped quote", async () => {
     const result = await repairToolCall({ toolCall: mockToolCall('{"msg": "hello \\"world') });
-    expect(result).toBeNull();
+    expect(result).not.toBeNull();
+    expect(JSON.parse(result!.input).msg).toBe('hello "world');
   });
 
   it("handles empty string value", async () => {
@@ -124,23 +127,22 @@ describe("repairToolCall — string edge cases", () => {
     expect(JSON.parse(result!.input).file).toBe("");
   });
 
-  it("cannot recover string ending with backslash (truncated escape)", async () => {
+  it("recovers string ending with backslash (truncated escape)", async () => {
     const result = await repairToolCall({ toolCall: mockToolCall('{"path": "C:\\') });
-    expect(result).toBeNull();
+    expect(result).not.toBeNull();
+    expect(JSON.parse(result!.input)).toHaveProperty("path");
   });
 });
 
 describe("repairToolCall — unquoted string values", () => {
-  it("quotes a single unquoted path value", async () => {
+  it("returns null for unquoted path values with slashes (ambiguous)", async () => {
     const result = await repairToolCall({ toolCall: mockToolCall('{"path": src/core/tools}') });
-    expect(result).not.toBeNull();
-    expect(JSON.parse(result!.input)).toEqual({ path: "src/core/tools" });
+    expect(result).toBeNull();
   });
 
-  it("quotes unquoted value with other valid fields", async () => {
+  it("returns null for unquoted path values with other fields (ambiguous)", async () => {
     const result = await repairToolCall({ toolCall: mockToolCall('{"path": src/core/tools, "depth": 2}') });
-    expect(result).not.toBeNull();
-    expect(JSON.parse(result!.input)).toEqual({ path: "src/core/tools", depth: 2 });
+    expect(result).toBeNull();
   });
 
   it("does not touch already-quoted strings", async () => {
@@ -153,16 +155,26 @@ describe("repairToolCall — unquoted string values", () => {
     expect(result).toBeNull(); // already valid
   });
 
-  it("quotes multiple unquoted values", async () => {
+  it("returns null for multiple unquoted path values (ambiguous)", async () => {
     const result = await repairToolCall({ toolCall: mockToolCall('{"from": src/a.ts, "to": src/b.ts}') });
-    expect(result).not.toBeNull();
-    expect(JSON.parse(result!.input)).toEqual({ from: "src/a.ts", to: "src/b.ts" });
+    expect(result).toBeNull();
   });
 
-  it("handles unquoted value with spaces before delimiter", async () => {
+  it("returns null for unquoted path value with spaces (ambiguous)", async () => {
     const result = await repairToolCall({ toolCall: mockToolCall('{"path": some/path  }') });
+    expect(result).toBeNull();
+  });
+
+  it("quotes unquoted simple identifiers", async () => {
+    const result = await repairToolCall({ toolCall: mockToolCall('{name: John}') });
     expect(result).not.toBeNull();
-    expect(JSON.parse(result!.input)).toEqual({ path: "some/path" });
+    expect(JSON.parse(result!.input)).toEqual({ name: "John" });
+  });
+
+  it("handles single quotes", async () => {
+    const result = await repairToolCall({ toolCall: mockToolCall("{'path': 'src/core/tools'}") });
+    expect(result).not.toBeNull();
+    expect(JSON.parse(result!.input)).toEqual({ path: "src/core/tools" });
   });
 });
 
