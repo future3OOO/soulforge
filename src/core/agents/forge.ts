@@ -1,7 +1,7 @@
 import { forwardAnthropicContainerIdFromLastStep } from "@ai-sdk/anthropic";
 import type { ModelMessage, ProviderOptions } from "@ai-sdk/provider-utils";
 import type { LanguageModel } from "ai";
-import { ToolLoopAgent, tool } from "ai";
+import { ToolLoopAgent } from "ai";
 import { z } from "zod";
 import type {
   AgentFeatures,
@@ -24,13 +24,9 @@ import {
   buildTools,
   CORE_TOOL_NAMES,
   PLAN_EXECUTION_TOOL_NAMES,
-  PROGRAMMATIC_PROVIDER_OPTS,
   RESTRICTED_TOOL_NAMES,
-  SCHEMAS,
 } from "../tools/index.js";
-import { readFileTool } from "../tools/read-file.js";
 import { renderTaskList } from "../tools/task-list.js";
-import { normalizePath } from "./agent-bus.js";
 import { isApiExportEnabled } from "./step-utils.js";
 import { repairToolCall, sanitizeMessages } from "./stream-options.js";
 import { buildSubagentTools, type SharedCacheRef } from "./subagent-tools.js";
@@ -673,15 +669,8 @@ export function createForgeAgent({
         parentMessagesRef,
       });
 
-  const canUseProgrammatic = canUseCodeExecution && toolVersions.programmaticToolCalling;
-  const cachedReadFile =
-    sharedCacheRef && agentFeatures?.dispatchCache !== false
-      ? wrapReadFileWithDispatchCache(directTools.read, sharedCacheRef, cwd, canUseProgrammatic)
-      : directTools.read;
-
   const allTools = {
     ...orderedTools,
-    read: cachedReadFile,
     ...subagentTools,
     ...(interactive ? buildInteractiveTools(interactive, { cwd, sessionId, forgeMode }) : {}),
   };
@@ -759,83 +748,5 @@ export function createForgeAgent({
     experimental_repairToolCall: repairToolCall,
     providerOptions: wrappedProviderOptions,
     ...(subagentHeaders ? { headers: subagentHeaders } : {}),
-  });
-}
-
-function wrapReadFileWithDispatchCache(
-  _original: ReturnType<typeof buildTools>["read"],
-  cacheRef: SharedCacheRef,
-  projectCwd?: string,
-  codeExecution?: boolean,
-) {
-  const cwdPrefix = projectCwd ? (projectCwd.endsWith("/") ? projectCwd : `${projectCwd}/`) : null;
-
-  // The main read tool in index.ts handles batch mode (files array, ranges, etc.).
-  // This wrapper ONLY intercepts single-file full reads for dispatch cache hits.
-  // Everything else passes through to the real tool.
-  return tool({
-    description: readFileTool.description,
-    inputSchema: SCHEMAS.readFile,
-    providerOptions: codeExecution ? PROGRAMMATIC_PROVIDER_OPTS : undefined,
-    execute: async (args) => {
-      const specs = Array.isArray(args.files) ? args.files : args.files ? [args.files] : [];
-
-      // Only intercept single-file full reads (no ranges, no target, no multi-file)
-      if (specs.length === 1 && !specs[0]?.ranges?.length && !specs[0]?.target) {
-        const filePath = specs[0]?.path ?? "";
-        const cache = cacheRef.current;
-        if (cache && filePath) {
-          let normalized = normalizePath(filePath);
-          if (cwdPrefix && normalized.startsWith(cwdPrefix)) {
-            normalized = normalized.slice(cwdPrefix.length);
-          }
-          let cached = cache.files.get(normalized);
-          if (cached != null) {
-            for (let depth = 0; depth < 5 && cached.startsWith('{"success":'); depth++) {
-              try {
-                const parsed = JSON.parse(cached) as { success?: boolean; output?: string };
-                if (typeof parsed.success === "boolean" && typeof parsed.output === "string") {
-                  cached = parsed.output;
-                } else break;
-              } catch {
-                break;
-              }
-            }
-            const lines = cached.split("\n");
-            const numbered = lines
-              .map((line: string, i: number) => `${String(i + 1).padStart(4)}  ${line}`)
-              .join("\n");
-            return {
-              success: true,
-              output: `[from dispatch cache — ${String(lines.length)} lines]\n${numbered}`,
-            };
-          }
-        }
-      }
-
-      // Pass through: execute each file spec against the raw readFileTool
-      const outputs: string[] = [];
-      const multiFile = specs.length > 1;
-      for (const spec of specs) {
-        if (multiFile) outputs.push(`── ${spec.path} ──`);
-        if (spec.ranges && spec.ranges.length > 0) {
-          for (const r of spec.ranges) {
-            const result = await readFileTool.execute({
-              path: spec.path,
-              startLine: r.start,
-              endLine: r.end,
-            });
-            outputs.push(result.output);
-          }
-        } else {
-          const result = await readFileTool.execute({
-            path: spec.path,
-            ...(spec.target ? { target: spec.target, name: spec.name } : {}),
-          });
-          outputs.push(result.output);
-        }
-      }
-      return { success: true, output: outputs.join("\n\n") };
-    },
   });
 }

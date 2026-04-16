@@ -141,7 +141,7 @@ describe("AgentBus — file cache", () => {
 });
 
 describe("AgentBus — shared cache constructor", () => {
-  test("pre-seeds file cache from SharedCache", () => {
+  test("does NOT seed file cache from SharedCache (always read from disk)", () => {
     const shared: SharedCache = {
       files: new Map([["src/foo.ts", "pre-seeded"]]),
       toolResults: new Map(),
@@ -149,11 +149,9 @@ describe("AgentBus — shared cache constructor", () => {
     };
     const bus = new AgentBus(shared);
     const r = bus.acquireFileRead("a1", "src/foo.ts");
-    expect(r.cached).toBe(true);
-    if (r.cached === true) {
-      expect(r.content).toBe("pre-seeded");
-    }
-  });
+    // File content is never seeded — must always read from disk
+    expect(r.cached).toBe(false);
+    });
 
   test("pre-seeds findings from SharedCache", () => {
     const shared: SharedCache = {
@@ -540,14 +538,14 @@ describe("AgentBus — dispose & abort", () => {
 });
 
 describe("AgentBus — exportCaches", () => {
-  test("exports completed file cache entries", () => {
+  test("does NOT export file cache entries (always read from disk)", () => {
     const bus = new AgentBus();
     bus.updateFile("src/a.ts", "aaa");
     bus.updateFile("src/b.ts", "bbb");
 
     const exported = bus.exportCaches();
-    expect(exported.files.size).toBe(2);
-    expect(exported.files.get("src/a.ts")).toBe("aaa");
+    // File content is never exported — prevents stale reads across dispatches
+    expect(exported.files.size).toBe(0);
   });
 
   test("exports findings", () => {

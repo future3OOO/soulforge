@@ -176,18 +176,9 @@ export class AgentBus {
 
   constructor(shared?: SharedCache) {
     if (shared) {
-      const now = Date.now();
-      for (const [path, content] of shared.files) {
-        this.fileCache.set(normalizePath(path), {
-          agentId: "_shared",
-          state: "done",
-          content,
-          waiters: [],
-          gen: 0,
-          lastAccess: now,
-        });
-        this.fileCacheBytes += content?.length ?? 0;
-      }
+      // NOTE: shared.files is intentionally NOT seeded into fileCache.
+      // File content must always be read from disk to avoid stale reads.
+      // Only tool results and findings are carried across dispatches.
       for (const [key, result] of shared.toolResults) {
         this.toolResultCache.set(key, result);
       }
@@ -837,10 +828,9 @@ export class AgentBus {
   }
 
   exportCaches(): SharedCache {
-    const files = new Map<string, string | null>();
-    for (const [path, entry] of this.fileCache) {
-      if (entry.state === "done") files.set(path, entry.content);
-    }
+    // NOTE: file content is intentionally NOT exported.
+    // File content must always be read from disk to avoid stale reads
+    // across dispatches. Only tool results and findings are shared.
     const now = Date.now();
     const toolResults = new Map<string, { result: string; ts: number; agentId: string }>();
     for (const [key, entry] of this.toolResultCache) {
@@ -849,7 +839,7 @@ export class AgentBus {
       }
     }
     return {
-      files,
+      files: new Map(),
       toolResults,
       findings: [...this.findings],
     };

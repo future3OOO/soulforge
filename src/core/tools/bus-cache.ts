@@ -126,49 +126,26 @@ export function wrapWithBusCache(
           return result;
         }
 
+        // Check if a peer agent is currently reading this file — wait for them
+        // to finish so we can use their fresh result (they just read from disk).
+        // For "done" (previously cached) entries, always re-read from disk to
+        // avoid serving stale content.
         const acquired = bus.acquireFileRead(agentId, normalized);
 
-        if (acquired.cached === true) {
-          const cached = acquired.content ?? (await origExecute(args, opts));
-          bus.recordFileRead(agentId, normalized, { tool: "read", cached: true });
-          return tagCacheHit(cached, normalized);
-        }
-
         if (acquired.cached === "waiting") {
+          // Another agent is actively reading this file right now — wait for
+          // their disk read to complete and use that fresh content.
           const content = await acquired.content;
           if (content != null) {
             bus.recordFileRead(agentId, normalized, { tool: "read", cached: true });
             return tagCacheHit(content, normalized);
           }
-          const reAcquired = bus.acquireFileRead(agentId, normalized);
-          if (reAcquired.cached === true && reAcquired.content != null) {
-            bus.recordFileRead(agentId, normalized, { tool: "read", cached: true });
-            return tagCacheHit(reAcquired.content, normalized);
-          }
-          const fallbackGen = reAcquired.cached === false ? reAcquired.gen : -1;
-          const result = await origExecute(args, opts);
-          const isOutline =
-            result &&
-            typeof result === "object" &&
-            (result as Record<string, unknown>).outlineOnly === true;
-          if (!isOutline && fallbackGen >= 0) {
-            const rawText =
-              typeof result === "string"
-                ? result
-                : typeof (result as Record<string, unknown>)?.output === "string"
-                  ? String((result as Record<string, unknown>).output)
-                  : JSON.stringify(result);
-            bus.releaseFileRead(normalized, rawText, fallbackGen);
-          } else if (isOutline && fallbackGen >= 0) {
-            bus.failFileRead(normalized, fallbackGen);
-          }
-          if (!isOutline) {
-            bus.recordFileRead(agentId, normalized, { tool: "read", cached: false });
-          }
-          return result;
+          // Reader failed — fall through to read from disk ourselves
         }
 
-        const { gen } = acquired;
+        // Whether the bus said "cached" (stale) or "miss", always read from disk.
+        const peerAlreadyRead = acquired.cached === true;
+        const gen = acquired.cached === false ? acquired.gen : -1;
         try {
           const result = await origExecute(args, opts);
           const isOutline =
@@ -176,20 +153,27 @@ export function wrapWithBusCache(
             typeof result === "object" &&
             (result as Record<string, unknown>).outlineOnly === true;
           if (isOutline) {
-            bus.failFileRead(normalized, gen);
+            if (gen >= 0) bus.failFileRead(normalized, gen);
             return result;
           }
-          const rawText =
-            typeof result === "string"
-              ? result
-              : typeof (result as Record<string, unknown>)?.output === "string"
-                ? String((result as Record<string, unknown>).output)
-                : JSON.stringify(result);
-          bus.releaseFileRead(normalized, rawText, gen);
+          // Store fresh content in bus so concurrent readers can use it
+          if (gen >= 0) {
+            const rawText =
+              typeof result === "string"
+                ? result
+                : typeof (result as Record<string, unknown>)?.output === "string"
+                  ? String((result as Record<string, unknown>).output)
+                  : JSON.stringify(result);
+            bus.releaseFileRead(normalized, rawText, gen);
+          }
           bus.recordFileRead(agentId, normalized, { tool: "read", cached: false });
+          // If a peer already read this file, return a token-efficient stub
+          if (peerAlreadyRead) {
+            return tagCacheHit(result, normalized);
+          }
           return result;
         } catch (error) {
-          bus.failFileRead(normalized, gen);
+          if (gen >= 0) bus.failFileRead(normalized, gen);
           throw error;
         }
       }) as WrappableTool["execute"],
