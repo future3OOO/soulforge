@@ -356,9 +356,12 @@ interface StatusBarState {
   compactElapsed: number;
   compactionStrategy: CompactionStrategy;
   v2Slots: number;
+  /** True when the user is browsing a past checkpoint */
+  browsingCheckpoint: boolean;
   setTokenUsage: (usage: TokenUsage, modelId?: string) => void;
   resetTokenUsage: () => void;
   setContext: (contextTokens: number, chatChars: number) => void;
+  setBrowsingCheckpoint: (v: boolean) => void;
   setContextWindow: (tokens: number) => void;
   setSubagentChars: (chars: number) => void;
   setRssMB: (mb: number) => void;
@@ -387,6 +390,7 @@ export const useStatusBarStore = create<StatusBarState>()(
     compactElapsed: 0,
     compactionStrategy: "v2",
     v2Slots: 0,
+    browsingCheckpoint: false,
 
     setTokenUsage: (usage, modelId) =>
       set({ tokenUsage: usage, ...(modelId ? { activeModel: modelId } : {}) }),
@@ -410,6 +414,7 @@ export const useStatusBarStore = create<StatusBarState>()(
     setCompactElapsed: (s) => set({ compactElapsed: s }),
     setCompactionStrategy: (s) => set({ compactionStrategy: s }),
     setV2Slots: (n) => set({ v2Slots: n }),
+    setBrowsingCheckpoint: (v) => set({ browsingCheckpoint: v }),
   })),
 );
 

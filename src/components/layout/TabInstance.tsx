@@ -351,15 +351,16 @@ export const TabInstance = memo(function TabInstance({
     if (!cp) return;
     const store = useStatusBarStore.getState();
     const savedChars = store.chatChars;
-    // Estimate chars from the viewed snapshot's messages
     let chars = 0;
     for (const m of cp.messagesSnapshot) {
       if (typeof m.content === "string") chars += m.content.length;
     }
     store.setContext(0, chars);
+    store.setBrowsingCheckpoint(true);
     return () => {
-      // Restore real chatChars when leaving checkpoint view
-      useStatusBarStore.getState().setContext(0, savedChars);
+      const s = useStatusBarStore.getState();
+      s.setContext(0, savedChars);
+      s.setBrowsingCheckpoint(false);
     };
   }, [checkpointViewing, checkpoints, visible]);
 

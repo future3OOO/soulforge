@@ -70,6 +70,7 @@ function buildContent(
   windowTokens: number,
   compacting?: { active: boolean; frame: number },
   workers?: WorkerIndicator,
+  browsing?: boolean,
 ): StyledText {
   const filled = Math.round((pct / 100) * BAR_WIDTH);
   const empty = BAR_WIDTH - filled;
@@ -79,7 +80,20 @@ function buildContent(
   const pctColor = flash ? getFlashColor(pct) : getPctColor(pct);
   const t = getThemeTokens();
   const tokenLabel =
-    usedTokens > 0 ? ` ${humanizeTokens(usedTokens)}/${humanizeTokens(windowTokens)}` : "";
+    usedTokens > 0 ? ` ~${humanizeTokens(usedTokens)}/${humanizeTokens(windowTokens)}` : "";
+  // When browsing a past checkpoint, render everything in warning/muted tones
+  if (browsing) {
+    const chunks = [
+      fgStyle(t.warning)("◀ "),
+      fgStyle(t.textFaint)("["),
+      fgStyle(t.warning)("▰".repeat(filled)),
+      fgStyle(t.textSubtle)("▱".repeat(empty)),
+      fgStyle(t.textFaint)("]"),
+      fgStyle(t.warning)(`~${String(pct)}%`),
+      fgStyle(t.textDim)(tokenLabel),
+    ];
+    return new StyledText(chunks);
+  }
   const chunks = [
     fgStyle(live ? t.success : t.textDim)("● "),
     fgStyle(t.textFaint)("["),
@@ -132,6 +146,7 @@ export function ContextBar({ contextManager, suppressCompacting }: Props) {
   const wasCompactingRef = useRef(false);
   const prevWindowRef = useRef(0);
   const workerRef = useRef<WorkerIndicator>({ intel: "idle", io: "idle" });
+  const browsingRef = useRef(false);
   const suppressCompactingRef = useRef(suppressCompacting);
   suppressCompactingRef.current = suppressCompacting;
   const renderedContentRef = useRef(buildContent(0, false, false, 0, 200_000));
@@ -218,13 +233,17 @@ export function ContextBar({ contextManager, suppressCompacting }: Props) {
       const compactChanged = isCompacting !== wasCompacting;
       const windowChanged = target.windowTokens !== prevWindowRef.current;
       if (windowChanged) prevWindowRef.current = target.windowTokens;
+      const browsing = store.browsingCheckpoint;
+      const browsingChanged = browsing !== browsingRef.current;
+      browsingRef.current = browsing;
       if (
         pct === currentPctRef.current &&
         !target.flash &&
         !isCompacting &&
         !compactChanged &&
         !wkChanged &&
-        !windowChanged
+        !windowChanged &&
+        !browsingChanged
       )
         return;
       currentPctRef.current = pct;
@@ -237,6 +256,7 @@ export function ContextBar({ contextManager, suppressCompacting }: Props) {
           target.windowTokens,
           isCompacting ? { active: true, frame: compactFrameRef.current } : undefined,
           wk,
+          browsing,
         );
         renderedContentRef.current = content;
         if (textRef.current) {
