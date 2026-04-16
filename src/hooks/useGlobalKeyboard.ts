@@ -129,29 +129,35 @@ export function useGlobalKeyboard({
     if (evt.ctrl && evt.name === "[") return consume(() => tabMgr.prevTab());
     if (evt.ctrl && evt.name === "]") return consume(() => tabMgr.nextTab());
 
-    // ^B / ^F — checkpoint browsing
+    // ^B / ^F — checkpoint browsing (skips undone checkpoints)
     if (evt.ctrl && evt.name === "b")
       return consume(() => {
         const store = useCheckpointStore.getState();
         const tid = tabMgr.activeTabId;
         const cps = store.getCheckpoints(tid);
-        if (cps.length === 0) return;
-        const current = store.getViewing(tid) ?? cps.length;
-        if (current > 1) store.setViewing(tid, current - 1);
+        const active = cps.filter((c) => !c.undone);
+        if (active.length === 0) return;
+        const current = store.getViewing(tid);
+        // Find the previous active checkpoint before current viewing position
+        const currentIdx = current ?? (active[active.length - 1]?.index ?? 0) + 1;
+        const prev = active.filter((c) => c.index < currentIdx).pop();
+        if (prev) store.setViewing(tid, prev.index);
       });
     if (evt.ctrl && evt.name === "f")
       return consume(() => {
         const store = useCheckpointStore.getState();
         const tid = tabMgr.activeTabId;
         const cps = store.getCheckpoints(tid);
-        if (cps.length === 0) return;
+        const active = cps.filter((c) => !c.undone);
+        if (active.length === 0) return;
         const current = store.getViewing(tid);
         if (current === null) return; // already live
-        // If next would be past the last checkpoint, go to live
-        if (current + 1 > cps.length) {
-          store.setViewing(tid, null);
+        // Find the next active checkpoint after current viewing position
+        const next = active.find((c) => c.index > current);
+        if (next) {
+          store.setViewing(tid, next.index);
         } else {
-          store.setViewing(tid, current + 1);
+          store.setViewing(tid, null); // go to live
         }
       });
   });

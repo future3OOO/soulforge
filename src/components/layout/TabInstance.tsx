@@ -304,14 +304,15 @@ export const TabInstance = memo(function TabInstance({
     useCheckpointStore.getState().syncFromMessages(tabId, chat.messages, chat.isLoading);
   }, [tabId, chat.messages, chat.isLoading]);
 
-  // Auto-tag checkpoint on completion (loading → false) if it has file edits
+  // Auto-tag checkpoints on completion (loading → false) — tag ALL untagged checkpoints with edits
   useEffect(() => {
     if (prevLoading.current && !chat.isLoading) {
       const store = useCheckpointStore.getState();
       const cps = store.getCheckpoints(tabId);
-      const latest = cps[cps.length - 1];
-      if (latest && latest.filesEdited.length > 0 && !latest.gitTag) {
-        store.createGitTag(tabId, latest.index, cwd);
+      for (const cp of cps) {
+        if (cp.filesEdited.length > 0 && !cp.gitTag && !cp.undone) {
+          store.createGitTag(tabId, cp.index, cwd);
+        }
       }
     }
   }, [chat.isLoading, tabId, cwd]);
@@ -558,29 +559,37 @@ export const TabInstance = memo(function TabInstance({
     cleanupPlanFile();
   }, [chat.pendingPlanReview, cleanupPlanFile]);
 
+  const branchingRef = useRef(false);
   const handleInputSubmit = useCallback(
     async (input: string, images?: ImageAttachment[]) => {
       if (input.startsWith("/")) {
         onCommand(input, chat);
         return;
       }
-      // Branch-on-submit: if viewing a past checkpoint, truncate to that snapshot first
+      // Branch-on-submit: if viewing a past checkpoint, undo to that point (reverts files + messages)
       const cpStore = useCheckpointStore.getState();
       const viewingIdx = cpStore.getViewing(tabId);
       if (viewingIdx !== null) {
-        const cps = cpStore.getCheckpoints(tabId);
-        const viewedCp = cps.find((c) => c.index === viewingIdx);
-        if (viewedCp) {
-          chat.setMessages(viewedCp.messagesSnapshot);
-          try {
-            const { rebuildCoreMessages } = await import("../../core/sessions/rebuild.js");
-            chat.setCoreMessages(rebuildCoreMessages(viewedCp.messagesSnapshot));
-          } catch {
-            // Fallback: clear core messages so they rebuild from chat messages
-            chat.setCoreMessages([]);
+        if (branchingRef.current) return; // guard against double-submit during async undo
+        branchingRef.current = true;
+        try {
+          const undoResult = await cpStore.undoToCheckpoint(tabId, viewingIdx, cwd);
+          const msgs =
+            undoResult?.messages ??
+            cpStore.getCheckpoints(tabId).find((c) => c.index === viewingIdx)?.messagesSnapshot;
+          if (msgs) {
+            chat.setMessages(msgs);
+            try {
+              const { rebuildCoreMessages } = await import("../../core/sessions/rebuild.js");
+              chat.setCoreMessages(rebuildCoreMessages(msgs));
+            } catch {
+              chat.setCoreMessages([]);
+            }
           }
+          if (!undoResult) cpStore.setViewing(tabId, null);
+        } finally {
+          branchingRef.current = false;
         }
-        cpStore.setViewing(tabId, null);
       }
       chat.handleSubmit(input, images);
       clearEditorSelection();
@@ -590,7 +599,7 @@ export const TabInstance = memo(function TabInstance({
         sb.scrollTo(sb.scrollHeight);
       }
     },
-    [chat, onCommand, clearEditorSelection, tabId],
+    [chat, onCommand, clearEditorSelection, tabId, cwd],
   );
 
   const isFocused = visible && focusMode === "chat" && !anyModalOpen;

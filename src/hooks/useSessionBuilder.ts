@@ -42,15 +42,24 @@ export function buildSessionMeta({
       isActiveTab && currentTabCoreMessages ? currentTabCoreMessages : tabState.coreMessages;
     tabCoreMessages.set(tabState.id, cores);
 
-    // Extract checkpoint git tags for session persistence
-    const cpState = useCheckpointStore.getState().getCheckpoints(tabState.id);
-    const checkpointTags = cpState
-      .filter((cp) => cp.gitTag)
-      .map((cp) => ({
-        index: cp.index,
-        anchorMessageId: cp.anchorMessageId,
-        gitTag: cp.gitTag as string,
-      }));
+    // Extract checkpoint git tags for session persistence (include redo stack
+    // so undo→save→restore→redo works)
+    const cpStore = useCheckpointStore.getState();
+    const cpState = cpStore.getCheckpoints(tabState.id);
+    const redoStack = cpStore.getTab(tabState.id).redoStack;
+    const allCps = [...cpState, ...redoStack];
+    const seen = new Set<string>();
+    const checkpointTags: Array<{ index: number; anchorMessageId: string; gitTag: string }> = [];
+    for (const cp of allCps) {
+      if (cp.gitTag && !seen.has(cp.gitTag)) {
+        seen.add(cp.gitTag);
+        checkpointTags.push({
+          index: cp.index,
+          anchorMessageId: cp.anchorMessageId,
+          gitTag: cp.gitTag,
+        });
+      }
+    }
 
     tabs.push({
       id: tabState.id,

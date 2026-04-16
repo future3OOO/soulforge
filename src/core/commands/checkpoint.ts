@@ -1,6 +1,7 @@
 import type { InfoPopupLine } from "../../components/modals/InfoPopup.js";
 import { useCheckpointStore } from "../../stores/checkpoints.js";
 import { icon } from "../icons.js";
+import { rebuildCoreMessages } from "../sessions/rebuild.js";
 import { getThemeTokens } from "../theme/index.js";
 import type { CommandContext, CommandHandler } from "./types.js";
 import { sysMsg } from "./utils.js";
@@ -60,7 +61,7 @@ function handleCheckpointView(input: string, ctx: CommandContext): void {
   const store = useCheckpointStore.getState();
   const checkpoints = store.tabs[tabId]?.checkpoints ?? [];
   const cp = checkpoints.find((c) => c.index === n);
-  if (!cp) {
+  if (!cp || cp.undone) {
     sysMsg(ctx, `Checkpoint #${String(n)} not found.`);
     return;
   }
@@ -102,6 +103,7 @@ async function handleCheckpointUndo(input: string, ctx: CommandContext): Promise
   }
 
   ctx.chat.setMessages(result.messages);
+  ctx.chat.setCoreMessages(rebuildCoreMessages(result.messages));
   const conflictNote =
     result.conflicts.length > 0 ? ` (${String(result.conflicts.length)} conflict(s) skipped)` : "";
   sysMsg(
@@ -119,6 +121,7 @@ async function handleCheckpointRedo(_input: string, ctx: CommandContext): Promis
     return;
   }
   ctx.chat.setMessages(result.messages);
+  ctx.chat.setCoreMessages(rebuildCoreMessages(result.messages));
   sysMsg(ctx, `Redo applied. Restored ${String(result.restoredFiles.length)} file(s).`);
 }
 

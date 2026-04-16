@@ -134,6 +134,8 @@ interface PerTab {
   viewing: number | null; // null = live
   redoStack: Checkpoint[];
   lastSyncedLen: number;
+  /** Tags waiting to be applied — set by restoreTagsFromMeta before syncFromMessages runs */
+  _pendingTags?: Array<{ index: number; anchorMessageId: string; gitTag: string }>;
 }
 
 interface CheckpointState {
@@ -259,12 +261,23 @@ export const useCheckpointStore = create<CheckpointState>()((set, get) => ({
       current.messagesSnapshot = [...messages];
     }
 
-    // Preserve git tags from previous state
+    // Preserve git tags and undone state from previous state
     for (const cp of checkpoints) {
       const prev = tab.checkpoints.find(
         (p) => p.index === cp.index && p.anchorMessageId === cp.anchorMessageId,
       );
       if (prev?.gitTag) cp.gitTag = prev.gitTag;
+      if (prev?.undone) cp.undone = true;
+    }
+
+    // Also restore tags from pending session restore (tags arrive before sync builds checkpoints)
+    if (tab._pendingTags) {
+      for (const cp of checkpoints) {
+        const saved = tab._pendingTags.find(
+          (t) => t.anchorMessageId === cp.anchorMessageId || t.index === cp.index,
+        );
+        if (saved) cp.gitTag = saved.gitTag;
+      }
     }
 
     // Clear redo stack if new checkpoints appeared (user sent a new message after undo)
@@ -272,6 +285,18 @@ export const useCheckpointStore = create<CheckpointState>()((set, get) => ({
       (cp) => !cp.undone && !tab.checkpoints.find((p) => p.anchorMessageId === cp.anchorMessageId),
     );
     const redoStack = hasNewCheckpoints ? [] : tab.redoStack;
+
+    // Clear pending tags once ALL of them have been matched to checkpoints
+    const pendingTags = tab._pendingTags;
+    const clearedPending = pendingTags?.every((pt) =>
+      checkpoints.some(
+        (cp) =>
+          cp.gitTag === pt.gitTag &&
+          (cp.anchorMessageId === pt.anchorMessageId || cp.index === pt.index),
+      ),
+    )
+      ? undefined
+      : pendingTags;
 
     set({
       tabs: {
@@ -281,6 +306,7 @@ export const useCheckpointStore = create<CheckpointState>()((set, get) => ({
           checkpoints,
           redoStack,
           lastSyncedLen: messages.length,
+          _pendingTags: clearedPending,
         },
       },
     });
@@ -386,18 +412,40 @@ export const useCheckpointStore = create<CheckpointState>()((set, get) => ({
       }
     }
 
-    // Restore files from the target checkpoint's git tag
+    // Restore files — use target's tag, or fall back to the nearest prior tagged
+    // checkpoint, or HEAD if no tags exist (e.g. undoing to a chat-only checkpoint).
+    const restoreTag =
+      targetCp.gitTag ??
+      tab.checkpoints
+        .filter((c) => c.index < targetIndex && c.gitTag && !c.undone)
+        .sort((a, b) => b.index - a.index)[0]?.gitTag ??
+      null;
+
+    // Serialize file restoration with the git lock so createGitTag can't
+    // snapshot a partially-restored working tree.
     const restoredFiles: string[] = [];
-    if (targetCp.gitTag && filesToRevert.size > 0) {
-      const { writeFile } = await import("node:fs/promises");
-      for (const absPath of filesToRevert) {
-        const relPath = relative(cwd, absPath);
-        const result = await gitRun(["show", `${targetCp.gitTag}:${relPath}`], cwd, 10_000);
-        if (result.ok) {
-          await writeFile(absPath, result.stdout);
-          restoredFiles.push(absPath);
+    if (filesToRevert.size > 0) {
+      await withGitLock(cwd, async () => {
+        const { writeFile, unlink } = await import("node:fs/promises");
+        const ref = restoreTag ?? "HEAD";
+        for (const absPath of filesToRevert) {
+          const relPath = relative(cwd, absPath);
+          const result = await gitRun(["show", `${ref}:${relPath}`], cwd, 10_000);
+          if (result.ok) {
+            await writeFile(absPath, result.stdout);
+            restoredFiles.push(absPath);
+          } else {
+            // File didn't exist at restore point — it was created by the undone
+            // checkpoint(s) (new file or rename target). Remove it.
+            try {
+              await unlink(absPath);
+              restoredFiles.push(absPath);
+            } catch {
+              // Already gone or permission error — best effort
+            }
+          }
         }
-      }
+      });
     }
 
     // The messages to keep = target checkpoint's snapshot
@@ -437,22 +485,23 @@ export const useCheckpointStore = create<CheckpointState>()((set, get) => ({
     const toRedo = tab.redoStack[0];
     if (!toRedo) return null;
 
-    // Restore ALL files to the redo checkpoint's state (not just its own edits)
-    // This ensures consistent file state after multi-step undo→redo
+    // Restore files to the redo checkpoint's state.
+    // Unlike undo, redo MUST use the checkpoint's own tag — a prior tag would
+    // restore to the state BEFORE this checkpoint's edits, which is wrong.
+    const allFiles = new Set(toRedo.filesEdited);
     const restoredFiles: string[] = [];
-    if (toRedo.gitTag) {
-      // Collect all files edited by this checkpoint AND all prior undone checkpoints
-      // that have already been redone, to ensure full consistency
-      const allFiles = new Set(toRedo.filesEdited);
-      const { writeFile } = await import("node:fs/promises");
-      for (const absPath of allFiles) {
-        const relPath = relative(cwd, absPath);
-        const result = await gitRun(["show", `${toRedo.gitTag}:${relPath}`], cwd, 10_000);
-        if (result.ok) {
-          await writeFile(absPath, result.stdout);
-          restoredFiles.push(absPath);
+    if (toRedo.gitTag && allFiles.size > 0) {
+      await withGitLock(cwd, async () => {
+        const { writeFile } = await import("node:fs/promises");
+        for (const absPath of allFiles) {
+          const relPath = relative(cwd, absPath);
+          const result = await gitRun(["show", `${toRedo.gitTag}:${relPath}`], cwd, 10_000);
+          if (result.ok) {
+            await writeFile(absPath, result.stdout);
+            restoredFiles.push(absPath);
+          }
         }
-      }
+      });
     }
 
     // Messages = the redo checkpoint's snapshot
@@ -504,15 +553,21 @@ export const useCheckpointStore = create<CheckpointState>()((set, get) => ({
     tags: Array<{ index: number; anchorMessageId: string; gitTag: string }>,
   ) {
     set((s) => {
-      const tab = s.tabs[tabId];
-      if (!tab) return s;
+      const tab = s.tabs[tabId] ?? emptyTab();
+      // Apply to existing checkpoints if any
       const updated = tab.checkpoints.map((cp) => {
         const saved = tags.find(
           (t) => t.anchorMessageId === cp.anchorMessageId || t.index === cp.index,
         );
         return saved ? { ...cp, gitTag: saved.gitTag } : cp;
       });
-      return { tabs: { ...s.tabs, [tabId]: { ...tab, checkpoints: updated } } };
+      // Also stash as pending so syncFromMessages can pick them up when it rebuilds
+      return {
+        tabs: {
+          ...s.tabs,
+          [tabId]: { ...tab, checkpoints: updated, _pendingTags: tags },
+        },
+      };
     });
   },
 

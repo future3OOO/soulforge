@@ -1281,15 +1281,11 @@ export function App({
             );
             setForgeModeHeader(data.meta.forgeMode);
             setExitSessionId(data.meta.id);
-            // Restore checkpoint git tags from saved session
+            // Restore checkpoint git tags from saved session (stashed as _pendingTags
+            // so syncFromMessages picks them up when it rebuilds checkpoints)
             for (const tab of data.meta.tabs) {
               if (tab.checkpointTags?.length) {
-                // Defer so syncFromMessages runs first (rebuilds checkpoints from messages)
-                setTimeout(() => {
-                  useCheckpointStore
-                    .getState()
-                    .restoreTagsFromMeta(tab.id, tab.checkpointTags ?? []);
-                }, 200);
+                useCheckpointStore.getState().restoreTagsFromMeta(tab.id, tab.checkpointTags ?? []);
               }
             }
             // Restore custom title if user renamed this session
