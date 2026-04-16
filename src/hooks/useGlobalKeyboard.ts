@@ -92,7 +92,10 @@ export function useGlobalKeyboard({
     if (evt.ctrl && evt.name === "s")
       return consume(() => useUIStore.getState().toggleModal("skillSearch"));
     if (evt.ctrl && evt.name === "t")
-      return consume(() => useUIStore.getState().openModal("tabNamePopup"));
+      return consume(() => {
+        if (!tabMgr.canCreateTab) return;
+        useUIStore.getState().openModal("tabNamePopup");
+      });
     if (evt.ctrl && evt.name === "n") return consume(() => newSession());
     if (evt.ctrl && evt.name === "d") return consume(() => cycleMode());
     if (evt.ctrl && evt.name === "g")

@@ -27,6 +27,7 @@ export interface UseTabsReturn {
   activeTab: Tab;
   tabCount: number;
   activeTabIndex: number;
+  canCreateTab: boolean;
   createTab: (label?: string) => void;
   closeTab: (id: string) => boolean;
   isTabLoading: (id: string) => boolean;
@@ -327,6 +328,7 @@ export function useTabs(): UseTabsReturn {
     activeTabId,
     activeTab,
     tabCount: tabs.length,
+    canCreateTab: tabs.length < MAX_TABS,
     activeTabIndex,
     createTab,
     closeTab,
