@@ -56,6 +56,12 @@ const CLAUDE_ITEMS: SettingItem[] = [
     options: ["1024", "2048", "5000", "10000", "20000"],
   },
   {
+    key: "clearThinking",
+    label: "Preserve Thinking",
+    desc: "Keep all thinking blocks across turns for better cache hits. Off = Anthropic default (only last turn kept). Requires thinking enabled.",
+    type: "toggle",
+  },
+  {
     key: "effort",
     label: "Effort",
     desc: "Reasoning depth — affects thinking, text, and tool calls",
@@ -109,12 +115,6 @@ const CLAUDE_ITEMS: SettingItem[] = [
     key: "clearToolUses",
     label: "Clear Tool Uses",
     desc: "Server-side — clear old tool results at 65% context. ⚠️ Busts prompt cache when triggered",
-    type: "toggle",
-  },
-  {
-    key: "clearThinking",
-    label: "Clear Thinking",
-    desc: "Server-side — preserve all thinking blocks (maximizes cache hits)",
     type: "toggle",
   },
 ];
@@ -337,9 +337,17 @@ export function ProviderSettings({
   }, [tab, resetScroll]);
 
   const isBudgetDisabled = vals.thinkingMode !== "enabled";
+  const isThinkingDisabled = vals.thinkingMode === "off" || vals.thinkingMode === "disabled";
+
+  const isItemDisabled = (key: string): boolean => {
+    if (key === "budgetTokens") return isBudgetDisabled;
+    if (key === "clearThinking") return isThinkingDisabled;
+    return false;
+  };
 
   const cycleValue = (item: SettingItem) => {
     if (item.type === "toggle") {
+      if (isItemDisabled(item.key)) return;
       const current = vals[item.key as keyof CurrentValues] as boolean;
       onUpdate(buildPatch(item.key, !current), scope);
       return;
@@ -467,7 +475,7 @@ export function ProviderSettings({
         {items.slice(scrollOffset, scrollOffset + maxVisible).map((item, vi) => {
           const i = vi + scrollOffset;
           const isSelected = i === cursor;
-          const disabled = item.key === "budgetTokens" && isBudgetDisabled;
+          const disabled = isItemDisabled(item.key);
           const bg = isSelected ? POPUP_HL : POPUP_BG;
           const raw = vals[item.key as keyof CurrentValues];
 
