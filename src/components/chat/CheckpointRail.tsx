@@ -30,7 +30,8 @@ function getDotChar(
     };
   if (isViewing) return { char: DOT, color: t.warning };
   if (cp.undone) return { char: DOT_EMPTY, color: t.textFaint };
-  if (isLive && isLatest) return { char: DIAMOND, color: t.brand };
+  // Latest active checkpoint keeps diamond shape — bright when live, muted when browsing
+  if (isLatest) return { char: DIAMOND, color: isLive ? t.brand : t.textMuted };
   if (cp.filesEdited.length > 0) return { char: DOT, color: t.textMuted };
   return { char: DOT_EMPTY, color: t.textFaint };
 }
