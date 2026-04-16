@@ -77,19 +77,19 @@ export function getUpgradeCommand(method?: InstallMethod): string {
   const m = method ?? detectInstallMethod();
   switch (m) {
     case "npm":
-      return `npm update -g ${PKG_NAME}`;
+      return `npm install -g ${PKG_NAME}@latest`;
     case "pnpm":
-      return `pnpm update -g ${PKG_NAME}`;
+      return `pnpm add -g ${PKG_NAME}@latest`;
     case "yarn":
-      return `yarn global upgrade ${PKG_NAME}`;
+      return `yarn global add ${PKG_NAME}@latest`;
     case "bun":
-      return `bun update -g ${PKG_NAME}`;
+      return `bun install -g ${PKG_NAME}@latest`;
     case "brew":
       return "brew update && brew upgrade soulforge";
     case "binary":
       return "Download the latest release from GitHub";
     default:
-      return `npm update -g ${PKG_NAME}`;
+      return `npm install -g ${PKG_NAME}@latest`;
   }
 }
 
@@ -98,19 +98,19 @@ export function getUpgradeArgs(method?: InstallMethod): { command: string; args:
   const m = method ?? detectInstallMethod();
   switch (m) {
     case "npm":
-      return { command: "npm", args: ["update", "-g", PKG_NAME] };
+      return { command: "npm", args: ["install", "-g", `${PKG_NAME}@latest`] };
     case "pnpm":
-      return { command: "pnpm", args: ["update", "-g", PKG_NAME] };
+      return { command: "pnpm", args: ["add", "-g", `${PKG_NAME}@latest`] };
     case "yarn":
-      return { command: "yarn", args: ["global", "upgrade", PKG_NAME] };
+      return { command: "yarn", args: ["global", "add", `${PKG_NAME}@latest`] };
     case "bun":
-      return { command: "bun", args: ["update", "-g", PKG_NAME] };
+      return { command: "bun", args: ["install", "-g", `${PKG_NAME}@latest`] };
     case "brew":
       return { command: "sh", args: ["-c", "brew update && brew upgrade soulforge"] };
     case "binary":
       return null;
     default:
-      return { command: "npm", args: ["update", "-g", PKG_NAME] };
+      return { command: "npm", args: ["install", "-g", `${PKG_NAME}@latest`] };
   }
 }
 
