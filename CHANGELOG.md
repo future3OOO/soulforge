@@ -2,6 +2,18 @@
 
 All notable changes to SoulForge are documented here.
 
+## [2.12.3] — 2026-04-16
+
+### Features
+
+- configurable retry for transient provider errors
+### Miscellaneous
+
+- **useChat**: sort imports
+### Refactor
+
+- **prompts**: tighten output discipline with curse persona and grammar rules
+- **tool-display**: compact tool call rendering
 ## [2.12.2] — 2026-04-16
 
 ### Bug Fixes
