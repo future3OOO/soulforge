@@ -1,3 +1,4 @@
+import { matchCheckpointPrefix, register as registerCheckpoint } from "./checkpoint.js";
 import { matchClaimsPrefix, register as registerClaims } from "./claims.js";
 import { register as registerCodex } from "./codex.js";
 import { matchConfigPrefix, register as registerConfig } from "./config.js";
@@ -27,6 +28,7 @@ registerSecurity(commandMap);
 registerClaims(commandMap);
 registerCodex(commandMap);
 registerHooks(commandMap);
+registerCheckpoint(commandMap);
 
 const prefixMatchers = [
   matchContextPrefix,
@@ -36,6 +38,7 @@ const prefixMatchers = [
   matchNavPrefix,
   matchSecurityPrefix,
   matchClaimsPrefix,
+  matchCheckpointPrefix,
 ];
 
 function resolveHandler(cmd: string): CommandHandler | null {
@@ -837,6 +840,43 @@ const COMMAND_DEFS: CommandDef[] = [
     desc: "Set tool call timeout (shell, project, agents)",
     category: "System",
     tags: ["timeout", "shell", "agent"],
+  },
+
+  // ── Session (Checkpoints) ──
+  {
+    cmd: "/checkpoint",
+    ic: "bookmark",
+    desc: "Browse checkpoints — undo, redo, save",
+    category: "Session",
+    tags: ["undo", "redo", "history", "revert"],
+  },
+  {
+    cmd: "/checkpoint undo",
+    ic: "bookmark",
+    desc: "Undo last checkpoint (revert files)",
+    category: "Session",
+    tags: ["revert", "rollback"],
+  },
+  {
+    cmd: "/checkpoint redo",
+    ic: "bookmark",
+    desc: "Redo last undone checkpoint",
+    category: "Session",
+    tags: ["restore"],
+  },
+  {
+    cmd: "/checkpoint save",
+    ic: "bookmark",
+    desc: "Force save current state as git tag",
+    category: "Session",
+    tags: ["git", "tag", "snapshot"],
+  },
+  {
+    cmd: "/checkpoint live",
+    ic: "bookmark",
+    desc: "Back to live view",
+    category: "Session",
+    tags: ["browse"],
   },
 ];
 

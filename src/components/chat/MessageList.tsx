@@ -1324,6 +1324,7 @@ export const StaticMessage = memo(function StaticMessage({
   reasoningExpanded = false,
   animate = false,
   lockIn = false,
+  dimmed = false,
 }: {
   msg: ChatMessage;
   chatStyle: ChatStyle;
@@ -1333,23 +1334,24 @@ export const StaticMessage = memo(function StaticMessage({
   reasoningExpanded?: boolean;
   animate?: boolean;
   lockIn?: boolean;
+  dimmed?: boolean;
 }) {
   if (msg.role === "system") {
     return (
-      <box flexDirection="column" paddingX={1} width="100%">
+      <box flexDirection="column" paddingX={1} width="100%" style={{ opacity: dimmed ? 0.4 : 1 }}>
         <SystemMessage msg={msg} animate={animate} />
       </box>
     );
   }
   if (msg.role === "user") {
     return (
-      <box flexDirection="column" paddingX={1} width="100%">
+      <box flexDirection="column" paddingX={1} width="100%" style={{ opacity: dimmed ? 0.4 : 1 }}>
         {chatStyle === "bubble" ? <UserMessageBubble msg={msg} /> : <UserMessageAccent msg={msg} />}
       </box>
     );
   }
   return (
-    <box flexDirection="column" paddingX={1} width="100%">
+    <box flexDirection="column" paddingX={1} width="100%" style={{ opacity: dimmed ? 0.4 : 1 }}>
       <AssistantMessage
         msg={msg}
         diffStyle={diffStyle}

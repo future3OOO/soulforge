@@ -49,6 +49,7 @@ import { buildSessionMeta } from "../hooks/useSessionBuilder.js";
 import { useTabs } from "../hooks/useTabs.js";
 import { useVersionCheck } from "../hooks/useVersionCheck.js";
 import { cleanupAndExit, restart, setExitSessionId } from "../index.js";
+import { useCheckpointStore } from "../stores/checkpoints.js";
 import { logBackgroundError } from "../stores/errors.js";
 import { startMemoryPoll } from "../stores/statusbar.js";
 import { useToolsStore } from "../stores/tools.js";
@@ -724,6 +725,14 @@ export function App({
       );
       setForgeModeHeader(data.meta.forgeMode);
       setExitSessionId(data.meta.id);
+      // Restore checkpoint git tags from saved session
+      for (const tab of data.meta.tabs) {
+        if (tab.checkpointTags?.length) {
+          setTimeout(() => {
+            useCheckpointStore.getState().restoreTagsFromMeta(tab.id, tab.checkpointTags ?? []);
+          }, 200);
+        }
+      }
       // Restore custom title if user renamed this session
       setTimeout(() => {
         if (data.meta.customTitle) {
@@ -846,6 +855,10 @@ export function App({
         }
       }
     }
+    // Mark all tabs for skip-cleanup so git tags survive the restart
+    const cpStore = useCheckpointStore.getState();
+    const allTabs = tabMgrRef.current?.tabs ?? [];
+    for (const tab of allTabs) cpStore.skipCleanup(tab.id);
     restart();
   }, [cwd, sessionManager]);
 
@@ -1269,6 +1282,17 @@ export function App({
             );
             setForgeModeHeader(data.meta.forgeMode);
             setExitSessionId(data.meta.id);
+            // Restore checkpoint git tags from saved session
+            for (const tab of data.meta.tabs) {
+              if (tab.checkpointTags?.length) {
+                // Defer so syncFromMessages runs first (rebuilds checkpoints from messages)
+                setTimeout(() => {
+                  useCheckpointStore
+                    .getState()
+                    .restoreTagsFromMeta(tab.id, tab.checkpointTags ?? []);
+                }, 200);
+              }
+            }
             // Restore custom title if user renamed this session
             if (data.meta.customTitle) {
               setTimeout(() => {

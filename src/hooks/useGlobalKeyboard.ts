@@ -1,6 +1,7 @@
 import type { Selection } from "@opentui/core";
 import { useKeyboard } from "@opentui/react";
 import type { MutableRefObject } from "react";
+import { useCheckpointStore } from "../stores/checkpoints.js";
 import { selectIsAnyModalOpen, useUIStore } from "../stores/ui.js";
 import type { ChatInstance } from "./useChat.js";
 import type { UseTabsReturn } from "./useTabs.js";
@@ -127,5 +128,31 @@ export function useGlobalKeyboard({
     }
     if (evt.ctrl && evt.name === "[") return consume(() => tabMgr.prevTab());
     if (evt.ctrl && evt.name === "]") return consume(() => tabMgr.nextTab());
+
+    // ^B / ^F — checkpoint browsing
+    if (evt.ctrl && evt.name === "b")
+      return consume(() => {
+        const store = useCheckpointStore.getState();
+        const tid = tabMgr.activeTabId;
+        const cps = store.getCheckpoints(tid);
+        if (cps.length === 0) return;
+        const current = store.getViewing(tid) ?? cps.length;
+        if (current > 1) store.setViewing(tid, current - 1);
+      });
+    if (evt.ctrl && evt.name === "f")
+      return consume(() => {
+        const store = useCheckpointStore.getState();
+        const tid = tabMgr.activeTabId;
+        const cps = store.getCheckpoints(tid);
+        if (cps.length === 0) return;
+        const current = store.getViewing(tid);
+        if (current === null) return; // already live
+        // If next would be the last checkpoint or beyond, go to live
+        if (current + 1 >= cps.length) {
+          store.setViewing(tid, null);
+        } else {
+          store.setViewing(tid, current + 1);
+        }
+      });
   });
 }

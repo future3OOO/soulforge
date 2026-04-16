@@ -18,6 +18,8 @@ export interface TabMeta {
     subagentOutput?: number;
   };
   messageRange: { startLine: number; endLine: number };
+  /** Saved checkpoint git tags for session persistence */
+  checkpointTags?: Array<{ index: number; anchorMessageId: string; gitTag: string }>;
 }
 
 export interface SessionMeta {

@@ -1,5 +1,6 @@
 import type { ModelMessage } from "ai";
 import type { SessionMeta, TabMeta } from "../core/sessions/types.js";
+import { useCheckpointStore } from "../stores/checkpoints.js";
 import type { ChatMessage } from "../types/index.js";
 import type { WorkspaceSnapshot } from "./useChat.js";
 
@@ -41,6 +42,16 @@ export function buildSessionMeta({
       isActiveTab && currentTabCoreMessages ? currentTabCoreMessages : tabState.coreMessages;
     tabCoreMessages.set(tabState.id, cores);
 
+    // Extract checkpoint git tags for session persistence
+    const cpState = useCheckpointStore.getState().getCheckpoints(tabState.id);
+    const checkpointTags = cpState
+      .filter((cp) => cp.gitTag)
+      .map((cp) => ({
+        index: cp.index,
+        anchorMessageId: cp.anchorMessageId,
+        gitTag: cp.gitTag as string,
+      }));
+
     tabs.push({
       id: tabState.id,
       label: tabState.label,
@@ -52,6 +63,7 @@ export function buildSessionMeta({
       forgeMode: tabState.forgeMode,
       tokenUsage: tabState.tokenUsage,
       messageRange: { startLine: 0, endLine: msgs.length },
+      ...(checkpointTags.length > 0 ? { checkpointTags } : {}),
     });
   }
 

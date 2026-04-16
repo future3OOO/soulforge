@@ -1,3 +1,4 @@
+import { spawnSync } from "node:child_process";
 import {
   existsSync,
   mkdirSync,
@@ -339,6 +340,26 @@ export class SessionManager {
   deleteSession(id: string): boolean {
     const dir = join(this.dir, id);
     if (!existsSync(dir)) return false;
+    // Clean up checkpoint git tags before deleting session files (sync to complete before rmSync)
+    try {
+      const metaPath = join(dir, "meta.json");
+      if (existsSync(metaPath)) {
+        const meta = JSON.parse(readFileSync(metaPath, "utf-8")) as SessionMeta;
+        for (const tab of meta.tabs) {
+          if (tab.checkpointTags) {
+            for (const ct of tab.checkpointTags) {
+              spawnSync("git", ["tag", "-d", ct.gitTag], {
+                cwd: this.cwd,
+                timeout: 5_000,
+                stdio: "ignore",
+              });
+            }
+          }
+        }
+      }
+    } catch {
+      // Best-effort — don't block deletion if tag cleanup fails
+    }
     rmSync(dir, { recursive: true });
     return true;
   }

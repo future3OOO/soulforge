@@ -22,6 +22,7 @@ import {
 } from "../../hooks/useChat.js";
 import { useLandingTransition } from "../../hooks/useLandingTransition.js";
 import type { TabActivity } from "../../hooks/useTabs.js";
+import { useCheckpointStore } from "../../stores/checkpoints.js";
 import { useStatusBarStore } from "../../stores/statusbar.js";
 import { useUIStore } from "../../stores/ui.js";
 import type {
@@ -30,6 +31,7 @@ import type {
   EditorIntegration,
   ImageAttachment,
 } from "../../types/index.js";
+import { CheckpointRail } from "../chat/CheckpointRail.js";
 import { InputBox } from "../chat/InputBox.js";
 import { filterQuietTools, LOCKIN_EDIT_TOOLS, LockInWrapper } from "../chat/LockInStreamView.js";
 import { CodeExpandedProvider } from "../chat/Markdown.js";
@@ -297,6 +299,39 @@ export const TabInstance = memo(function TabInstance({
     if (firstUser) autoLabel(tabId, firstUser.content);
   }, [chat.messages.length]);
 
+  // ── Checkpoint sync ──
+  useEffect(() => {
+    useCheckpointStore.getState().syncFromMessages(tabId, chat.messages, chat.isLoading);
+  }, [tabId, chat.messages, chat.isLoading]);
+
+  // Auto-tag checkpoint on completion (loading → false) if it has file edits
+  useEffect(() => {
+    if (prevLoading.current && !chat.isLoading) {
+      const store = useCheckpointStore.getState();
+      const cps = store.getCheckpoints(tabId);
+      const latest = cps[cps.length - 1];
+      if (latest && latest.filesEdited.length > 0 && !latest.gitTag) {
+        store.createGitTag(tabId, latest.index, cwd);
+      }
+    }
+  }, [chat.isLoading, tabId, cwd]);
+
+  // Checkpoint browsing state
+  const checkpoints = useCheckpointStore((s) => s.tabs[tabId]?.checkpoints ?? []);
+  const checkpointViewing = useCheckpointStore((s) => s.tabs[tabId]?.viewing ?? null);
+
+  // Scroll to the viewed checkpoint's anchor message
+  useEffect(() => {
+    const sb = scrollRef.current;
+    if (!sb) return;
+    if (checkpointViewing === null) {
+      sb.scrollTo(sb.scrollHeight);
+      return;
+    }
+    const cp = checkpoints.find((c) => c.index === checkpointViewing);
+    if (cp) sb.scrollChildIntoView(`msg-${cp.anchorMessageId}`);
+  }, [checkpointViewing, checkpoints]);
+
   // Cleanup / dispose on unmount
   useEffect(() => {
     return () => {
@@ -305,6 +340,11 @@ export const TabInstance = memo(function TabInstance({
       clearEditStacks(tabId);
       // Close tab in coordinator — releases claims, clears agents, blocks ghost claims
       getWorkspaceCoordinator().closeTab(tabId);
+      // Clean up checkpoint git tags (skip if session is being saved) and state
+      if (!useCheckpointStore.getState().shouldSkipCleanup(tabId)) {
+        useCheckpointStore.getState().cleanupGitTags(tabId, cwd);
+      }
+      useCheckpointStore.getState().clear(tabId);
       // Clean up any pending plan file on disk
       const p = join(cwd, ".soulforge", "plans", planFileName(chat.sessionId));
       unlink(p).catch(() => {});
@@ -313,6 +353,58 @@ export const TabInstance = memo(function TabInstance({
 
   // Derived state
   const isStreaming = chat.streamSegments.length > 0 || chat.liveToolCalls.length > 0;
+
+  // Compute which messages should be dimmed.
+  // Two independent sources:
+  // 1. Undone checkpoints (permanent, from /checkpoint undo) — shows separator
+  // 2. Viewing a past checkpoint (temporary, from ^B/^F) — no separator, clears on ^F to live
+  const { dimmedMessageIds, firstDimmedMessageId, dimmedReason } = useMemo(() => {
+    const ids = new Set<string>();
+    let firstId: string | null = null;
+    let reason: "undone" | "viewing" | null = null;
+
+    // --- Undone checkpoints (permanent) ---
+    const undoneAnchors = new Set(
+      checkpoints.filter((cp) => cp.undone).map((cp) => cp.anchorMessageId),
+    );
+    if (undoneAnchors.size > 0) {
+      let inUndone = false;
+      for (const msg of chat.messages) {
+        const isUserNonSteering = msg.role === "user" && !msg.isSteering;
+        if (isUserNonSteering && undoneAnchors.has(msg.id)) {
+          inUndone = true;
+          if (!firstId) {
+            firstId = msg.id;
+            reason = "undone";
+          }
+        } else if (isUserNonSteering && !undoneAnchors.has(msg.id)) {
+          inUndone = false;
+        }
+        if (inUndone) ids.add(msg.id);
+      }
+    }
+
+    // --- Viewing a past checkpoint (temporary) ---
+    if (checkpointViewing !== null) {
+      let cpCounter = 0;
+      let pastViewed = false;
+      for (const msg of chat.messages) {
+        if (msg.role === "user" && !msg.isSteering) {
+          cpCounter++;
+          if (cpCounter > checkpointViewing) pastViewed = true;
+        }
+        if (pastViewed) {
+          if (!ids.has(msg.id) && !firstId) {
+            firstId = msg.id;
+            reason = "viewing";
+          }
+          ids.add(msg.id);
+        }
+      }
+    }
+
+    return { dimmedMessageIds: ids, firstDimmedMessageId: firstId, dimmedReason: reason };
+  }, [chat.messages, checkpoints, checkpointViewing]);
 
   const nonSystemCount = useMemo(() => {
     let count = 0;
@@ -445,6 +537,24 @@ export const TabInstance = memo(function TabInstance({
         onCommand(input, chat);
         return;
       }
+      // Branch-on-submit: if viewing a past checkpoint, truncate to that snapshot first
+      const cpStore = useCheckpointStore.getState();
+      const viewingIdx = cpStore.getViewing(tabId);
+      if (viewingIdx !== null) {
+        const cps = cpStore.getCheckpoints(tabId);
+        const viewedCp = cps.find((c) => c.index === viewingIdx);
+        if (viewedCp) {
+          chat.setMessages(viewedCp.messagesSnapshot);
+          try {
+            const { rebuildCoreMessages } = await import("../../core/sessions/rebuild.js");
+            chat.setCoreMessages(rebuildCoreMessages(viewedCp.messagesSnapshot));
+          } catch {
+            // Fallback: clear core messages so they rebuild from chat messages
+            chat.setCoreMessages([]);
+          }
+        }
+        cpStore.setViewing(tabId, null);
+      }
       chat.handleSubmit(input, images);
       clearEditorSelection();
       // Re-engage sticky scroll so new messages are visible
@@ -453,7 +563,7 @@ export const TabInstance = memo(function TabInstance({
         sb.scrollTo(sb.scrollHeight);
       }
     },
-    [chat, onCommand, clearEditorSelection],
+    [chat, onCommand, clearEditorSelection, tabId],
   );
 
   const isFocused = visible && focusMode === "chat" && !anyModalOpen;
@@ -494,6 +604,7 @@ export const TabInstance = memo(function TabInstance({
             flexGrow={1}
             flexShrink={1}
             minHeight={0}
+            flexDirection="row"
             style={{ opacity: transition.chatOpacity }}
           >
             <AnimatedBorder active={chat.isLoading || chat.isCompacting}>
@@ -522,17 +633,28 @@ export const TabInstance = memo(function TabInstance({
                       </box>
                     )}
                     {visibleMessages.map((msg) => (
-                      <StaticMessage
-                        key={msg.id}
-                        msg={msg}
-                        chatStyle={chatStyle}
-                        diffStyle={effectiveConfig.diffStyle}
-                        collapseDiffs={effectiveConfig.collapseDiffs === true}
-                        showReasoning={showReasoning}
-                        reasoningExpanded={reasoningExpanded}
-                        animate={false}
-                        lockIn={lockIn}
-                      />
+                      <box key={msg.id} id={`msg-${msg.id}`} flexDirection="column" width="100%">
+                        {msg.id === firstDimmedMessageId && (
+                          <box marginTop={1} height={1} paddingX={1}>
+                            <text fg={dimmedReason === "viewing" ? t.textMuted : t.warning}>
+                              {dimmedReason === "viewing"
+                                ? `${icon("rewind")} Viewing checkpoint #${String(checkpointViewing)}, send a message to rewind here.`
+                                : `${icon("rewind")} Rewound past this point.`}
+                            </text>
+                          </box>
+                        )}
+                        <StaticMessage
+                          msg={msg}
+                          chatStyle={chatStyle}
+                          diffStyle={effectiveConfig.diffStyle}
+                          collapseDiffs={effectiveConfig.collapseDiffs === true}
+                          showReasoning={showReasoning}
+                          reasoningExpanded={reasoningExpanded}
+                          animate={false}
+                          lockIn={lockIn}
+                          dimmed={dimmedMessageIds.has(msg.id)}
+                        />
+                      </box>
                     ))}
                     {isStreaming && (
                       <box paddingX={1} flexShrink={0} marginBottom={1}>
@@ -631,6 +753,13 @@ export const TabInstance = memo(function TabInstance({
                 )}
               </scrollbox>
             </AnimatedBorder>
+            {checkpoints.length >= 1 && (
+              <CheckpointRail
+                checkpoints={checkpoints}
+                viewing={checkpointViewing}
+                isLoading={chat.isLoading}
+              />
+            )}
           </box>
         )}
         {(changesExpanded || terminalsExpanded) && (

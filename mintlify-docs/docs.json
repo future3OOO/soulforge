@@ -65,7 +65,8 @@
               "tools/themes",
               "tools/terminals",
               "tools/editor",
-              "tools/hooks"
+              "tools/hooks",
+              "tools/checkpoints"
             ]
           },
           {
