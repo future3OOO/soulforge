@@ -725,12 +725,11 @@ export function App({
       );
       setForgeModeHeader(data.meta.forgeMode);
       setExitSessionId(data.meta.id);
-      // Restore checkpoint git tags from saved session
+      // Restore checkpoint git tags from saved session (synchronous — must run
+      // before React renders TabInstance, which triggers syncFromMessages)
       for (const tab of data.meta.tabs) {
         if (tab.checkpointTags?.length) {
-          setTimeout(() => {
-            useCheckpointStore.getState().restoreTagsFromMeta(tab.id, tab.checkpointTags ?? []);
-          }, 200);
+          useCheckpointStore.getState().restoreTagsFromMeta(tab.id, tab.checkpointTags ?? []);
         }
       }
       // Restore custom title if user renamed this session

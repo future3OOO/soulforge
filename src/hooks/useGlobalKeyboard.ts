@@ -147,8 +147,8 @@ export function useGlobalKeyboard({
         if (cps.length === 0) return;
         const current = store.getViewing(tid);
         if (current === null) return; // already live
-        // If next would be the last checkpoint or beyond, go to live
-        if (current + 1 >= cps.length) {
+        // If next would be past the last checkpoint, go to live
+        if (current + 1 > cps.length) {
           store.setViewing(tid, null);
         } else {
           store.setViewing(tid, current + 1);

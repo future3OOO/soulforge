@@ -467,13 +467,34 @@ export const TabInstance = memo(function TabInstance({
     const msgs = chat.messages;
     const keep = (m: ChatMessage) => m.role !== "system" || m.showInChat;
     if (nonSystemCount <= MAX_RENDERED) return msgs.filter(keep);
+
+    // When viewing a past checkpoint (not the latest), shift window to include it
+    if (checkpointViewing !== null) {
+      const isLatest = checkpoints.length > 0 && checkpointViewing >= checkpoints.length;
+      if (!isLatest) {
+        const cp = checkpoints.find((c) => c.index === checkpointViewing);
+        if (cp) {
+          // For checkpoint 1, start from the beginning so no "earlier messages" banner
+          const startIdx =
+            checkpointViewing === 1
+              ? 0
+              : Math.max(0, msgs.findIndex((m) => m.id === cp.anchorMessageId) - 4);
+          const result: typeof msgs = [];
+          for (let i = startIdx; i < msgs.length && result.length < MAX_RENDERED; i++) {
+            if (keep(msgs[i] as ChatMessage)) result.push(msgs[i] as (typeof msgs)[0]);
+          }
+          return result;
+        }
+      }
+    }
+
     const result: typeof msgs = [];
     for (let i = msgs.length - 1; i >= 0 && result.length < MAX_RENDERED; i--) {
       if (keep(msgs[i] as ChatMessage)) result.push(msgs[i] as (typeof msgs)[0]);
     }
     result.reverse();
     return result;
-  }, [chat.messages, nonSystemCount]);
+  }, [chat.messages, nonSystemCount, checkpointViewing, checkpoints]);
   const hiddenCount = nonSystemCount - visibleMessages.length;
 
   // Trim old tool results
@@ -577,6 +598,22 @@ export const TabInstance = memo(function TabInstance({
       width={editorVisible ? (`${String(100 - editorSplit)}%` as `${number}%`) : "100%"}
     >
       <SystemBanner messages={chat.messages} expanded={codeExpanded} />
+
+      {checkpoints.length > 1 && (
+        <box flexShrink={0} height={1} paddingX={1} flexDirection="row" gap={1}>
+          <text fg={t.textDim}>
+            <span fg={t.brand}>◆</span> latest
+            <span fg={t.textFaint}> │ </span>
+            <span fg={t.warning}>●</span> viewing
+            <span fg={t.textFaint}> │ </span>
+            <span fg={t.textMuted}>●</span> edits
+            <span fg={t.textFaint}> │ </span>
+            <span fg={t.textFaint}>○</span> read
+            <span fg={t.textFaint}> │ </span>
+            <span fg={t.textMuted}>^B</span>/<span fg={t.textMuted}>^F</span> navigate
+          </text>
+        </box>
+      )}
 
       <box flexGrow={1} flexShrink={1} minHeight={0} flexDirection="row">
         {/* ── Landing page layer (fades out during transition) ── */}
