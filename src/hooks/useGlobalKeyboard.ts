@@ -138,10 +138,16 @@ export function useGlobalKeyboard({
         const active = cps.filter((c) => !c.undone);
         if (active.length === 0) return;
         const current = store.getViewing(tid);
-        // Find the previous active checkpoint before current viewing position
-        const currentIdx = current ?? (active[active.length - 1]?.index ?? 0) + 1;
+        // From live: go to second-to-last (last is what you're already seeing).
+        // From a viewed checkpoint: go to the one before it.
+        const currentIdx = current ?? active[active.length - 1]?.index ?? 0;
         const prev = active.filter((c) => c.index < currentIdx).pop();
-        if (prev) store.setViewing(tid, prev.index);
+        if (prev) {
+          store.setViewing(tid, prev.index);
+        } else if (current === null && active.length >= 1) {
+          // Only one checkpoint — show it (first ^B highlights it)
+          store.setViewing(tid, active[active.length - 1]?.index ?? 1);
+        }
       });
     if (evt.ctrl && evt.name === "f")
       return consume(() => {
