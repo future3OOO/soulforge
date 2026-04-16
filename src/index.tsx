@@ -5,6 +5,7 @@ import type { App as AppComponent } from "./components/App.js";
 import type { ContextManager } from "./core/context/manager.js";
 import { killAllNvimProcesses } from "./core/editor/neovim.js";
 import { icon } from "./core/icons.js";
+import { killAllLspSync } from "./core/intelligence/backends/lsp/pid-tracker.js";
 import { disposeIntelligenceRouter } from "./core/intelligence/index.js";
 import { deactivateCurrentProvider, type ProviderStatus } from "./core/llm/provider.js";
 import { disposeMCPManager } from "./core/mcp/index.js";
@@ -60,6 +61,10 @@ function runCleanup(): void {
   } catch {}
   try {
     disposeMCPManager();
+  } catch {}
+  // Kill all LSP processes tracked by PID file — survives crashes/SIGKILL
+  try {
+    killAllLspSync();
   } catch {}
   // Nuclear fallback: kill entire process group to catch any orphaned grandchildren
   try {

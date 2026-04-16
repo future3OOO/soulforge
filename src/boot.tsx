@@ -402,6 +402,19 @@ const [bootProviders, bootPrereqs] = await Promise.all([
   Promise.resolve(checkPrerequisites()),
 ]);
 // Pre-warm model caches AFTER boot-critical work completes.
+// Kill orphaned LSP processes from previous sessions (crashes, SIGKILL, etc.)
+import("./core/intelligence/backends/lsp/pid-tracker.js")
+  .then(({ reapOrphanedLspProcesses }) => {
+    const killed = reapOrphanedLspProcesses();
+    if (killed > 0) {
+      logBackgroundError(
+        "boot",
+        `Reaped ${String(killed)} orphaned LSP process(es) from previous session`,
+      );
+    }
+  })
+  .catch(() => {});
+
 // Fire-and-forget — populates caches in background so Ctrl+L opens instantly.
 prewarmAllModels();
 

@@ -2,6 +2,7 @@ import { type ChildProcess, spawn } from "node:child_process";
 import { readFile } from "node:fs/promises";
 import { logBackgroundError } from "../../../../stores/errors.js";
 import { trackProcess } from "../../../process-tracker.js";
+import { trackLspPid, untrackLspPid } from "./pid-tracker.js";
 import {
   decode,
   encode,
@@ -94,9 +95,11 @@ export class StandaloneLspClient {
       detached: true,
     });
     trackProcess(this.process);
+    if (this.process.pid) trackLspPid(this.process.pid);
 
     this.process.stdout?.on("data", (chunk: Buffer) => this.onData(chunk));
     this.process.on("exit", (code, signal) => {
+      if (this.process?.pid) untrackLspPid(this.process.pid);
       this.process = null;
       if (code != null && code !== 0) {
         logBackgroundError(`LSP:${this.config.command}`, `exited with code ${code}`);
@@ -604,14 +607,16 @@ export class StandaloneLspClient {
     const pid = proc?.pid;
     if (pid) {
       try {
-        // Kill the process group (negative PID) to catch grandchildren
         process.kill(-pid, "SIGTERM");
       } catch {
-        // ESRCH = already dead, EPERM = not allowed — fall back to direct kill
         try {
           proc.kill("SIGTERM");
         } catch {}
       }
+      // SIGKILL after 2s as fallback — but also schedule an immediate
+      // SIGKILL if the process is still alive after a short grace period.
+      // The setTimeout may not fire during process.exit(), so killSync()
+      // and the PID tracker act as the real safety net.
       setTimeout(() => {
         try {
           process.kill(-pid, "SIGKILL");
@@ -621,6 +626,7 @@ export class StandaloneLspClient {
           } catch {}
         }
       }, 2000);
+      untrackLspPid(pid);
     }
     this.process = null;
     this.initialized = false;
