@@ -2,6 +2,64 @@
 
 All notable changes to SoulForge are documented here.
 
+## [2.12.0] — 2026-04-16
+
+### Bug Fixes
+
+- **soul-vision**: yt-dlp retry without size cap when first attempt fails
+- **soul-vision**: direct video URLs, auto-resize oversized images
+- stop auto-labeling tabs from first user message
+- don't auto-start proxy for new users
+- prevent orphaned LSP processes via PID file tracking
+- remove unnecessary checkpoints.length dependency from rail scroll effect
+- checkpoint scroll lands on user message consistently
+- latest checkpoint keeps diamond shape while browsing
+- ^B skips current checkpoint and goes directly to previous
+- eagerly sync coreMessagesRef on setCoreMessages
+- end-to-end checkpoint undo/redo file restoration
+- robust checkpoint rail and deterministic scroll positioning
+- align checkpoint legend to right side
+- checkpoint bugs, race conditions, and rail UI overhaul
+- eliminate stale file reads from dispatch cache
+- per-model endpoint routing for copilot provider
+- use responses API instead of chat completions for copilot and github-models providers
+- bypass proxy+Claude system prompt cloaking
+- kill LSP process groups to prevent orphaned grandchildren
+- surface clone hints on file creation, not just edits
+- clone detection missed low-pagerank files and produced duplicate results
+- default semantic summaries to "ast" instead of "synthetic"
+- stop spamming /errors on normal completions, log actual failures
+- stop spamming /errors on normal agent completions
+- re-raise signals instead of process.exit(128+N) on Ctrl+C
+- detect multi_edit and dispatch changes in hasChangedFiles
+### Features
+
+- configurable max concurrent agents in /router
+- LSP server version tracking and updates
+- add tab name popup for new tab creation
+- context bar uses warning style with ~ prefix when browsing checkpoints
+- context bar shows estimated tokens for viewed checkpoint
+- show rewind hint in input placeholder when viewing checkpoint
+- git-backed checkpoints with undo/redo, visual rail, and session persistence
+- add global toolTimeout config with /timeouts command
+- replace hand-rolled JSON repair with jsonrepair library
+- auto-compress large images before API submission
+- surface clone detection hints after edit_file and multi_edit
+### Miscellaneous
+
+- remove harbor agent adapter
+- update README and replace header with logo assets
+### Other
+
+- restore .chat() for copilot and github-models providers
+### Performance
+
+- improve clone detection quality — reduce noise, add semantic filtering
+### Refactor
+
+- centralize test file SQL filter in RepoMap
+- deduplicate edit/multi-edit diagnostics, blast-radius, and occurrence counting
+- dedup inferModelGroup, fallbackTracked, and ZERO_USAGE
 ## [2.11.0] — 2026-04-12
 
 ### Bug Fixes
