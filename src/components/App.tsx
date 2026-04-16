@@ -1194,7 +1194,6 @@ export function App({
             registerChat={tabMgr.registerChat}
             unregisterChat={tabMgr.unregisterChat}
             setTabActivity={tabMgr.setTabActivity}
-            autoLabel={tabMgr.autoLabel}
             initialState={tabMgr.initialStates.current.get(tab.id)}
             editorVisible={editorVisible}
             focusMode={focusMode}

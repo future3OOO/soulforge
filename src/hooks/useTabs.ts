@@ -37,7 +37,6 @@ export interface UseTabsReturn {
   renameTab: (id: string, label: string) => void;
   moveTab: (id: string, direction: "left" | "right") => void;
   resetTabLabel: (id: string) => void;
-  autoLabel: (id: string, firstMessage: string) => void;
   setTabActivity: (id: string, activity: Partial<TabActivity>) => void;
   getTabActivity: (id: string) => TabActivity;
   registerChat: (id: string, chat: ChatInstance) => void;
@@ -200,13 +199,6 @@ export function useTabs(): UseTabsReturn {
     });
   }, []);
 
-  const autoLabel = useCallback((id: string, firstMessage: string) => {
-    if (autoLabeled.current.has(id)) return;
-    autoLabeled.current.add(id);
-    const label = firstMessage.trim().slice(0, 20) || "TAB";
-    setTabs((prev) => prev.map((t) => (t.id === id ? { ...t, label } : t)));
-  }, []);
-
   const setTabActivity = useCallback((id: string, activity: Partial<TabActivity>) => {
     setActivityMap((prev) => {
       const current = prev.get(id) ?? { ...DEFAULT_ACTIVITY };
@@ -346,7 +338,6 @@ export function useTabs(): UseTabsReturn {
     renameTab,
     moveTab,
     resetTabLabel,
-    autoLabel,
     setTabActivity,
     getTabActivity,
     registerChat,

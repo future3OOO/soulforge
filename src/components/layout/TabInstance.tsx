@@ -67,7 +67,6 @@ interface TabInstanceProps {
   registerChat: (id: string, chat: ChatInstance) => void;
   unregisterChat: (id: string) => void;
   setTabActivity: (id: string, activity: Partial<TabActivity>) => void;
-  autoLabel: (id: string, firstMessage: string) => void;
   initialState?: TabState;
   editorVisible: boolean;
   focusMode: "chat" | "editor";
@@ -116,7 +115,6 @@ export const TabInstance = memo(function TabInstance({
   registerChat,
   unregisterChat,
   setTabActivity,
-  autoLabel,
   initialState,
   editorVisible,
   focusMode,
@@ -291,13 +289,6 @@ export const TabInstance = memo(function TabInstance({
     });
     return unsub;
   }, [tabId, setTabActivity]);
-
-  // Auto-label tab from first user message
-  // biome-ignore lint/correctness/useExhaustiveDependencies: narrow trigger
-  useEffect(() => {
-    const firstUser = chat.messages.find((m) => m.role === "user");
-    if (firstUser) autoLabel(tabId, firstUser.content);
-  }, [chat.messages.length]);
 
   // ── Checkpoint sync ──
   useEffect(() => {
