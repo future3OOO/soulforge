@@ -3,13 +3,43 @@ import { classifyPath, type OutsideKind } from "../../core/security/outside-cwd.
 import { getThemeTokens } from "../../core/theme/index.js";
 import { SUBAGENT_NAMES } from "./ToolCallDisplay.js";
 
-const CWD = process.cwd();
-
 const ABS_PATH_RE = /(?:^|\s)(\/[\w./-]+)/g;
 
 /** Type guard: narrows `unknown` to `Record<string, unknown>` without `as` cast */
 function isObj(v: unknown): v is Record<string, unknown> {
   return v != null && typeof v === "object" && !Array.isArray(v);
+}
+
+/** Shorten absolute paths under the current working directory to relative form for display. */
+function relPath(p: string): string {
+  const cwd = process.cwd();
+  if (p === cwd) return ".";
+  if (p.startsWith(`${cwd}/`)) return p.slice(cwd.length + 1);
+  return p;
+}
+
+/** Format a read-tool file detail (ranges/full/symbol) for display. */
+function formatReadDetail(f: { ranges?: unknown; target?: unknown; name?: unknown }): string {
+  if (f.target && f.name) return `(${String(f.target)}:${String(f.name)})`;
+  if (Array.isArray(f.ranges) && f.ranges.length > 0) {
+    const rangeCount = f.ranges.length;
+    const parts: string[] = [];
+    let lineCount = 0;
+    for (const r of f.ranges) {
+      if (isObj(r) && typeof r.start === "number" && typeof r.end === "number") {
+        parts.push(`L${String(r.start)}-${String(r.end)}`);
+        lineCount += r.end - r.start + 1;
+      }
+    }
+    if (rangeCount === 1 && parts[0]) return `(${parts[0]})`;
+    const joined = parts.join(", ");
+    // If listing each range fits, show them; otherwise summarize
+    if (joined.length <= 30) return `(${String(rangeCount)} ranges: ${joined})`;
+    return lineCount > 0
+      ? `(${String(rangeCount)} ranges, ${String(lineCount)} lines)`
+      : `(${String(rangeCount)} ranges)`;
+  }
+  return "(full)";
 }
 
 export function formatArgs(toolName: string, args?: string): string {
@@ -18,26 +48,26 @@ export function formatArgs(toolName: string, args?: string): string {
     const parsed: Record<string, unknown> = JSON.parse(args);
     if (toolName === "read") {
       const files = Array.isArray(parsed.files) ? parsed.files : parsed.files ? [parsed.files] : [];
-      if (files.length === 0 && parsed.path) return String(parsed.path); // legacy
+      if (files.length === 0 && parsed.path) return relPath(String(parsed.path)); // legacy
       if (files.length === 1) {
         const f = files[0];
-        const hasRanges = f.ranges && f.ranges.length > 0;
-        const label =
-          f.target && f.name ? `${String(f.name)} in ${String(f.path)}` : String(f.path);
-        const suffix = hasRanges
-          ? ` (${String(f.ranges.length)} range${f.ranges.length > 1 ? "s" : ""})`
-          : "";
-        const trimmed = label.length > 50 ? `${label.slice(0, 47)}...` : label;
-        return `${trimmed}${suffix}`;
+        const rel = relPath(String(f.path));
+        const detail = formatReadDetail(f);
+        // For symbol target, label already includes the name
+        const baseLabel = f.target && f.name ? `${String(f.name)} in ${rel}` : rel;
+        const trimmedBase = baseLabel.length > 50 ? `${baseLabel.slice(0, 47)}...` : baseLabel;
+        // Symbol detail is already in the label — don't repeat it
+        const suffix = f.target && f.name ? "" : ` ${detail}`;
+        return `${trimmedBase}${suffix}`;
       }
       if (files.length > 1) {
         return `${String(files.length)} files`;
       }
       return "";
     }
-    if (toolName === "edit_file" && parsed.path) return String(parsed.path);
-    if (toolName === "multi_edit" && parsed.path) return String(parsed.path);
-    if (toolName === "undo_edit" && parsed.path) return String(parsed.path);
+    if (toolName === "edit_file" && parsed.path) return relPath(String(parsed.path));
+    if (toolName === "multi_edit" && parsed.path) return relPath(String(parsed.path));
+    if (toolName === "undo_edit" && parsed.path) return relPath(String(parsed.path));
     if (toolName === "list_dir" && parsed.path) {
       if (Array.isArray(parsed.path)) {
         const paths = parsed.path.map(String);
@@ -59,7 +89,10 @@ export function formatArgs(toolName: string, args?: string): string {
       if (codeExec) return codeExec.preview;
       return cmd.length > 60 ? `${cmd.slice(0, 57)}...` : cmd;
     }
-    if (toolName === "grep" && parsed.pattern) return `/${String(parsed.pattern)}/`;
+    if (toolName === "grep" && parsed.pattern) {
+      const p = String(parsed.pattern);
+      return p.length > 55 ? `${p.slice(0, 52)}...` : p;
+    }
     if (toolName === "glob" && parsed.pattern) return String(parsed.pattern);
     if (toolName === "web_search" && parsed.query) {
       const q = String(parsed.query);
@@ -175,9 +208,7 @@ export function formatArgs(toolName: string, args?: string): string {
     }
     if (toolName === "soul_grep" && parsed.pattern) {
       const p = String(parsed.pattern);
-      const path = parsed.path ? ` ${String(parsed.path)}` : "";
-      const label = `/${p}/${path}`;
-      return label.length > 55 ? `${label.slice(0, 52)}...` : label;
+      return p.length > 55 ? `${p.slice(0, 52)}...` : p;
     }
     if (toolName === "soul_find" && parsed.query) {
       const q = String(parsed.query);
@@ -240,23 +271,7 @@ export function extractMultiReadFiles(
     const result: MultiReadFile[] = [];
     for (const f of files) {
       if (!isObj(f) || typeof f.path !== "string") continue;
-      let detail = "";
-      if (f.target && f.name) {
-        detail = `(${String(f.target)}:${String(f.name)})`;
-      } else if (Array.isArray(f.ranges) && f.ranges.length > 0) {
-        const rangeCount = f.ranges.length;
-        let lineCount = 0;
-        for (const r of f.ranges) {
-          if (isObj(r) && typeof r.start === "number" && typeof r.end === "number") {
-            lineCount += r.end - r.start + 1;
-          }
-        }
-        const rangeLabel = `${String(rangeCount)} range${rangeCount > 1 ? "s" : ""}`;
-        detail = lineCount > 0 ? `(${rangeLabel}, ${String(lineCount)} lines)` : `(${rangeLabel})`;
-      } else {
-        detail = "(full)";
-      }
-      result.push({ path: f.path, detail });
+      result.push({ path: f.path, detail: formatReadDetail(f) });
     }
     return result.length >= 2 ? result : null;
   } catch {
@@ -271,7 +286,7 @@ export function formatResult(toolName: string, result?: string): string {
     if (p.repoMapHit && p.output) {
       const out = String(p.output);
       const match = out.match(/indexed at ([^\s]+)/);
-      return match?.[1] ? `→ ${match[1]}` : out.slice(0, 40);
+      return match?.[1] ? match[1] : out.slice(0, 40);
     }
     if (p.output && typeof p.output === "string" && p.output.startsWith("[from dispatch cache]")) {
       const lines = p.output.split("\n").length - 1;
@@ -284,7 +299,7 @@ export function formatResult(toolName: string, result?: string): string {
       const p = JSON.parse(result);
       if (p.success && p.output) {
         const lines = String(p.output).split("\n").filter(Boolean).length;
-        return `→ ${String(lines)} lines`;
+        return `${String(lines)} lines`;
       }
       if (p.error) {
         const msg = String(p.error);
@@ -326,25 +341,45 @@ export function formatResult(toolName: string, result?: string): string {
       }
     } catch {}
   }
+  if (toolName === "soul_grep" || toolName === "grep") {
+    try {
+      const p = JSON.parse(result);
+      if (p.success && p.output) {
+        const out = String(p.output);
+        if (out === "No matches found." || out === "0 matches.") return "0 hits";
+        // Count mode: "N matches across M files"
+        const countMatch = out.match(/^(\d+) matches? across (\d+) files?/);
+        if (countMatch) {
+          const hits = countMatch[1];
+          const files = countMatch[2];
+          return `${hits} hit${hits === "1" ? "" : "s"} in ${files} file${files === "1" ? "" : "s"}`;
+        }
+        // Search mode: count `path:line:content` lines
+        const hitLines = out.split("\n").filter((line) => /^[^\s].*:\d+:/.test(line)).length;
+        if (hitLines > 0) return `${String(hitLines)} hit${hitLines === 1 ? "" : "s"}`;
+        // Fallback
+        return "0 hits";
+      }
+    } catch {}
+  }
+  if (toolName === "glob") {
+    try {
+      const p = JSON.parse(result);
+      if (p.success && p.output) {
+        const out = String(p.output).trim();
+        if (!out) return "0 hits";
+        const fileCount = out.split("\n").filter(Boolean).length;
+        return `${String(fileCount)} file${fileCount === 1 ? "" : "s"}`;
+      }
+    } catch {}
+  }
   if (toolName === "soul_find") {
     try {
       const p = JSON.parse(result);
       if (p.success && p.output) {
         const out = String(p.output);
         const countMatch = out.match(/(\d+) results?/);
-        if (countMatch) return `${countMatch[1]} results (ranked)`;
-      }
-    } catch {}
-  }
-  if (toolName === "soul_grep") {
-    try {
-      const p = JSON.parse(result);
-      if (p.success && p.output) {
-        const out = String(p.output);
-        const fileMatch = out.match(/(\d+) files?/);
-        const matchCount = out.match(/(\d+) match/);
-        if (fileMatch) return `${fileMatch[1]} files`;
-        if (matchCount) return `${matchCount[1]} matches`;
+        if (countMatch) return `${countMatch[1]} result${countMatch[1] === "1" ? "" : "s"}`;
       }
     } catch {}
   }
@@ -367,12 +402,12 @@ export function formatResult(toolName: string, result?: string): string {
         if (refMatch) return `${refMatch[1]} references`;
         // Definition
         const defMatch = out.match(/defined at (.+)/);
-        if (defMatch?.[1]) return `→ ${defMatch[1].slice(0, 40)}`;
+        if (defMatch?.[1]) return defMatch[1].slice(0, 40);
       }
       if (p.repoMapHit) {
         const out = String(p.output ?? "");
         const match = out.match(/indexed at ([^\s]+)/);
-        return match ? `→ ${match[1]}` : "→ repo map";
+        return match ? String(match[1]) : "repo map";
       }
     } catch {}
   }
@@ -477,7 +512,7 @@ export function detectOutsideCwd(toolName: string, args?: string): OutsideKind |
     for (const val of Object.values(parsed)) {
       if (typeof val === "string" && (val.startsWith("/") || val.startsWith("~"))) {
         const resolved = resolve(val);
-        const kind = classifyPath(resolved, CWD);
+        const kind = classifyPath(resolved, process.cwd());
         if (kind) return kind;
       }
     }
@@ -485,7 +520,7 @@ export function detectOutsideCwd(toolName: string, args?: string): OutsideKind |
       for (const match of parsed.command.matchAll(ABS_PATH_RE)) {
         const p = match[1];
         if (p) {
-          const kind = classifyPath(p, CWD);
+          const kind = classifyPath(p, process.cwd());
           if (kind) return kind;
         }
       }
