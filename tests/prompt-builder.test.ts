@@ -118,10 +118,9 @@ describe("buildSystemPrompt assembly", () => {
     expect(prompt).not.toContain("Decision flow");
   });
 
-  test("does not include cwd, projectInfo, forbidden, or memory", () => {
+  test("does not include cwd, projectInfo, or memory", () => {
     const prompt = buildSystemPrompt(baseOpts());
     expect(prompt).not.toContain("Project cwd");
-    expect(prompt).not.toContain("Forbidden");
     expect(prompt).not.toContain("Memory:");
   });
 

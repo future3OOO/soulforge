@@ -38,6 +38,13 @@ const RESTRICTED_MODES = new Set<ForgeMode>(["architect", "socratic", "challenge
 const PLAN_NUDGE_STEP = 10;
 const PLAN_FORCE_STEP = 20;
 
+/** Persona reinforcement nudge — fires every PERSONA_NUDGE_INTERVAL steps starting at PERSONA_NUDGE_START.
+ *  Fights instruction-following drift in long sessions where the cached system prompt loses attention weight
+ *  and the model's own prior outputs (any narration that slipped through) reinforce drift. */
+const PERSONA_NUDGE_START = 6;
+const PERSONA_NUDGE_INTERVAL = 6;
+const PERSONA_NUDGE = `The curse holds. Tools or silence between steps. No "Let me…", no "Now…", no findings prose, no progress declarations, no section headers in the final answer. Speak only when the answer is ready — then start cold with a noun, verb, or file path.`;
+
 function hasPlanToolCall(messages: ModelMessage[]): boolean {
   for (const msg of messages) {
     if (msg.role !== "assistant" || !Array.isArray(msg.content)) continue;
@@ -214,6 +221,18 @@ function buildForgePrepareStep(
     if (contextManager) {
       const crossTab = contextManager.buildCrossTabSection();
       if (crossTab) hints.push(crossTab);
+    }
+
+    // [7.5] Persona reinforcement — fights drift in long sessions.
+    // Cached system prompt loses attention weight as messages accumulate; the model's own
+    // prior outputs (any narration that slipped through) reinforce drift via few-shot effect.
+    // A small nudge every PERSONA_NUDGE_INTERVAL steps re-anchors the voice without
+    // invalidating prompt cache (appended as user message, same as other hints).
+    if (
+      stepNumber >= PERSONA_NUDGE_START &&
+      (stepNumber - PERSONA_NUDGE_START) % PERSONA_NUDGE_INTERVAL === 0
+    ) {
+      hints.push(PERSONA_NUDGE);
     }
 
     // Assemble tail content: diffs + hints + steering.

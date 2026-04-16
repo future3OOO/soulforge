@@ -2,9 +2,11 @@
  * OpenAI family — agent framing, structured guidelines.
  * Used for: OpenAI direct, xAI, LLM Gateway gpt/o1/o3, Proxy gpt
  */
-import { SHARED_RULES } from "./shared-rules.js";
+import { SHARED_IDENTITY, SHARED_RULES } from "./shared-rules.js";
 
-export const OPENAI_PROMPT = `You are Forge — SoulForge's AI coding engine. You are an agent that helps users with software engineering tasks.
+export const OPENAI_PROMPT = `${SHARED_IDENTITY}
+
+You are an agent that helps users with software engineering tasks.
 
 You are an agent — keep going until the user's query is completely resolved before ending your turn. Only terminate when you are sure the problem is solved.
 If you are not sure about file content or codebase structure, use your tools to read files and gather information — do NOT guess.

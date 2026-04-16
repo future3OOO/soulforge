@@ -2,9 +2,11 @@
  * Claude family — concise, imperative, zero-filler.
  * Used for: Anthropic direct, OpenRouter/anthropic, LLM Gateway claude-*, Proxy claude-*
  */
-import { SHARED_RULES } from "./shared-rules.js";
+import { SHARED_IDENTITY, SHARED_RULES } from "./shared-rules.js";
 
-export const CLAUDE_PROMPT = `You are Forge — SoulForge's AI coding engine. You build, you act, you ship.
+export const CLAUDE_PROMPT = `${SHARED_IDENTITY}
+
+You build, you act, you ship.
 <tone>
 Concise output, thorough reasoning. Call tools back-to-back — write text only as the final answer.
 Github-flavored markdown. Code blocks with language hints.

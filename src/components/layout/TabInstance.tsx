@@ -34,7 +34,7 @@ import type {
 import { CheckpointRail } from "../chat/CheckpointRail.js";
 import { InputBox } from "../chat/InputBox.js";
 import { filterQuietTools, LOCKIN_EDIT_TOOLS, LockInWrapper } from "../chat/LockInStreamView.js";
-import { CodeExpandedProvider } from "../chat/Markdown.js";
+import { CodeExpandedProvider, VerboseProvider } from "../chat/Markdown.js";
 import { RAIL_BORDER, ReasoningExpandedProvider, StaticMessage } from "../chat/MessageList.js";
 import { StreamSegmentList } from "../chat/StreamSegmentList.js";
 import { SUBAGENT_NAMES, ToolCallDisplay } from "../chat/ToolCallDisplay.js";
@@ -676,117 +676,119 @@ export const TabInstance = memo(function TabInstance({
                 horizontalScrollbarOptions={SCROLLBAR_HIDDEN}
               >
                 <CodeExpandedProvider value={codeExpanded}>
-                  <ReasoningExpandedProvider value={reasoningExpanded}>
-                    {hiddenCount > 0 && (
-                      <box paddingX={1} marginBottom={1}>
-                        <text fg={t.textDim}>
-                          ── {String(hiddenCount)} earlier message{hiddenCount > 1 ? "s" : ""} ──
-                        </text>
-                      </box>
-                    )}
-                    {visibleMessages.map((msg) => (
-                      <box key={msg.id} id={`msg-${msg.id}`} flexDirection="column" width="100%">
-                        {msg.id === firstDimmedMessageId && (
-                          <box marginTop={1} height={1} paddingX={1}>
-                            <text fg={dimmedReason === "viewing" ? t.textMuted : t.warning}>
-                              {dimmedReason === "viewing"
-                                ? `${icon("rewind")} Viewing checkpoint #${String(checkpointViewing)}, send a message to rewind here.`
-                                : `${icon("rewind")} Rewound past this point.`}
-                            </text>
-                          </box>
-                        )}
-                        <StaticMessage
-                          msg={msg}
-                          chatStyle={chatStyle}
-                          diffStyle={effectiveConfig.diffStyle}
-                          collapseDiffs={effectiveConfig.collapseDiffs === true}
-                          showReasoning={showReasoning}
-                          reasoningExpanded={reasoningExpanded}
-                          animate={false}
-                          lockIn={lockIn}
-                          dimmed={dimmedMessageIds.has(msg.id)}
-                        />
-                      </box>
-                    ))}
-                    {isStreaming && (
-                      <box paddingX={1} flexShrink={0} marginBottom={1}>
-                        <box
-                          flexDirection="column"
-                          border={["left"]}
-                          borderColor={t.brand}
-                          customBorderChars={RAIL_BORDER}
-                          paddingLeft={2}
-                        >
-                          <box>
-                            <text fg={t.brand}>
-                              {icon("ai")} Forge
-                              {lockIn ? <span fg={t.textMuted}> (locked in)</span> : null}
-                            </text>
-                          </box>
-                          {lockIn ? (
-                            <>
-                              <LockInWrapper
-                                hasEdits={chat.liveToolCalls.some((tc) =>
-                                  LOCKIN_EDIT_TOOLS.has(tc.toolName),
-                                )}
-                                hasDispatch={chat.liveToolCalls.some((tc) =>
-                                  SUBAGENT_NAMES.has(tc.toolName),
-                                )}
-                                done={false}
-                                seed={chat.messages.length}
-                                loadingStartedAt={loadingStartedAtRef.current}
-                                tools={chat.liveToolCalls
-                                  .filter(
-                                    (tc) =>
-                                      filterQuietTools(tc.toolName) &&
-                                      !SUBAGENT_NAMES.has(tc.toolName),
-                                  )
-                                  .map((tc) => ({
-                                    id: tc.id,
-                                    name: tc.toolName,
-                                    done: tc.state !== "running",
-                                    error: tc.state === "error",
-                                    argStr: formatArgs(tc.toolName, tc.args),
-                                  }))}
-                              >
-                                {chat.liveToolCalls.some((tc) =>
-                                  SUBAGENT_NAMES.has(tc.toolName),
-                                ) ? (
-                                  <ToolCallDisplay
-                                    calls={chat.liveToolCalls.filter((tc) =>
-                                      SUBAGENT_NAMES.has(tc.toolName),
-                                    )}
-                                    diffStyle="compact"
-                                  />
-                                ) : null}
-                              </LockInWrapper>
+                  <VerboseProvider value={effectiveConfig.verbose === true}>
+                    <ReasoningExpandedProvider value={reasoningExpanded}>
+                      {hiddenCount > 0 && (
+                        <box paddingX={1} marginBottom={1}>
+                          <text fg={t.textDim}>
+                            ── {String(hiddenCount)} earlier message{hiddenCount > 1 ? "s" : ""} ──
+                          </text>
+                        </box>
+                      )}
+                      {visibleMessages.map((msg) => (
+                        <box key={msg.id} id={`msg-${msg.id}`} flexDirection="column" width="100%">
+                          {msg.id === firstDimmedMessageId && (
+                            <box marginTop={1} height={1} paddingX={1}>
+                              <text fg={dimmedReason === "viewing" ? t.textMuted : t.warning}>
+                                {dimmedReason === "viewing"
+                                  ? `${icon("rewind")} Viewing checkpoint #${String(checkpointViewing)}, send a message to rewind here.`
+                                  : `${icon("rewind")} Rewound past this point.`}
+                              </text>
+                            </box>
+                          )}
+                          <StaticMessage
+                            msg={msg}
+                            chatStyle={chatStyle}
+                            diffStyle={effectiveConfig.diffStyle}
+                            collapseDiffs={effectiveConfig.collapseDiffs === true}
+                            showReasoning={showReasoning}
+                            reasoningExpanded={reasoningExpanded}
+                            animate={false}
+                            lockIn={lockIn}
+                            dimmed={dimmedMessageIds.has(msg.id)}
+                          />
+                        </box>
+                      ))}
+                      {isStreaming && (
+                        <box paddingX={1} flexShrink={0} marginBottom={1}>
+                          <box
+                            flexDirection="column"
+                            border={["left"]}
+                            borderColor={t.brand}
+                            customBorderChars={RAIL_BORDER}
+                            paddingLeft={2}
+                          >
+                            <box>
+                              <text fg={t.brand}>
+                                {icon("ai")} Forge
+                                {lockIn ? <span fg={t.textMuted}> (locked in)</span> : null}
+                              </text>
+                            </box>
+                            {lockIn ? (
+                              <>
+                                <LockInWrapper
+                                  hasEdits={chat.liveToolCalls.some((tc) =>
+                                    LOCKIN_EDIT_TOOLS.has(tc.toolName),
+                                  )}
+                                  hasDispatch={chat.liveToolCalls.some((tc) =>
+                                    SUBAGENT_NAMES.has(tc.toolName),
+                                  )}
+                                  done={false}
+                                  seed={chat.messages.length}
+                                  loadingStartedAt={loadingStartedAtRef.current}
+                                  tools={chat.liveToolCalls
+                                    .filter(
+                                      (tc) =>
+                                        filterQuietTools(tc.toolName) &&
+                                        !SUBAGENT_NAMES.has(tc.toolName),
+                                    )
+                                    .map((tc) => ({
+                                      id: tc.id,
+                                      name: tc.toolName,
+                                      done: tc.state !== "running",
+                                      error: tc.state === "error",
+                                      argStr: formatArgs(tc.toolName, tc.args),
+                                    }))}
+                                >
+                                  {chat.liveToolCalls.some((tc) =>
+                                    SUBAGENT_NAMES.has(tc.toolName),
+                                  ) ? (
+                                    <ToolCallDisplay
+                                      calls={chat.liveToolCalls.filter((tc) =>
+                                        SUBAGENT_NAMES.has(tc.toolName),
+                                      )}
+                                      diffStyle="compact"
+                                    />
+                                  ) : null}
+                                </LockInWrapper>
+                                <StreamSegmentList
+                                  segments={chat.streamSegments}
+                                  toolCalls={chat.liveToolCalls}
+                                  streaming={chat.isLoading}
+                                  verbose={effectiveConfig.verbose === true}
+                                  diffStyle="compact"
+                                  showReasoning={showReasoning}
+                                  reasoningExpanded={reasoningExpanded}
+                                  lockIn
+                                />
+                              </>
+                            ) : (
                               <StreamSegmentList
                                 segments={chat.streamSegments}
                                 toolCalls={chat.liveToolCalls}
                                 streaming={chat.isLoading}
                                 verbose={effectiveConfig.verbose === true}
-                                diffStyle="compact"
+                                diffStyle={effectiveConfig.diffStyle}
                                 showReasoning={showReasoning}
                                 reasoningExpanded={reasoningExpanded}
-                                lockIn
+                                lockIn={lockIn}
                               />
-                            </>
-                          ) : (
-                            <StreamSegmentList
-                              segments={chat.streamSegments}
-                              toolCalls={chat.liveToolCalls}
-                              streaming={chat.isLoading}
-                              verbose={effectiveConfig.verbose === true}
-                              diffStyle={effectiveConfig.diffStyle}
-                              showReasoning={showReasoning}
-                              reasoningExpanded={reasoningExpanded}
-                              lockIn={lockIn}
-                            />
-                          )}
+                            )}
+                          </box>
                         </box>
-                      </box>
-                    )}
-                  </ReasoningExpandedProvider>
+                      )}
+                    </ReasoningExpandedProvider>
+                  </VerboseProvider>
                 </CodeExpandedProvider>
                 {lockIn ? (
                   chat.isLoading ? (

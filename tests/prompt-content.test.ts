@@ -13,11 +13,12 @@ describe("shared-rules content", () => {
     expect(SHARED_RULES).toContain("run project");
   });
 
-  test("contains output discipline with numeric anchors", () => {
+  test("contains output discipline with grammatical rules", () => {
     expect(SHARED_RULES).toContain("# Output discipline");
-    expect(SHARED_RULES).toContain("0 words between tool calls");
-    expect(SHARED_RULES).toContain("≤50 words");
-    expect(SHARED_RULES).toContain("≤120 words");
+    expect(SHARED_RULES).toContain("work in silence, speak once at the end");
+    expect(SHARED_RULES).toContain("No self-narrating verb phrases");
+    expect(SHARED_RULES).toContain("No progress-state declarations");
+    expect(SHARED_RULES).toContain("Between tool calls: no complete sentences");
   });
 
   test("contains commit-to-decisions guidance", () => {
