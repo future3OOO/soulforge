@@ -15,7 +15,7 @@ import { logBackgroundError } from "../../stores/errors.js";
 import type { ChatMessage } from "../../types/index.js";
 import { ensureSoulforgeDir } from "../utils/ensure-soulforge-dir.js";
 import { getIOClient } from "../workers/io-client.js";
-import { rebuildCoreMessages } from "./rebuild.js";
+import { rebuildCoreMessages, validateCoreMessages } from "./rebuild.js";
 import type { SessionMeta, TabMeta } from "./types.js";
 
 export interface SessionListEntry {
@@ -165,7 +165,9 @@ export class SessionManager {
           >;
           tabCoreMessages = new Map();
           for (const [tabId, cores] of Object.entries(coreData)) {
-            tabCoreMessages.set(tabId, cores);
+            const validated = validateCoreMessages(cores);
+            if (validated) tabCoreMessages.set(tabId, validated);
+            // invalid → omit; loadSessionMessages / useTabs will rebuildCoreMessages
           }
         } catch {
           /* ignore corrupt core.json — will fall back to rebuild */
@@ -198,7 +200,8 @@ export class SessionManager {
       if (result.coreEntries) {
         tabCoreMessages = new Map();
         for (const [tabId, cores] of result.coreEntries) {
-          tabCoreMessages.set(tabId, cores as import("ai").ModelMessage[]);
+          const validated = validateCoreMessages(cores as unknown[]);
+          if (validated) tabCoreMessages.set(tabId, validated);
         }
       }
       return { meta: result.meta, tabMessages, tabCoreMessages };

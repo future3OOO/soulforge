@@ -2,6 +2,7 @@ import { readFile as readFileAsync } from "node:fs/promises";
 import { resolve } from "node:path";
 import { type AgentBus, normalizePath } from "../agents/agent-bus.js";
 import type { IntelligenceClient } from "../workers/intelligence-client.js";
+import { deriveTool } from "./tool-utils.js";
 
 interface WrappableTool {
   description?: string;
@@ -107,8 +108,7 @@ export function wrapWithBusCache(
       opts?: unknown,
     ) => Promise<unknown>;
 
-    wrapped.read = {
-      ...readFile,
+    wrapped.read = deriveTool(readFile, {
       execute: (async (
         args: { path: string; startLine?: number; endLine?: number },
         opts: unknown,
@@ -177,7 +177,7 @@ export function wrapWithBusCache(
           throw error;
         }
       }) as WrappableTool["execute"],
-    };
+    });
   }
 
   const editFile = tools.edit_file;
@@ -187,8 +187,7 @@ export function wrapWithBusCache(
       opts?: unknown,
     ) => Promise<unknown>;
 
-    wrapped.edit_file = {
-      ...editFile,
+    wrapped.edit_file = deriveTool(editFile, {
       execute: (async (
         args: { path: string; oldString: string; newString: string },
         opts: unknown,
@@ -224,7 +223,7 @@ export function wrapWithBusCache(
           release();
         }
       }) as WrappableTool["execute"],
-    };
+    });
   }
 
   const multiEdit = tools.multi_edit;
@@ -237,8 +236,7 @@ export function wrapWithBusCache(
       opts?: unknown,
     ) => Promise<unknown>;
 
-    wrapped.multi_edit = {
-      ...multiEdit,
+    wrapped.multi_edit = deriveTool(multiEdit, {
       execute: (async (
         args: {
           path: string;
@@ -277,7 +275,7 @@ export function wrapWithBusCache(
           release();
         }
       }) as WrappableTool["execute"],
-    };
+    });
   }
 
   const NAVIGATE_CACHEABLE = new Set([
@@ -380,14 +378,13 @@ export function wrapWithBusCache(
   for (const spec of cacheSpecs) {
     const t = tools[spec.name];
     if (t?.execute) {
-      wrapped[spec.name] = {
-        ...t,
+      wrapped[spec.name] = deriveTool(t, {
         execute: makeCachedExecute(
           t.execute as (args: Record<string, unknown>, opts?: unknown) => Promise<unknown>,
           spec.keyFn,
           spec.onExecute,
         ),
-      };
+      });
     }
   }
 

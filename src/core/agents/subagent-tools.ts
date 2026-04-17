@@ -9,6 +9,7 @@ import { getModelContextWindow } from "../llm/models.js";
 import { supportsProgrammaticToolCalling } from "../llm/provider-options.js";
 
 import { getActiveTaskTab } from "../tools/task-list.js";
+import { deriveTool } from "../tools/tool-utils.js";
 import type { IntelligenceClient } from "../workers/intelligence-client.js";
 import { AgentBus, type AgentTask, normalizePath, type SharedCache } from "./agent-bus.js";
 import { cleanupDispatchDir, type DispatchOutput, type DoneToolResult } from "./agent-results.js";
@@ -101,16 +102,11 @@ function guardForgeTools(
 
   for (const [name, t] of Object.entries(forgeTools)) {
     if (blocked.has(name) || (stripProgrammatic && PROGRAMMATIC_ONLY_TOOLS.has(name))) {
-      // Spread the original tool object to preserve description + schema for cache,
-      // then override execute to reject at runtime.
-      guarded[name] = {
-        ...(t as object),
+      guarded[name] = deriveTool(t as object, {
         execute: async () => ({ success: false, error: rejectMsg(name) }),
-      };
+      });
     } else if (stripProgrammatic && (t as Record<string, unknown>).providerOptions) {
-      // Strip allowedCallers from tools — models like Haiku don't support programmatic tool calling
-      const { providerOptions: _, ...rest } = t as Record<string, unknown>;
-      guarded[name] = rest;
+      guarded[name] = deriveTool(t as object, { providerOptions: undefined });
     } else {
       guarded[name] = t;
     }

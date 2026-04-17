@@ -13,3 +13,18 @@ export function toolError(msg: string): ToolResult {
 export function toolDenied(msg: string): ToolResult {
   return { success: false, output: msg, error: msg };
 }
+
+/**
+ * Clone an AI SDK tool, preserving prototype properties (inputSchema, description,
+ * toModelOutput) that live on the prototype and are lost by object spread.
+ *
+ * Use instead of `{ ...tool, execute: ... }` whenever overriding tool properties.
+ */
+export function deriveTool<T extends object>(tool: T, overrides?: Partial<T>): T {
+  const derived = Object.create(
+    Object.getPrototypeOf(tool),
+    Object.getOwnPropertyDescriptors(tool),
+  ) as T;
+  if (overrides) Object.assign(derived, overrides);
+  return derived;
+}
