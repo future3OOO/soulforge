@@ -2,6 +2,12 @@
 
 All notable changes to SoulForge are documented here.
 
+## [2.13.1] — 2026-04-18
+
+### Bug Fixes
+
+- honor user retry config for both transient and stall retries
+- model picker always background-refreshes on open
 ## [2.13.0] — 2026-04-18
 
 ### Bug Fixes
