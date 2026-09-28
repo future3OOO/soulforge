@@ -6,7 +6,7 @@ import { applyCwd } from "../core/utils/resolve-cwd.js";
 import type { AppConfig } from "../types/index.js";
 import { VERSION } from "./constants.js";
 import { listModels, listProviders, setKey } from "./providers.js";
-import { runChat, runPrompt } from "./run.js";
+import { runChat, runPrompt, runRenderMap } from "./run.js";
 import type { HeadlessAction } from "./types.js";
 
 export { parseHeadlessArgs } from "./parse.js";
@@ -36,7 +36,11 @@ export async function runHeadless(action: HeadlessAction): Promise<void> {
   // Apply --cwd before config / repo map / tools read process.cwd(). When
   // launched via boot.tsx this is already done; idempotent re-apply covers
   // direct entry (tests, daemon-embedded chat).
-  applyCwd(action.type === "run" || action.type === "chat" ? action.opts.cwd : undefined);
+  applyCwd(
+    action.type === "run" || action.type === "chat" || action.type === "render-map"
+      ? action.opts.cwd
+      : undefined,
+  );
   const config = await initConfig();
 
   switch (action.type) {
@@ -54,6 +58,9 @@ export async function runHeadless(action: HeadlessAction): Promise<void> {
       break;
     case "chat":
       await runChat(action.opts, config);
+      break;
+    case "render-map":
+      await runRenderMap(action.opts, config);
       break;
   }
 }

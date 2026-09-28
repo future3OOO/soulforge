@@ -18,6 +18,10 @@ ${BOLD}Usage:${RST}
   soulforge --headless --system "instructions" <prompt>  Inject system prompt
   soulforge --headless --include <file> <prompt>         Pre-load file into context
   soulforge --headless --no-repomap <prompt>             Skip repo map scan
+  soulforge --headless --render-map [--mention <path>]... [--edited <path>]...
+                       [--map-budget <tokens>] [--map-wait-ms <ms>]
+                                                         Print the ranked Soul Map as JSON
+                                                         {paths, content, stats}; no model
   soulforge --headless --diff <prompt>                   Show files changed after run
   soulforge --headless --session <id> <prompt>           Resume a previous session
   soulforge --headless --save-session <prompt>           Save session after completion
@@ -87,6 +91,11 @@ export async function parseHeadlessArgs(argv: string[]): Promise<HeadlessAction 
   let saveSession = false;
   let system: string | undefined;
   let noRepomap = false;
+  let renderMap = false;
+  let mapBudget: number | undefined;
+  let mapWaitMs: number | undefined;
+  const mentioned: string[] = [];
+  const edited: string[] = [];
   let diff = false;
   let render = process.stdout.isTTY ?? false;
   const include: string[] = [];
@@ -131,6 +140,16 @@ export async function parseHeadlessArgs(argv: string[]): Promise<HeadlessAction 
       system = argv[++i];
     } else if (arg === "--no-repomap") {
       noRepomap = true;
+    } else if (arg === "--render-map") {
+      renderMap = true;
+    } else if (arg === "--mention" && argv[i + 1]) {
+      mentioned.push(argv[++i] as string);
+    } else if (arg === "--edited" && argv[i + 1]) {
+      edited.push(argv[++i] as string);
+    } else if (arg === "--map-budget" && argv[i + 1]) {
+      mapBudget = Number.parseInt(argv[++i] as string, 10);
+    } else if (arg === "--map-wait-ms" && argv[i + 1]) {
+      mapWaitMs = Number.parseInt(argv[++i] as string, 10);
     } else if (arg === "--include" && argv[i + 1]) {
       include.push(argv[++i] as string);
     } else if (arg === "--diff") {
@@ -144,6 +163,13 @@ export async function parseHeadlessArgs(argv: string[]): Promise<HeadlessAction 
     } else if (arg && !arg.startsWith("--")) {
       promptParts.push(arg);
     }
+  }
+
+  if (renderMap) {
+    return {
+      type: "render-map",
+      opts: { cwd, mentioned, edited, tokenBudget: mapBudget, waitMs: mapWaitMs, noRepomap },
+    };
   }
 
   if (chat) {

@@ -26,7 +26,12 @@ import {
   writeEvent,
   writeMarkdown,
 } from "./output.js";
-import type { HeadlessChatOptions, HeadlessEvent, HeadlessRunOptions } from "./types.js";
+import type {
+  HeadlessChatOptions,
+  HeadlessEvent,
+  HeadlessRenderMapOptions,
+  HeadlessRunOptions,
+} from "./types.js";
 
 interface AgentEnv {
   cwd: string;
@@ -461,6 +466,47 @@ async function saveSession(
   if (showProgress) stderrDim(`Session saved: ${sessionId.slice(0, 8)}`);
   if (isEvents) writeEvent({ type: "session-saved", sessionId });
   return sessionId;
+}
+
+/**
+ * Print the repo map exactly as SoulForge would render it for a model, as JSON,
+ * without resolving a model or running a turn. Consumers (Repo Context Forge)
+ * read `paths` for the ranking and `content` for the symbol summaries.
+ */
+export async function runRenderMap(
+  opts: HeadlessRenderMapOptions,
+  merged: AppConfig,
+): Promise<void> {
+  const cwd = getCwd();
+  if (merged.repoMap === false || opts.noRepomap || process.env.SOULFORGE_NO_REPOMAP === "1") {
+    stderrError(
+      "--render-map needs the Soul Map; it is disabled by config, --no-repomap or SOULFORGE_NO_REPOMAP",
+    );
+    process.exit(EXIT_ERROR);
+  }
+  const contextManager = await ContextManager.createAsync(cwd, () => {}, { repoMapEnabled: true });
+  const ready = await contextManager.waitForRepoMap(opts.waitMs ?? 120_000);
+  if (!ready) {
+    contextManager.dispose();
+    stderrError("Soul Map not ready before --map-wait-ms elapsed");
+    process.exit(EXIT_ERROR);
+  }
+  const repoMap = contextManager.getRepoMap();
+  const result = await repoMap.render({
+    mentionedFiles: opts.mentioned.map((file) => resolve(cwd, file)),
+    editedFiles: opts.edited.map((file) => resolve(cwd, file)),
+    tokenBudget: opts.tokenBudget ?? merged.repoMapTokenBudget,
+  });
+  const stats = repoMap.getStatsCached();
+  contextManager.dispose();
+  const document = JSON.stringify({
+    paths: result.paths,
+    content: result.content,
+    stats: { files: stats.files, symbols: stats.symbols },
+  });
+  // Wait for the write to drain before boot's process.exit: a pipe buffers
+  // 64 KiB and exit does not flush the rest.
+  await new Promise<void>((done) => process.stdout.write(`${document}\n`, () => done()));
 }
 
 export async function runPrompt(opts: HeadlessRunOptions, merged: AppConfig): Promise<void> {
