@@ -7,7 +7,7 @@ an isolated HOME whose config names no usable model, so any model resolution fai
 import json, os, sqlite3, subprocess, sys, tempfile
 from pathlib import Path
 
-BIN = sys.argv[1]
+BIN = os.path.abspath(sys.argv[1])
 SRC = Path(__file__).resolve().parents[2]
 FAIL = []
 
@@ -138,8 +138,27 @@ def check_large(tmp, h, repo):
         fail("RENDER_MAP_TRUNCATED", f"rc={p.returncode} bytes={len(p.stdout)} parsed={bool(cli)} stderr={p.stderr[-200:]!r}")
 
 
+def check_operands(tmp, h, repo):
+    """A missing, flag-valued or non-numeric render-map operand is refused, never guessed."""
+    for args in (["--mention", "--edited", "src/a.py"], ["--edited"], ["--map-budget", "60junk"], ["--map-budget", "abc"],
+                 ["--map-budget", "0"], ["--map-wait-ms", "abc"], ["--map-wait-ms"]):
+        p = run(["--render-map", *args], repo, h, timeout=60)
+        if p.returncode == 0 or p.stdout.strip() or args[0] not in p.stderr:
+            fail("RENDER_MAP_OPERAND_ACCEPTED", f"{args}: rc={p.returncode} stdout={p.stdout[:80]!r} stderr={p.stderr[-160:]!r}")
+
+
+def check_operand_range(tmp, h, repo):
+    """A numeric operand past the safe range is refused, never rounded or turned into Infinity."""
+    for flag in ("--map-budget", "--map-wait-ms"):
+        for value in ("9" * 400, "9007199254740993"):
+            p = run(["--render-map", flag, value], repo, h, timeout=60)
+            if p.returncode == 0 or p.stdout.strip() or flag not in p.stderr:
+                fail("RENDER_MAP_OPERAND_OUT_OF_RANGE", f"{flag} {value[:20]}({len(value)} digits): rc={p.returncode}")
+
+
 CHECKS = {"json": check_json, "large": check_large, "personalization": check_personalization, "budget": check_budget,
-          "cwd": check_cwd, "disabled": check_disabled, "timeout": check_timeout}
+          "cwd": check_cwd, "disabled": check_disabled, "timeout": check_timeout, "operands": check_operands,
+          "operand_range": check_operand_range}
 
 with tempfile.TemporaryDirectory() as tmp:
     tmp = Path(tmp); h = home(tmp); repo = tmp / "repo"; make_repo(repo, FILES)

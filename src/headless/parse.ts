@@ -44,6 +44,18 @@ ${BOLD}Addons${RST} (opt-in: proxy gateway, bundled Neovim):
 ${BOLD}Exit codes:${RST} 0=success, 1=error, 2=timeout, 130=abort
 `;
 
+/** The operand after a render-map flag; a missing, flag-like or malformed one exits instead of being guessed. */
+function mapOperand(argv: string[], i: number, flag: string, valid = /^(?!--)./): string {
+  const value = argv[i];
+  if (value === undefined || !valid.test(value)) {
+    process.stderr.write(
+      `${RED()}Error:${RST} ${flag} needs a valid value, got "${value ?? ""}"\n`,
+    );
+    process.exit(EXIT_ERROR);
+  }
+  return value;
+}
+
 export async function parseHeadlessArgs(argv: string[]): Promise<HeadlessAction | null> {
   if (argv.includes("--version") || argv.includes("-v")) return { type: "version" };
   if (argv.includes("--list-providers")) return { type: "list-providers" };
@@ -142,14 +154,14 @@ export async function parseHeadlessArgs(argv: string[]): Promise<HeadlessAction 
       noRepomap = true;
     } else if (arg === "--render-map") {
       renderMap = true;
-    } else if (arg === "--mention" && argv[i + 1]) {
-      mentioned.push(argv[++i] as string);
-    } else if (arg === "--edited" && argv[i + 1]) {
-      edited.push(argv[++i] as string);
-    } else if (arg === "--map-budget" && argv[i + 1]) {
-      mapBudget = Number.parseInt(argv[++i] as string, 10);
-    } else if (arg === "--map-wait-ms" && argv[i + 1]) {
-      mapWaitMs = Number.parseInt(argv[++i] as string, 10);
+    } else if (arg === "--mention") {
+      mentioned.push(mapOperand(argv, ++i, arg));
+    } else if (arg === "--edited") {
+      edited.push(mapOperand(argv, ++i, arg));
+    } else if (arg === "--map-budget") {
+      mapBudget = Number(mapOperand(argv, ++i, arg, /^[1-9]\d{0,8}$/));
+    } else if (arg === "--map-wait-ms") {
+      mapWaitMs = Number(mapOperand(argv, ++i, arg, /^\d{1,9}$/));
     } else if (arg === "--include" && argv[i + 1]) {
       include.push(argv[++i] as string);
     } else if (arg === "--diff") {

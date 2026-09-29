@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # BM_KEEP_PROMPT_RUN: a headless prompt still builds the map before the model step.
 set -euo pipefail
-bin=$1; tmp=$(mktemp -d); trap 'rm -rf "$tmp"' EXIT
+bin=$(realpath "$1"); tmp=$(mktemp -d); trap 'rm -rf "$tmp"' EXIT
 mkdir -p "$tmp/home/.soulforge" "$tmp/repo/src"
 printf '{"defaultModel":"openai/gpt-4o-mini","telemetry":false,"onboardingComplete":true,"semanticSummaries":"synthetic"}\n' > "$tmp/home/.soulforge/config.json"
 cd "$tmp/repo" && git init -q && printf 'def a():\n    return 1\n' > src/a.py && git add -A && git -c user.email=t@e -c user.name=t commit -qm init
