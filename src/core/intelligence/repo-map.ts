@@ -44,6 +44,11 @@ import { detectLanguageFromPath } from "./types.js";
 /** Files larger than this are excluded from the trigram index (minified/generated).
  *  Matches ripgrep's --max-filesize=256K cap used by soul_grep. */
 const TRIGRAM_MAX_FILE_BYTES = 256 * 1024;
+// Ported from Empryo 3.8.7-beta (proxysoul/Empryo#210) under LicenseRef-Empryo-1.0, see EMPRYO_V3_LICENSE.md:
+// bumping it re-indexes maps written by older import extraction.
+const INDEX_SCHEMA_VERSION = "2";
+/** An absolute Python module path: dotted identifiers, Unicode included. */
+const PY_MODULE_PATH = /^[_\p{ID_Start}][\p{ID_Continue}.]*$/u;
 
 interface FileRow {
   id: number;
@@ -388,6 +393,12 @@ export class RepoMap {
         )
       `);
     } catch {}
+
+    if (this.metaGet("index_schema_version") !== INDEX_SCHEMA_VERSION) {
+      this.db.run("UPDATE files SET mtime_ms = 0");
+      this.db.run("DELETE FROM meta WHERE key LIKE 'rendered_map%'");
+      this.metaSet("index_schema_version", INDEX_SCHEMA_VERSION);
+    }
 
     this.rebuildFts();
   }
@@ -1013,10 +1024,13 @@ export class RepoMap {
 
     if (outline && outline.imports.length > 0) {
       const extImports = new Map<string, Set<string>>();
+      const isPy = absPath.endsWith(".py");
       for (const imp of outline.imports) {
         const sourceFileId = this.resolveImportSource(imp.source, absPath);
-        // Store import_source for any import we might resolve (relative, crate, Go module, tsconfig alias)
+        // Store import_source for any import we might resolve (relative, crate, Go module, tsconfig alias,
+        // single-token Python modules — ported from Empryo 3.8.7-beta, LicenseRef-Empryo-1.0)
         const isResolvable =
+          (isPy && /^\S+$/.test(imp.source)) ||
           imp.source.startsWith(".") ||
           imp.source.startsWith("crate::") ||
           imp.source.startsWith("super::") ||
@@ -1028,12 +1042,44 @@ export class RepoMap {
           (this.getTsconfigPaths() &&
             [...(this.getTsconfigPaths()?.keys() ?? [])].some((p) => imp.source.startsWith(p)));
         const importSource = isResolvable ? imp.source : null;
-        for (const s of imp.specifiers) {
+        // `from . import m` names sibling modules (ported from Empryo 3.8.7-beta, LicenseRef-Empryo-1.0);
+        // `from pkg import m` likewise names pkg/m.py when pkg is a package at the repository root.
+        const relativeSource = /^\.+$/.test(imp.source);
+        const rootPackage =
+          isPy && PY_MODULE_PATH.test(imp.source)
+            ? join(this.cwd, imp.source.replace(/\./g, "/"))
+            : null;
+        const packageDir =
+          isPy && relativeSource
+            ? resolve(absPath, "../".repeat(imp.source.length))
+            : rootPackage && existsSync(join(rootPackage, "__init__.py"))
+              ? rootPackage
+              : null;
+        // The first specifier of an absolute import is the package's own name, not an imported one.
+        const packageName = rootPackage && imp.source.split(".").pop();
+        for (const [i, s] of imp.specifiers.entries()) {
           allRefNames.add(s);
-          resolvedRefs.push({ name: s, sourceFileId, importSource });
+          const submodule =
+            packageDir &&
+            !(i === 0 && s === packageName) &&
+            (existsSync(join(packageDir, `${s}.py`)) ||
+              existsSync(join(packageDir, s, "__init__.py")))
+              ? join(packageDir, s)
+              : null;
+          resolvedRefs.push(
+            submodule
+              ? {
+                  name: s,
+                  // No package fallback: an unindexed submodule stays NULL for the second pass.
+                  sourceFileId: this.resolveRelPath(relative(this.cwd, submodule)),
+                  importSource: `${imp.source}${relativeSource ? "" : "."}${s}`,
+                }
+              : { name: s, sourceFileId, importSource },
+          );
         }
 
         if (
+          (isPy && sourceFileId !== null) ||
           imp.source.startsWith(".") ||
           imp.source.startsWith("/") ||
           imp.source.startsWith("node:") ||
@@ -1293,6 +1339,13 @@ export class RepoMap {
         const r = this.resolveRelPath(prefix + importSource);
         if (r !== null) return r;
       }
+    }
+
+    // Python sibling module: "helpers" or "pkg.mod" beside the importer (ported from Empryo 3.8.7-beta, LicenseRef-Empryo-1.0)
+    if (importerAbsPath.endsWith(".py") && PY_MODULE_PATH.test(importSource)) {
+      return this.resolveRelPath(
+        relative(this.cwd, join(importerDir, importSource.replace(/\./g, "/"))),
+      );
     }
 
     return null;

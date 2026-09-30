@@ -240,6 +240,17 @@ function extractImportSpecifiers(node: TSNode, language: Language): string[] {
   return specifiers;
 }
 
+// Ported from Empryo 3.8.7-beta (proxysoul/Empryo#210) under LicenseRef-Empryo-1.0, see EMPRYO_V3_LICENSE.md.
+function pythonImportSource(node: TSNode): string | null {
+  const module = node.childForFieldName("module_name");
+  if (module) return module.text;
+  for (const child of node.namedChildren) {
+    if (child?.type === "dotted_name" || child?.type === "relative_import") return child.text;
+    if (child?.type === "aliased_import") return child.childForFieldName("name")?.text ?? null;
+  }
+  return null;
+}
+
 function collectSpecifiers(node: TSNode, language: Language, out: string[]): void {
   const type = node.type;
 
@@ -858,7 +869,7 @@ export class TreeSitterBackend implements IntelligenceBackend {
               const node = patternCapture.node;
               const source = sourceCapture
                 ? sourceCapture.node.text.replace(/['"]/g, "")
-                : node.text;
+                : ((language === "python" ? pythonImportSource(node) : null) ?? node.text);
               const specifiers = extractImportSpecifiers(node, language);
               const isDefault =
                 specifiers.length > 0 &&

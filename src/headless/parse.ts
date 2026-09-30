@@ -18,6 +18,10 @@ ${BOLD}Usage:${RST}
   soulforge --headless --system "instructions" <prompt>  Inject system prompt
   soulforge --headless --include <file> <prompt>         Pre-load file into context
   soulforge --headless --no-repomap <prompt>             Skip repo map scan
+  soulforge --headless --render-map [--mention <path>]... [--edited <path>]...
+                       [--map-budget <tokens>] [--map-wait-ms <ms>]
+                                                         Print the ranked Soul Map as JSON
+                                                         {paths, content, stats}; no model
   soulforge --headless --diff <prompt>                   Show files changed after run
   soulforge --headless --session <id> <prompt>           Resume a previous session
   soulforge --headless --save-session <prompt>           Save session after completion
@@ -39,6 +43,18 @@ ${BOLD}Addons${RST} (opt-in: proxy gateway, bundled Neovim):
 
 ${BOLD}Exit codes:${RST} 0=success, 1=error, 2=timeout, 130=abort
 `;
+
+/** The operand after a render-map flag; a missing, flag-like or malformed one exits instead of being guessed. */
+function mapOperand(argv: string[], i: number, flag: string, valid = /^(?!--)./): string {
+  const value = argv[i];
+  if (value === undefined || !valid.test(value)) {
+    process.stderr.write(
+      `${RED()}Error:${RST} ${flag} needs a valid value, got "${value ?? ""}"\n`,
+    );
+    process.exit(EXIT_ERROR);
+  }
+  return value;
+}
 
 export async function parseHeadlessArgs(argv: string[]): Promise<HeadlessAction | null> {
   if (argv.includes("--version") || argv.includes("-v")) return { type: "version" };
@@ -87,6 +103,11 @@ export async function parseHeadlessArgs(argv: string[]): Promise<HeadlessAction 
   let saveSession = false;
   let system: string | undefined;
   let noRepomap = false;
+  let renderMap = false;
+  let mapBudget: number | undefined;
+  let mapWaitMs: number | undefined;
+  const mentioned: string[] = [];
+  const edited: string[] = [];
   let diff = false;
   let render = process.stdout.isTTY ?? false;
   const include: string[] = [];
@@ -131,6 +152,16 @@ export async function parseHeadlessArgs(argv: string[]): Promise<HeadlessAction 
       system = argv[++i];
     } else if (arg === "--no-repomap") {
       noRepomap = true;
+    } else if (arg === "--render-map") {
+      renderMap = true;
+    } else if (arg === "--mention") {
+      mentioned.push(mapOperand(argv, ++i, arg));
+    } else if (arg === "--edited") {
+      edited.push(mapOperand(argv, ++i, arg));
+    } else if (arg === "--map-budget") {
+      mapBudget = Number(mapOperand(argv, ++i, arg, /^[1-9]\d{0,8}$/));
+    } else if (arg === "--map-wait-ms") {
+      mapWaitMs = Number(mapOperand(argv, ++i, arg, /^\d{1,9}$/));
     } else if (arg === "--include" && argv[i + 1]) {
       include.push(argv[++i] as string);
     } else if (arg === "--diff") {
@@ -144,6 +175,13 @@ export async function parseHeadlessArgs(argv: string[]): Promise<HeadlessAction 
     } else if (arg && !arg.startsWith("--")) {
       promptParts.push(arg);
     }
+  }
+
+  if (renderMap) {
+    return {
+      type: "render-map",
+      opts: { cwd, mentioned, edited, tokenBudget: mapBudget, waitMs: mapWaitMs, noRepomap },
+    };
   }
 
   if (chat) {
