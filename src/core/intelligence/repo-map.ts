@@ -46,7 +46,9 @@ import { detectLanguageFromPath } from "./types.js";
 const TRIGRAM_MAX_FILE_BYTES = 256 * 1024;
 // Ported from Empryo 3.8.7-beta (proxysoul/Empryo#210) under LicenseRef-Empryo-1.0, see EMPRYO_V3_LICENSE.md:
 // bumping it re-indexes maps written by older import extraction.
-const INDEX_SCHEMA_VERSION = "1";
+const INDEX_SCHEMA_VERSION = "2";
+/** An absolute Python module path: dotted identifiers, Unicode included. */
+const PY_MODULE_PATH = /^[_\p{ID_Start}][\p{ID_Continue}.]*$/u;
 
 interface FileRow {
   id: number;
@@ -1040,25 +1042,37 @@ export class RepoMap {
           (this.getTsconfigPaths() &&
             [...(this.getTsconfigPaths()?.keys() ?? [])].some((p) => imp.source.startsWith(p)));
         const importSource = isResolvable ? imp.source : null;
-        // `from . import m` names sibling modules (ported from Empryo 3.8.7-beta, LicenseRef-Empryo-1.0)
-        const packageDir =
-          isPy && /^\.+$/.test(imp.source)
-            ? resolve(absPath, "../".repeat(imp.source.length))
+        // `from . import m` names sibling modules (ported from Empryo 3.8.7-beta, LicenseRef-Empryo-1.0);
+        // `from pkg import m` likewise names pkg/m.py when pkg is a package at the repository root.
+        const relativeSource = /^\.+$/.test(imp.source);
+        const rootPackage =
+          isPy && PY_MODULE_PATH.test(imp.source)
+            ? join(this.cwd, imp.source.replace(/\./g, "/"))
             : null;
-        for (const s of imp.specifiers) {
+        const packageDir =
+          isPy && relativeSource
+            ? resolve(absPath, "../".repeat(imp.source.length))
+            : rootPackage && existsSync(join(rootPackage, "__init__.py"))
+              ? rootPackage
+              : null;
+        // The first specifier of an absolute import is the package's own name, not an imported one.
+        const packageName = rootPackage && imp.source.split(".").pop();
+        for (const [i, s] of imp.specifiers.entries()) {
           allRefNames.add(s);
-          const module =
+          const submodule =
             packageDir &&
+            !(i === 0 && s === packageName) &&
             (existsSync(join(packageDir, `${s}.py`)) ||
               existsSync(join(packageDir, s, "__init__.py")))
-              ? `${imp.source}${s}`
+              ? join(packageDir, s)
               : null;
           resolvedRefs.push(
-            module
+            submodule
               ? {
                   name: s,
-                  sourceFileId: this.resolveImportSource(module, absPath),
-                  importSource: module,
+                  // No package fallback: an unindexed submodule stays NULL for the second pass.
+                  sourceFileId: this.resolveRelPath(relative(this.cwd, submodule)),
+                  importSource: `${imp.source}${relativeSource ? "" : "."}${s}`,
                 }
               : { name: s, sourceFileId, importSource },
           );
@@ -1328,7 +1342,7 @@ export class RepoMap {
     }
 
     // Python sibling module: "helpers" or "pkg.mod" beside the importer (ported from Empryo 3.8.7-beta, LicenseRef-Empryo-1.0)
-    if (importerAbsPath.endsWith(".py") && /^[\w.]+$/.test(importSource)) {
+    if (importerAbsPath.endsWith(".py") && PY_MODULE_PATH.test(importSource)) {
       return this.resolveRelPath(
         relative(this.cwd, join(importerDir, importSource.replace(/\./g, "/"))),
       );
