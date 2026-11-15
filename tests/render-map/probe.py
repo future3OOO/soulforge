@@ -135,8 +135,10 @@ def check_forbidden(tmp, h, repo):
     make_repo(guarded, {"ok.py": "def public():\n    return 1\n", "secret.py": "def secret_fn():\n    return 2\n",
                         ".aiignore": "secret.py\n"})
     p, out = render(guarded, h)
-    if p.returncode != 0 or out.get("paths") != ["ok.py"] or "secret_fn" in out.get("content", ""):
-        fail("RENDER_MAP_FORBIDDEN_INDEXED", f"rc={p.returncode} paths={out.get('paths')}")
+    # Indexed: ok.py and .aiignore, one symbol; secret.py neither indexed nor rendered.
+    if (p.returncode != 0 or out.get("paths") != ["ok.py"] or "secret_fn" in out.get("content", "")
+            or out.get("stats") != {"files": 2, "symbols": 1}):
+        fail("RENDER_MAP_FORBIDDEN_INDEXED", f"rc={p.returncode} paths={out.get('paths')} stats={out.get('stats')}")
 
 
 def check_cwd(tmp, h, repo):
