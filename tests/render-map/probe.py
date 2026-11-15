@@ -104,13 +104,14 @@ def check_budget(tmp, h, repo):
 def check_plain_after_personalized(tmp, h, repo):
     """A personalized render persists its PageRank; a plain render of a map whose first render was
     personalized still ranks globally, as the oracle's plain render of a fresh map does."""
-    fresh = tmp / "plain"; make_repo(fresh, FILES)
-    render(fresh, h, "--mention", "tools/low7.py")
-    _, cli = render(fresh, h)
     copy = tmp / "plain-oracle"; make_repo(copy, FILES)
     ora = oracle(copy, {"tokenBudget": 4000})
-    if cli.get("paths") != ora["paths"]:
-        fail("RENDER_MAP_PLAIN_PERSONALIZED", f"cli={cli.get('paths')} oracle={ora['paths']}")
+    for name, first in (("plain", ()), ("budget", ("--map-budget", "60"))):
+        fresh = tmp / f"plain-{name}"; make_repo(fresh, FILES)
+        render(fresh, h, "--mention", "tools/low7.py", *first)
+        _, cli = render(fresh, h)
+        if cli.get("paths") != ora["paths"]:
+            fail("RENDER_MAP_PLAIN_PERSONALIZED", f"after a personalized render ({name}): cli={cli.get('paths')} oracle={ora['paths']}")
 
 
 def check_memory(tmp, h, repo):

@@ -14,6 +14,8 @@ from pathlib import Path
 
 FORK, E387, PREPORT = map(os.path.abspath, sys.argv[1:4])
 CHECKS = sys.argv[4:] or ["oracle"]
+if unknown := set(CHECKS) - {"oracle", "lifecycle", "others", "bindings"}:
+    sys.exit(f"unknown checks: {sorted(unknown)}")
 REPOS = [("repo-context-forge", "/home/prop_/projects/repo-context-forge", "f2252a4a2b60d0845c55e60d9af3cbe968ed6689"),
          ("codex-skills", "/home/prop_/projects/.worktrees/codex-skills-issue107", "35a6c698"),
          ("sqlite-utils", "/home/prop_/dswe-run-issue95/armX7R2/app", "8d74ffc9")]

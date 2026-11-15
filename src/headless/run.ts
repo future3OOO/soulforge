@@ -499,15 +499,13 @@ export async function runRenderMap(
     stderrError("Soul Map not ready before --map-wait-ms elapsed");
     process.exit(EXIT_ERROR);
   }
-  const tokenBudget = opts.tokenBudget ?? merged.repoMapTokenBudget;
-  // A personalized render persists its PageRank; the plain render a session warms first keeps
-  // later plain renders on the global ranking (a cache hit once warm).
-  if (opts.mentioned.length > 0 || opts.edited.length > 0) repoMap.render({ tokenBudget });
   const content = repoMap.render({
     mentionedFiles: opts.mentioned.map((file) => resolve(cwd, file)),
     editedFiles: opts.edited.map((file) => resolve(cwd, file)),
-    tokenBudget,
+    tokenBudget: opts.tokenBudget ?? merged.repoMapTokenBudget,
   });
+  // A personalized render persists its PageRank; later plain renders must rank globally.
+  if (opts.mentioned.length > 0 || opts.edited.length > 0) repoMap.restoreGlobalPageRank();
   const stats = repoMap.getStats();
   const document = JSON.stringify({
     paths: repoMap.lastRenderedPaths,

@@ -2104,6 +2104,11 @@ export class RepoMap {
     }
   }
 
+  /** Store the global PageRank again: a personalized render leaves its own in the files table. */
+  restoreGlobalPageRank(): void {
+    this.computePageRankSync();
+  }
+
   /** Sync version for render-time personalized PageRank (small, bounded workload) */
   private computePageRankSync(personalization?: Map<number, number>): void {
     const files = this.db
