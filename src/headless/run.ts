@@ -471,7 +471,8 @@ async function saveSession(
 /**
  * Print the repo map exactly as SoulForge would render it for a model, as JSON,
  * without resolving a model or running a turn. Consumers (Repo Context Forge)
- * read `paths` for the ranking and `content` for the symbol summaries.
+ * read `paths` for the ranking and `content` for the symbol summaries. The map
+ * is scanned and rendered in-process: no memory store, session or agent opens.
  */
 export async function runRenderMap(
   opts: HeadlessRenderMapOptions,
@@ -484,24 +485,33 @@ export async function runRenderMap(
     );
     process.exit(EXIT_ERROR);
   }
-  const contextManager = await ContextManager.createAsync(cwd, () => {}, { repoMapEnabled: true });
-  const ready = await contextManager.waitForRepoMap(opts.waitMs ?? 120_000);
+  const { RepoMap } = await import("../core/intelligence/repo-map.js");
+  const repoMap = new RepoMap(cwd);
+  let timer: ReturnType<typeof setTimeout> | undefined;
+  const ready = await Promise.race([
+    repoMap.scan().then(() => true),
+    new Promise<boolean>((done) => {
+      timer = setTimeout(() => done(false), opts.waitMs ?? 120_000);
+    }),
+  ]);
+  clearTimeout(timer);
   if (!ready) {
-    contextManager.dispose();
     stderrError("Soul Map not ready before --map-wait-ms elapsed");
     process.exit(EXIT_ERROR);
   }
-  const repoMap = contextManager.getRepoMap();
-  const result = await repoMap.render({
+  const tokenBudget = opts.tokenBudget ?? merged.repoMapTokenBudget;
+  // A personalized render persists its PageRank; the plain render a session warms first keeps
+  // later plain renders on the global ranking (a cache hit once warm).
+  if (opts.mentioned.length > 0 || opts.edited.length > 0) repoMap.render({ tokenBudget });
+  const content = repoMap.render({
     mentionedFiles: opts.mentioned.map((file) => resolve(cwd, file)),
     editedFiles: opts.edited.map((file) => resolve(cwd, file)),
-    tokenBudget: opts.tokenBudget ?? merged.repoMapTokenBudget,
+    tokenBudget,
   });
-  const stats = repoMap.getStatsCached();
-  contextManager.dispose();
+  const stats = repoMap.getStats();
   const document = JSON.stringify({
-    paths: result.paths,
-    content: result.content,
+    paths: repoMap.lastRenderedPaths,
+    content,
     stats: { files: stats.files, symbols: stats.symbols },
   });
   // Wait for the write to drain before boot's process.exit: a pipe buffers

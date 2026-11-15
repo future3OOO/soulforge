@@ -44,8 +44,7 @@ import { detectLanguageFromPath } from "./types.js";
 /** Files larger than this are excluded from the trigram index (minified/generated).
  *  Matches ripgrep's --max-filesize=256K cap used by soul_grep. */
 const TRIGRAM_MAX_FILE_BYTES = 256 * 1024;
-// Ported from Empryo 3.8.7-beta (proxysoul/Empryo#210) under LicenseRef-Empryo-1.0, see EMPRYO_V3_LICENSE.md:
-// bumping it re-indexes maps written by older import extraction.
+// Bumping it re-indexes maps written by older import extraction.
 const INDEX_SCHEMA_VERSION = "2";
 /** An absolute Python module path: dotted identifiers, Unicode included. */
 const PY_MODULE_PATH = /^[_\p{ID_Start}][\p{ID_Continue}.]*$/u;
@@ -1028,7 +1027,7 @@ export class RepoMap {
       for (const imp of outline.imports) {
         const sourceFileId = this.resolveImportSource(imp.source, absPath);
         // Store import_source for any import we might resolve (relative, crate, Go module, tsconfig alias,
-        // single-token Python modules — ported from Empryo 3.8.7-beta, LicenseRef-Empryo-1.0)
+        // single-token Python modules)
         const isResolvable =
           (isPy && /^\S+$/.test(imp.source)) ||
           imp.source.startsWith(".") ||
@@ -1042,7 +1041,7 @@ export class RepoMap {
           (this.getTsconfigPaths() &&
             [...(this.getTsconfigPaths()?.keys() ?? [])].some((p) => imp.source.startsWith(p)));
         const importSource = isResolvable ? imp.source : null;
-        // `from . import m` names sibling modules (ported from Empryo 3.8.7-beta, LicenseRef-Empryo-1.0);
+        // `from . import m` names sibling modules;
         // `from pkg import m` likewise names pkg/m.py when pkg is a package at the repository root.
         const relativeSource = /^\.+$/.test(imp.source);
         const rootPackage =
@@ -1341,7 +1340,7 @@ export class RepoMap {
       }
     }
 
-    // Python sibling module: "helpers" or "pkg.mod" beside the importer (ported from Empryo 3.8.7-beta, LicenseRef-Empryo-1.0)
+    // Python sibling module: "helpers" or "pkg.mod" beside the importer
     if (importerAbsPath.endsWith(".py") && PY_MODULE_PATH.test(importSource)) {
       return this.resolveRelPath(
         relative(this.cwd, join(importerDir, importSource.replace(/\./g, "/"))),

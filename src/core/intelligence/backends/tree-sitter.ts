@@ -240,7 +240,6 @@ function extractImportSpecifiers(node: TSNode, language: Language): string[] {
   return specifiers;
 }
 
-// Ported from Empryo 3.8.7-beta (proxysoul/Empryo#210) under LicenseRef-Empryo-1.0, see EMPRYO_V3_LICENSE.md.
 function pythonImportSource(node: TSNode): string | null {
   const module = node.childForFieldName("module_name");
   if (module) return module.text;

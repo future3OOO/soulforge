@@ -47,7 +47,8 @@ import {{ RepoMap }} from "{SRC}/src/core/intelligence/repo-map.ts";
 const m = new RepoMap({json.dumps(str(repo))});
 await m.scan();
 const r = m.render({json.dumps(opts)});
-console.log(JSON.stringify({{paths: m.lastRenderedPaths, content: r, stats: m.getStats()}}));
+await new Promise((done) => process.stdout.write(JSON.stringify({{paths: m.lastRenderedPaths, content: r, stats: m.getStats()}}) + "\\n", done));
+process.exit(0);
 """
     p = subprocess.run(["bun", "-e", script], cwd=SRC, capture_output=True, text=True, timeout=180)
     if p.returncode != 0:
@@ -98,6 +99,31 @@ def check_budget(tmp, h, repo):
         fail("RENDER_MAP_BUDGET_IGNORED", f"budget 60: cli paths={cli.get('paths')} oracle={ora['paths']}")
     if cli.get("content") == base.get("content"):
         fail("RENDER_MAP_BUDGET_IGNORED", "budget 60 content equals budget 4000 content")
+
+
+def check_plain_after_personalized(tmp, h, repo):
+    """A personalized render persists its PageRank; a plain render of a map whose first render was
+    personalized still ranks globally, as the oracle's plain render of a fresh map does."""
+    fresh = tmp / "plain"; make_repo(fresh, FILES)
+    render(fresh, h, "--mention", "tools/low7.py")
+    _, cli = render(fresh, h)
+    copy = tmp / "plain-oracle"; make_repo(copy, FILES)
+    ora = oracle(copy, {"tokenBudget": 4000})
+    if cli.get("paths") != ora["paths"]:
+        fail("RENDER_MAP_PLAIN_PERSONALIZED", f"cli={cli.get('paths')} oracle={ora['paths']}")
+
+
+def check_memory(tmp, h, repo):
+    """--render-map opens no memory store: a legacy global memory.db (SoulForge 2.13.2's schema, which
+    the memory store would rename aside) and config.json keep their bytes and no .legacy- copy appears."""
+    h3 = home(tmp / "memory")
+    with sqlite3.connect(h3 / ".soulforge" / "memory.db") as db:
+        db.execute("CREATE TABLE memories (id TEXT PRIMARY KEY, title TEXT NOT NULL, tags TEXT NOT NULL DEFAULT '[]')")
+    before = {p.name: p.read_bytes() for p in (h3 / ".soulforge").iterdir()}
+    p, out = render(repo, h3)
+    after = {p.name: p.read_bytes() for p in (h3 / ".soulforge").iterdir()}
+    if p.returncode != 0 or not out.get("paths") or after != before:
+        fail("RENDER_MAP_REWROTE_HOME", f"rc={p.returncode} before={sorted(before)} after={sorted(after)}")
 
 
 def check_cwd(tmp, h, repo):
@@ -158,7 +184,8 @@ def check_operand_range(tmp, h, repo):
 
 CHECKS = {"json": check_json, "large": check_large, "personalization": check_personalization, "budget": check_budget,
           "cwd": check_cwd, "disabled": check_disabled, "timeout": check_timeout, "operands": check_operands,
-          "operand_range": check_operand_range}
+          "operand_range": check_operand_range, "plain_after_personalized": check_plain_after_personalized,
+          "memory": check_memory}
 
 with tempfile.TemporaryDirectory() as tmp:
     tmp = Path(tmp); h = home(tmp); repo = tmp / "repo"; make_repo(repo, FILES)
