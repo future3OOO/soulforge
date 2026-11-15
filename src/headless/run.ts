@@ -26,7 +26,12 @@ import {
   writeEvent,
   writeMarkdown,
 } from "./output.js";
-import type { HeadlessChatOptions, HeadlessEvent, HeadlessRunOptions } from "./types.js";
+import type {
+  HeadlessChatOptions,
+  HeadlessEvent,
+  HeadlessRenderMapOptions,
+  HeadlessRunOptions,
+} from "./types.js";
 
 interface AgentEnv {
   cwd: string;
@@ -461,6 +466,58 @@ async function saveSession(
   if (showProgress) stderrDim(`Session saved: ${sessionId.slice(0, 8)}`);
   if (isEvents) writeEvent({ type: "session-saved", sessionId });
   return sessionId;
+}
+
+/**
+ * Print the repo map exactly as SoulForge would render it for a model, as JSON,
+ * without resolving a model or running a turn. Consumers (Repo Context Forge)
+ * read `paths` for the ranking and `content` for the symbol summaries. The map
+ * is scanned and rendered in-process: no memory store, session or agent opens.
+ */
+export async function runRenderMap(
+  opts: HeadlessRenderMapOptions,
+  merged: AppConfig,
+): Promise<void> {
+  const cwd = getCwd();
+  if (merged.repoMap === false || opts.noRepomap || process.env.SOULFORGE_NO_REPOMAP === "1") {
+    stderrError(
+      "--render-map needs the Soul Map; it is disabled by config, --no-repomap or SOULFORGE_NO_REPOMAP",
+    );
+    process.exit(EXIT_ERROR);
+  }
+  const { RepoMap } = await import("../core/intelligence/repo-map.js");
+  // The forbidden-file guard (.aiignore, configured patterns) the intelligence worker sets up.
+  const { initForbidden } = await import("../core/security/forbidden.js");
+  initForbidden(cwd);
+  const repoMap = new RepoMap(cwd);
+  let timer: ReturnType<typeof setTimeout> | undefined;
+  const ready = await Promise.race([
+    repoMap.scan().then(() => true),
+    new Promise<boolean>((done) => {
+      timer = setTimeout(() => done(false), opts.waitMs ?? 120_000);
+    }),
+  ]);
+  clearTimeout(timer);
+  if (!ready) {
+    stderrError("Soul Map not ready before --map-wait-ms elapsed");
+    process.exit(EXIT_ERROR);
+  }
+  const content = repoMap.render({
+    mentionedFiles: opts.mentioned.map((file) => resolve(cwd, file)),
+    editedFiles: opts.edited.map((file) => resolve(cwd, file)),
+    tokenBudget: opts.tokenBudget ?? merged.repoMapTokenBudget,
+  });
+  // A personalized render persists its PageRank; later plain renders must rank globally.
+  if (opts.mentioned.length > 0 || opts.edited.length > 0) repoMap.restoreGlobalPageRank();
+  const stats = repoMap.getStats();
+  const document = JSON.stringify({
+    paths: repoMap.lastRenderedPaths,
+    content,
+    stats: { files: stats.files, symbols: stats.symbols },
+  });
+  // Wait for the write to drain before boot's process.exit: a pipe buffers
+  // 64 KiB and exit does not flush the rest.
+  await new Promise<void>((done) => process.stdout.write(`${document}\n`, () => done()));
 }
 
 export async function runPrompt(opts: HeadlessRunOptions, merged: AppConfig): Promise<void> {

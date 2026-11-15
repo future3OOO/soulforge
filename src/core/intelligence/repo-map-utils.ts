@@ -370,12 +370,16 @@ export async function collectFiles(dir: string, depth = 0): Promise<CollectResul
  */
 async function collectFilesViaGit(dir: string): Promise<CollectedFile[] | null> {
   try {
-    const proc = Bun.spawn(["git", "ls-files", "--cached", "--others", "--exclude-standard"], {
-      cwd: dir,
-      stdout: "pipe",
-      stderr: "ignore",
-      windowsHide: true,
-    });
+    // -z: without it git quotes non-ASCII paths, which then match no file and are never indexed.
+    const proc = Bun.spawn(
+      ["git", "ls-files", "-z", "--cached", "--others", "--exclude-standard"],
+      {
+        cwd: dir,
+        stdout: "pipe",
+        stderr: "ignore",
+        windowsHide: true,
+      },
+    );
     const code = await Promise.race([
       proc.exited,
       new Promise<"timeout">((r) => setTimeout(() => r("timeout"), 30_000)),
@@ -388,7 +392,7 @@ async function collectFilesViaGit(dir: string): Promise<CollectedFile[] | null> 
     if (code !== 0) return null;
 
     const files: CollectedFile[] = [];
-    for (const line of text.split("\n")) {
+    for (const line of text.split("\0")) {
       if (!line) continue;
       if (!isIndexablePath(line)) continue;
       const fullPath = join(dir, line);

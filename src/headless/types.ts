@@ -19,6 +19,15 @@ export interface HeadlessRunOptions {
   render?: boolean;
 }
 
+export interface HeadlessRenderMapOptions {
+  cwd?: string;
+  mentioned: string[];
+  edited: string[];
+  tokenBudget?: number;
+  waitMs?: number;
+  noRepomap?: boolean;
+}
+
 export interface TokenUsage {
   input: number;
   output: number;
@@ -136,6 +145,7 @@ export interface HeadlessChatOptions {
 export type HeadlessAction =
   | { type: "run"; opts: HeadlessRunOptions }
   | { type: "chat"; opts: HeadlessChatOptions }
+  | { type: "render-map"; opts: HeadlessRenderMapOptions }
   | { type: "list-providers" }
   | { type: "list-models"; provider?: string }
   | { type: "set-key"; provider: string; key: string }

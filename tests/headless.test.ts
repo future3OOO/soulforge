@@ -409,3 +409,18 @@ describe("parseHeadlessArgs", () => {
 		}
 	});
 });
+
+describe("parseHeadlessArgs --render-map", () => {
+	test("parses --render-map with repeated --mention/--edited, --map-budget and --map-wait-ms without a prompt", async () => {
+		const action = await parseHeadlessArgs([
+			"--headless", "--render-map", "--mention", "src/a.ts", "--mention", "src/b.ts",
+			"--edited", "src/c.ts", "--map-budget", "1234", "--map-wait-ms", "5000", "--cwd", "/tmp/x",
+		]);
+		if (action?.type !== "render-map") throw new Error(`RENDER_MAP_ARGS_NOT_PARSED: ${String(action?.type)}`);
+		expect(action.opts.mentioned).toEqual(["src/a.ts", "src/b.ts"]);
+		expect(action.opts.edited).toEqual(["src/c.ts"]);
+		expect(action.opts.tokenBudget).toBe(1234);
+		expect(action.opts.waitMs).toBe(5000);
+		expect(action.opts.cwd).toBe("/tmp/x");
+	});
+});
