@@ -129,6 +129,16 @@ def check_memory(tmp, h, repo):
         fail("RENDER_MAP_REWROTE_HOME", f"rc={p.returncode} before={sorted(before)} after={sorted(after)}")
 
 
+def check_forbidden(tmp, h, repo):
+    """Files .aiignore forbids are neither indexed nor rendered, as in an interactive session."""
+    guarded = tmp / "guarded"
+    make_repo(guarded, {"ok.py": "def public():\n    return 1\n", "secret.py": "def secret_fn():\n    return 2\n",
+                        ".aiignore": "secret.py\n"})
+    p, out = render(guarded, h)
+    if p.returncode != 0 or out.get("paths") != ["ok.py"] or "secret_fn" in out.get("content", ""):
+        fail("RENDER_MAP_FORBIDDEN_INDEXED", f"rc={p.returncode} paths={out.get('paths')}")
+
+
 def check_cwd(tmp, h, repo):
     other = tmp / "other"; make_repo(other, {"pkg/x.py": "X = 1\n", "pkg/y.py": "import pkg.x\n"})
     p, cli = render(repo, h, "--cwd", str(other), "--mention", "pkg/y.py")
@@ -190,7 +200,7 @@ def check_operand_range(tmp, h, repo):
 CHECKS = {"json": check_json, "large": check_large, "personalization": check_personalization, "budget": check_budget,
           "cwd": check_cwd, "disabled": check_disabled, "timeout": check_timeout, "operands": check_operands,
           "operand_range": check_operand_range, "plain_after_personalized": check_plain_after_personalized,
-          "memory": check_memory}
+          "memory": check_memory, "forbidden": check_forbidden}
 
 with tempfile.TemporaryDirectory() as tmp:
     tmp = Path(tmp); h = home(tmp); repo = tmp / "repo"; make_repo(repo, FILES)

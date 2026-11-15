@@ -486,6 +486,9 @@ export async function runRenderMap(
     process.exit(EXIT_ERROR);
   }
   const { RepoMap } = await import("../core/intelligence/repo-map.js");
+  // The forbidden-file guard (.aiignore, configured patterns) the intelligence worker sets up.
+  const { initForbidden } = await import("../core/security/forbidden.js");
+  initForbidden(cwd);
   const repoMap = new RepoMap(cwd);
   let timer: ReturnType<typeof setTimeout> | undefined;
   const ready = await Promise.race([
