@@ -866,28 +866,38 @@ export class TreeSitterBackend implements IntelligenceBackend {
             // Handle imports
             if (patternCapture?.name === "import") {
               const node = patternCapture.node;
-              const source = sourceCapture
-                ? sourceCapture.node.text.replace(/['"]/g, "")
-                : ((language === "python" ? pythonImportSource(node) : null) ?? node.text);
-              const specifiers = extractImportSpecifiers(node, language);
-              const isDefault =
-                specifiers.length > 0 &&
-                node.text.includes("import ") &&
-                !node.text.includes("{") &&
-                !node.text.includes("*");
-              const isNamespace = node.text.includes("* as ");
-              imports.push({
-                source,
-                specifiers,
-                isDefault,
-                isNamespace,
-                location: {
-                  file: absFile,
-                  line: node.startPosition.row + 1,
-                  column: node.startPosition.column + 1,
-                  endLine: node.endPosition.row + 1,
-                },
-              });
+              // `import a, b as c` imports each module on its own: one record per module.
+              const modules =
+                language === "python" && node.type === "import_statement"
+                  ? node.namedChildren.filter(
+                      (c: TSNode | null): c is TSNode =>
+                        c?.type === "dotted_name" || c?.type === "aliased_import",
+                    )
+                  : [];
+              for (const part of modules.length > 1 ? modules : [node]) {
+                const source = sourceCapture
+                  ? sourceCapture.node.text.replace(/['"]/g, "")
+                  : ((language === "python" ? pythonImportSource(part) : null) ?? part.text);
+                const specifiers = extractImportSpecifiers(part, language);
+                const isDefault =
+                  specifiers.length > 0 &&
+                  node.text.includes("import ") &&
+                  !node.text.includes("{") &&
+                  !node.text.includes("*");
+                const isNamespace = node.text.includes("* as ");
+                imports.push({
+                  source,
+                  specifiers,
+                  isDefault,
+                  isNamespace,
+                  location: {
+                    file: absFile,
+                    line: node.startPosition.row + 1,
+                    column: node.startPosition.column + 1,
+                    endLine: node.endPosition.row + 1,
+                  },
+                });
+              }
               continue;
             }
 

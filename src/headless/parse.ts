@@ -67,7 +67,8 @@ export async function parseHeadlessArgs(argv: string[]): Promise<HeadlessAction 
     return { type: "list-models", provider };
   }
 
-  if (argv.includes("--set-key")) {
+  // A render-map operand is never a key to store; a flag-like one is refused below.
+  if (argv.includes("--set-key") && !argv.includes("--render-map")) {
     const idx = argv.indexOf("--set-key");
     const provider = argv[idx + 1];
     const key = argv[idx + 2];

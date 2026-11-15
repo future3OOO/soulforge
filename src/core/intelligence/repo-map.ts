@@ -1041,19 +1041,23 @@ export class RepoMap {
           (this.getTsconfigPaths() &&
             [...(this.getTsconfigPaths()?.keys() ?? [])].some((p) => imp.source.startsWith(p)));
         const importSource = isResolvable ? imp.source : null;
-        // `from . import m` names sibling modules;
+        // `from . import m` and `from .pkg import m` name modules of the package they reach;
         // `from pkg import m` likewise names pkg/m.py when pkg is a package at the repository root.
-        const relativeSource = /^\.+$/.test(imp.source);
+        const relativeMatch = isPy ? /^(\.+)(.*)$/.exec(imp.source) : null;
+        const relativeSource = relativeMatch !== null && relativeMatch[2] === "";
         const rootPackage =
           isPy && PY_MODULE_PATH.test(imp.source)
             ? join(this.cwd, imp.source.replace(/\./g, "/"))
             : null;
-        const packageDir =
-          isPy && relativeSource
-            ? resolve(absPath, "../".repeat(imp.source.length))
-            : rootPackage && existsSync(join(rootPackage, "__init__.py"))
-              ? rootPackage
-              : null;
+        const packageDir = relativeMatch
+          ? resolve(
+              absPath,
+              "../".repeat(relativeMatch[1]?.length ?? 0),
+              (relativeMatch[2] ?? "").replace(/\./g, "/"),
+            )
+          : rootPackage && existsSync(join(rootPackage, "__init__.py"))
+            ? rootPackage
+            : null;
         // The first specifier of an absolute import is the package's own name, not an imported one.
         const packageName = rootPackage && imp.source.split(".").pop();
         for (const [i, s] of imp.specifiers.entries()) {

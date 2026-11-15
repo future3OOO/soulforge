@@ -108,7 +108,9 @@ def check_plain_after_personalized(tmp, h, repo):
     ora = oracle(copy, {"tokenBudget": 4000})
     for name, first in (("plain", ()), ("budget", ("--map-budget", "60"))):
         fresh = tmp / f"plain-{name}"; make_repo(fresh, FILES)
-        render(fresh, h, "--mention", "tools/low7.py", *first)
+        p, personalized = render(fresh, h, "--mention", "tools/low7.py", *first)
+        if p.returncode != 0 or not personalized.get("paths"):
+            fail("RENDER_MAP_PLAIN_PERSONALIZED", f"personalized render ({name}) failed: rc={p.returncode}")
         _, cli = render(fresh, h)
         if cli.get("paths") != ora["paths"]:
             fail("RENDER_MAP_PLAIN_PERSONALIZED", f"after a personalized render ({name}): cli={cli.get('paths')} oracle={ora['paths']}")
@@ -168,10 +170,12 @@ def check_large(tmp, h, repo):
 def check_operands(tmp, h, repo):
     """A missing, flag-valued or non-numeric render-map operand is refused, never guessed."""
     for args in (["--mention", "--edited", "src/a.py"], ["--edited"], ["--map-budget", "60junk"], ["--map-budget", "abc"],
-                 ["--map-budget", "0"], ["--map-wait-ms", "abc"], ["--map-wait-ms"]):
+                 ["--map-budget", "0"], ["--map-wait-ms", "abc"], ["--map-wait-ms"], ["--mention", "--set-key", "openai", "sk-x"]):
         p = run(["--render-map", *args], repo, h, timeout=60)
         if p.returncode == 0 or p.stdout.strip() or args[0] not in p.stderr:
             fail("RENDER_MAP_OPERAND_ACCEPTED", f"{args}: rc={p.returncode} stdout={p.stdout[:80]!r} stderr={p.stderr[-160:]!r}")
+    if (h / ".soulforge" / "secrets.json").exists():
+        fail("RENDER_MAP_OPERAND_ACCEPTED", "a --set-key operand of --mention stored a key")
 
 
 def check_operand_range(tmp, h, repo):

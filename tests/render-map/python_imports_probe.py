@@ -55,6 +55,8 @@ BINDINGS = {
     ("app/self_from.py", "mylib"): {"mylib/__init__.py", "mylib/mylib.py"},
     ("app/unicode.py", "child"): "café/child.py",
     ("app/unicode.py", "モジュール"): "app/モジュール.py",
+    ("app/multi.py", "first_mod"): "first_mod.py", ("app/multi.py", "second_mod"): "second_mod.py",
+    ("pkg/rel_pkg.py", "inner_mod"): "pkg/sub/inner_mod.py",
 }
 BINDINGS_REPO = {
     "pkg/__init__.py": "def helper():\n    return 1\n\n\ndef shadow():\n    return 2\n",
@@ -73,6 +75,8 @@ BINDINGS_REPO = {
     "app/self_from.py": "from mylib import mylib\n",
     "café/__init__.py": "", "café/child.py": "VALUE = 11\n", "app/unicode.py": "from café import child\nimport モジュール\n",
     "app/モジュール.py": "V = 12\n",
+    "first_mod.py": "F = 13\n", "second_mod.py": "S2 = 14\n", "app/multi.py": "import first_mod, second_mod as two\n",
+    "pkg/sub/inner_mod.py": "I = 15\n", "pkg/rel_pkg.py": "from .sub import inner_mod\n",
 }
 
 
